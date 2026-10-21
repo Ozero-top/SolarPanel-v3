@@ -1,0 +1,49 @@
+package settings
+
+// Defaults 返回全部设置键的种子默认值。
+// db.go seedIfEmpty（首次安装）和 backup_handler.go 恢复初始状态
+// 必须从此函数取，保持两处严格同步（硬约束 3.3）。
+func Defaults() map[string]string {
+	defaults := map[string]string{
+		"site_title":             "SolarPanel",
+		"site_logo":              "",
+		"wallpaper":              "",
+		"mask_opacity":           "0.35",
+		"wallpaper_blur":         "6",
+		"announcement":           "欢迎使用 SolarPanel！所有展示内容均可在后台设置。",
+		"announcement_show":      "0",
+		"footer":                 "Powered by SolarPanel",
+		"clock_show":             "1",
+		"default_theme":          "dark",
+		"theme_style":            "soft",
+		"card_style":             "nav",
+		"default_lan_mode":       "auto",
+		"lan_hostnames":          "",
+		"site_url":               "",
+		"content_maxwidth":       "1200",
+		"content_pad_lr":         "20",
+		"content_pad_top":        "0",
+		"content_pad_bottom":     "40",
+		"weather_show":           "1",
+		"weather_city":           "",
+		"search_width":           "640",
+		"news_show":              "1",
+		"news_sources":           "",
+		"news_order":             "",
+		"icp_show":               "0",
+		"icp_number":             "",
+		"icp_link":               "",
+		"police_show":            "0",
+		"police_number":          "",
+		"police_link":            "",
+		"wallpaper_source":       "",
+		"guest_access_enabled":   "0",
+		"guest_password_hash":    "",
+		"search_bar_enabled":     "1",
+		"topbar_desktop_enabled": "1",
+		"topbar_mobile_enabled":  "0",
+		"search_default":         "百度",
+	}
+	defaults["search_engines"] = `[{"name":"百度","url":"https://www.baidu.com/s?wd=%s"},{"name":"Google","url":"https://www.google.com/search?q=%s"},{"name":"Bing","url":"https://www.bing.com/search?q=%s"},{"name":"DuckDuckGo","url":"https://duckduckgo.com/?q=%s"},{"name":"Yandex","url":"https://yandex.com/search/?text=%s"},{"name":"GitHub","url":"https://github.com/search?q=%s"},{"name":"搜狗","url":"https://www.sogou.com/web?query=%s"},{"name":"360搜索","url":"https://www.so.com/s?q=%s"},{"name":"神马","url":"https://m.sm.cn/s?q=%s"},{"name":"夸克","url":"https://www.quark.cn/s?q=%s"},{"name":"头条搜索","url":"https://so.toutiao.com/search?keyword=%s"},{"name":"中国搜索","url":"https://www.chinaso.com/search/all?q=%s"},{"name":"抖音","url":"https://www.douyin.com/search/%s"}]`
+	return defaults
+}

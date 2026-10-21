@@ -1,0 +1,14 @@
+services:
+  solarpanel:
+    build: .
+    image: ovitor/solarpanel-v3:latest
+    container_name: solarpanel-v3
+    restart: unless-stopped
+    ports:
+      - "18080:18080"
+      # - "18443:18443"  # HTTPS_PORT 非空时启用
+    volumes:
+      - ./data:/app/data
+    environment:
+      - SERVER_PORT=18080
+      # - HTTPS_PORT=18443  # 启用内置自签名 HTTPS

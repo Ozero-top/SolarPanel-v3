@@ -1,0 +1,11 @@
+# 编译产物
+solarpanel
+solarpanel.exe
+
+# 运行时数据
+data/
+
+# Go 构建
+*.test
+*.out
+vendor/

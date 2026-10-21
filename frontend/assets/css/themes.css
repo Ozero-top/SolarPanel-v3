@@ -1,0 +1,386 @@
+/* ============================================================
+   风格主题包 —— 自动生成，勿手动编辑！
+   数据源：frontend/themes.json
+   生成器：scripts/build-themes.js
+   ============================================================ */
+
+/* 装饰层载体（三个页面均放置 <div class="style-fx">）：
+   必须 fixed + z-index:-1 + pointer-events:none，
+   否则主题伪元素装饰层会浮在内容之上拦截点击 */
+.style-fx {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+body.has-wallpaper .style-fx {
+  display: none;
+}
+
+/* ============================================================
+   1) Soft 柔和浮雕（默认） — soft
+   ============================================================ */
+:root:not([data-style]) .style-fx::before,
+:root:not([data-style]) .style-fx::after,
+:root[data-style='soft'] .style-fx::before,
+:root[data-style='soft'] .style-fx::after {
+  content: '';
+  position: absolute;
+  filter: blur(72px);
+  border-radius: 50%;
+  animation: fx-soft-a 32s ease-in-out infinite;
+}
+
+:root:not([data-style]) .style-fx::before,
+:root[data-style='soft'] .style-fx::before {
+  width: 48vw;
+  height: 48vw;
+  left: -14vw;
+  top: -16vw;
+  background: radial-gradient(circle at 42% 42%, rgba(92, 124, 250, 0.38), transparent 65%);
+  opacity: 0.55;
+}
+
+:root:not([data-style]) .style-fx::after,
+:root[data-style='soft'] .style-fx::after {
+  width: 44vw;
+  height: 44vw;
+  right: -12vw;
+  bottom: -16vw;
+  background: radial-gradient(circle at 55% 45%, rgba(139, 92, 246, 0.3), transparent 62%);
+  border-radius: 55% 45% 42% 58% / 50% 55% 45% 50%;
+  animation: fx-soft-b 36s ease-in-out infinite;
+  opacity: 0.45;
+}
+
+:root[data-theme='dark']:not([data-style]) .style-fx::before,
+:root[data-theme='dark'][data-style='soft'] .style-fx::before { opacity: 0.28; }
+
+:root[data-theme='dark']:not([data-style]) .style-fx::after,
+:root[data-theme='dark'][data-style='soft'] .style-fx::after { opacity: 0.24; }
+
+:root:not([data-style]) .card,
+:root:not([data-style]) .admin-panel,
+:root[data-style='soft'] .card,
+:root[data-style='soft'] .admin-panel {
+  border-radius: 20px;
+}
+
+@keyframes fx-soft-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(3vw, 2vw) scale(1.06); }
+}
+
+@keyframes fx-soft-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-3vw, -2vw) scale(0.96); }
+}
+
+:root:not([data-style]) .style-fx::before,
+:root:not([data-style]) .style-fx::after,
+:root[data-style='soft'] .style-fx::before,
+:root[data-style='soft'] .style-fx::after {
+  content: '';
+  position: absolute;
+  filter: blur(72px);
+  border-radius: 50%;
+  animation: fx-soft-a 32s ease-in-out infinite;
+}
+
+:root:not([data-style]) .style-fx::before,
+:root[data-style='soft'] .style-fx::before {
+  width: 48vw;
+  height: 48vw;
+  left: -14vw;
+  top: -16vw;
+  background: radial-gradient(circle at 42% 42%, rgba(92, 124, 250, 0.38), transparent 65%);
+  opacity: 0.55;
+}
+
+:root:not([data-style]) .style-fx::after,
+:root[data-style='soft'] .style-fx::after {
+  width: 44vw;
+  height: 44vw;
+  right: -12vw;
+  bottom: -16vw;
+  background: radial-gradient(circle at 55% 45%, rgba(139, 92, 246, 0.3), transparent 62%);
+  border-radius: 55% 45% 42% 58% / 50% 55% 45% 50%;
+  animation: fx-soft-b 36s ease-in-out infinite;
+  opacity: 0.45;
+}
+
+:root:not([data-style]) .card,
+:root:not([data-style]) .admin-panel,
+:root[data-style='soft'] .card,
+:root[data-style='soft'] .admin-panel {
+  border-radius: 20px;
+}
+
+
+/* ============================================================
+   2) Blueprint 工程蓝图（深蓝底 · 白线网格 · 等宽字 · 橙色标注） — blueprint
+   ============================================================ */
+:root[data-theme='light'][data-style='blueprint'] {
+  --bg-grad: linear-gradient(180deg, #f0f4f8 0%, #e4eaf0 100%);
+  --surface: #f7f9fb;
+  --surface-2: #eef1f5;
+  --text: #1e3a5f;
+  --text-muted: #4a6b8a;
+  --accent: #1e3a5f;
+  --accent-soft: rgba(30, 58, 95, 0.12);
+  --accent-hover: #152a47;
+  --danger: #d94f3f;
+  --success: #2d7a5a;
+  --annotation: #ff6b35;
+  --edge: rgba(30, 58, 95, 0.35);
+  --edge-weak: rgba(30, 58, 95, 0.18);
+  --overlay: rgba(30, 58, 95, 0.5);
+  --sh-dark: rgba(30, 58, 95, 0.15);
+  --sh-light: rgba(255, 255, 255, 0.7);
+  --accent-glow: transparent;
+  --raised-sm: 0 1px 4px rgba(30, 58, 95, 0.12);
+  --raised: 0 2px 10px rgba(30, 58, 95, 0.18);
+  --raised-lg: 0 4px 18px rgba(30, 58, 95, 0.22);
+  --pressed-sm: inset 0 1px 2px rgba(30, 58, 95, 0.15);
+  --inset: inset 0 1px 2px rgba(30, 58, 95, 0.12);
+  --hover-bg: rgba(30, 58, 95, 0.08);
+  --scroll-thumb: rgba(30, 58, 95, 0.35);
+  --tr: 100ms;
+  --ease: linear;
+}
+
+:root[data-theme='dark'][data-style='blueprint'] {
+  --bg-grad: linear-gradient(180deg, #1e3a5f 0%, #162c4a 100%);
+  --surface: rgba(255, 255, 255, 0.06);
+  --surface-2: rgba(255, 255, 255, 0.1);
+  --text: #ffffff;
+  --text-muted: #a0c4e8;
+  --accent: #ffffff;
+  --accent-soft: rgba(255, 255, 255, 0.15);
+  --accent-hover: #d0e4f5;
+  --danger: #ff8a7a;
+  --success: #7fcfaf;
+  --annotation: #ff6b35;
+  --edge: rgba(255, 255, 255, 0.3);
+  --edge-weak: rgba(255, 255, 255, 0.15);
+  --overlay: rgba(0, 0, 0, 0.55);
+  --sh-dark: rgba(0, 0, 0, 0.4);
+  --sh-light: rgba(255, 255, 255, 0.04);
+  --accent-glow: transparent;
+  --raised-sm: 0 1px 4px rgba(0, 0, 0, 0.4);
+  --raised: 0 2px 10px rgba(0, 0, 0, 0.45);
+  --raised-lg: 0 4px 18px rgba(0, 0, 0, 0.5);
+  --pressed-sm: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+  --inset: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+  --hover-bg: rgba(255, 255, 255, 0.1);
+  --scroll-thumb: rgba(255, 255, 255, 0.3);
+  --tr: 100ms;
+  --ease: linear;
+}
+
+[data-style='blueprint'] .style-fx::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(rgba(30, 58, 95, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 58, 95, 0.06) 1px, transparent 1px);
+  background-size: 20px 20px;
+  pointer-events: none;
+}
+
+[data-style='blueprint'] .style-fx::after { content: none; }
+
+:root[data-theme='dark'][data-style='blueprint'] .style-fx::before {
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+[data-style='blueprint'] .card {
+  border-radius: 0;
+  border: 1px solid var(--edge);
+  background: var(--surface);
+  box-shadow: none;
+  transition: border-color 100ms linear, background 100ms linear;
+}
+
+[data-style='blueprint'] .card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--raised);
+}
+
+[data-style='blueprint'] .card .icon {
+  border-radius: 0;
+  border: 1px solid var(--edge-weak);
+  box-shadow: none;
+}
+
+[data-style='blueprint'] .card .icon.has-img { box-shadow: none; }
+
+[data-style='blueprint'] .btn {
+  border-radius: 0;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--text);
+  font-family: ui-monospace, 'SF Mono', Consolas, Menlo, monospace;
+  letter-spacing: 0.05em;
+  transition: background 100ms linear, border-color 100ms linear, color 100ms linear;
+}
+
+[data-style='blueprint'] .btn:hover {
+  background: var(--accent);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+[data-style='blueprint'] .btn:active {
+  transform: none;
+  background: var(--annotation);
+  color: #fff;
+}
+
+[data-style='blueprint'] .btn-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+:root[data-theme='dark'][data-style='blueprint'] .btn:hover {
+  background: var(--accent);
+  color: #1e3a5f;
+}
+
+:root[data-theme='dark'][data-style='blueprint'] .btn-primary {
+  background: var(--accent);
+  color: #1e3a5f;
+}
+
+[data-style='blueprint'] .input,
+[data-style='blueprint'] .select,
+[data-style='blueprint'] .textarea {
+  border-radius: 0;
+  border: 1px solid var(--edge);
+  background: transparent;
+  color: var(--text);
+  font-family: ui-monospace, 'SF Mono', Consolas, Menlo, monospace;
+  box-shadow: none;
+}
+
+[data-style='blueprint'] .input:focus,
+[data-style='blueprint'] .select:focus,
+[data-style='blueprint'] .textarea:focus {
+  border-color: var(--annotation);
+  box-shadow: none;
+}
+
+:root[data-theme='dark'][data-style='blueprint'] .select,
+:root[data-theme='dark'][data-style='blueprint'] .select option {
+  background: #142840;
+  color: #ffffff;
+}
+
+[data-style='blueprint'] .topbar,
+[data-style='blueprint'] .group-header {
+  border-bottom: 1px dashed var(--edge);
+}
+
+[data-style='blueprint'] h1,
+[data-style='blueprint'] h2,
+[data-style='blueprint'] h3,
+[data-style='blueprint'] .section-title,
+[data-style='blueprint'] .group-title {
+  font-family: ui-monospace, 'SF Mono', Consolas, Menlo, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+[data-style='blueprint'] .divider,
+[data-style='blueprint'] hr {
+  border: none;
+  border-top: 1px dashed var(--edge-weak);
+  background: none;
+}
+
+[data-style='blueprint'] .annotation,
+[data-style='blueprint'] .accent-tag,
+[data-style='blueprint'] .badge-accent {
+  color: var(--annotation);
+}
+
+[data-style='blueprint'] .badge {
+  border-radius: 0;
+  border: 1px solid var(--edge);
+  font-family: ui-monospace, 'SF Mono', Consolas, Menlo, monospace;
+}
+
+[data-style='blueprint'] .card::before,
+[data-style='blueprint'] .card::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-color: var(--annotation);
+  border-style: solid;
+  pointer-events: none;
+  opacity: 0.4;
+}
+
+[data-style='blueprint'] .card::before {
+  top: 3px;
+  left: 3px;
+  border-width: 1px 0 0 1px;
+}
+
+[data-style='blueprint'] .card::after {
+  bottom: 3px;
+  right: 3px;
+  border-width: 0 1px 1px 0;
+}
+
+[data-style='blueprint'] .card { position: relative; }
+
+[data-style='blueprint'] table {
+  border-collapse: collapse;
+}
+
+[data-style='blueprint'] table th,
+[data-style='blueprint'] table td {
+  border: 1px solid var(--edge-weak);
+  font-family: ui-monospace, 'SF Mono', Consolas, Menlo, monospace;
+}
+
+[data-style='blueprint'] table th {
+  border-bottom: 1px solid var(--accent);
+}
+
+[data-style='blueprint'] .admin-panel {
+  border-radius: 0;
+  border: 1px solid var(--edge);
+  background: var(--surface);
+}
+
+[data-style='blueprint'] .admin-panel .btn {
+  border-radius: 0;
+}
+
+[data-style='blueprint'] * {
+  border-radius: 0 !important;
+}
+
+[data-style='blueprint'] .avatar,
+[data-style='blueprint'] .avatar img,
+[data-style='blueprint'] .profile-avatar {
+  border-radius: 0 !important;
+  border: 1px solid var(--edge);
+}
+
+[data-style='blueprint'] .selected,
+[data-style='blueprint'] .active-tab,
+[data-style='blueprint'] .nav-item.active {
+  border-left: 2px solid var(--annotation);
+  padding-left: 10px;
+}
+
