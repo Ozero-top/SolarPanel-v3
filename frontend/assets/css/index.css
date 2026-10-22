@@ -1092,6 +1092,23 @@
   border-radius: 999px;
   padding: 1px 7px;
 }
+.card .hidden-badge {
+  position: absolute;
+  top: 7px;
+  left: 9px;
+  font-size: 10px;
+  color: #c77c11;
+  background: rgba(255, 159, 10, 0.14);
+  border-radius: 999px;
+  padding: 1px 7px;
+  border: 1px solid rgba(255, 159, 10, 0.4);
+  pointer-events: none;
+  opacity: 0.85;
+}
+.card-hidden {
+  opacity: 0.55;
+  filter: saturate(0.35);
+}
 
 /* navapp（导航栏·应用）样式卡片：纵向小图标 */
 .card.app-card {

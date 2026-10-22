@@ -986,10 +986,26 @@ func (h *ItemsHandler) ToggleHidden(w http.ResponseWriter, r *http.Request) {
 	if body.IsHidden != 0 && body.IsHidden != 1 {
 		body.IsHidden = 0
 	}
-	db.DB.Exec("UPDATE items SET is_hidden=? WHERE id=?", body.IsHidden, body.ID)
-	it, err := scanItem(db.DB.QueryRow("SELECT id, group_id, title, url, lan_url, description, icon_type, icon_value, icon_bg, open_method, sort, is_hidden, user_id, created_at FROM items WHERE id=?", body.ID))
+
+	tx, err := db.DB.Begin()
+	if err != nil {
+		Fail(w, "保存失败")
+		return
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec("UPDATE items SET is_hidden=? WHERE id=?", body.IsHidden, body.ID)
+	if err != nil {
+		Fail(w, "保存失败")
+		return
+	}
+	it, err := scanItem(tx.QueryRow("SELECT id, group_id, title, url, lan_url, description, icon_type, icon_value, icon_bg, open_method, sort, is_hidden, user_id, created_at FROM items WHERE id=?", body.ID))
 	if err != nil {
 		Fail(w, "卡片不存在")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		Fail(w, "保存失败")
 		return
 	}
 	OK(w, it)

@@ -1398,7 +1398,8 @@ function showWhenDecoded(img, icon, iconDoneRef) {
 
 function buildCard(item, styleApp) {
   const a = document.createElement('a');
-  a.className = 'card' + (styleApp ? ' app-card' : '');
+  const isHidden = item.is_hidden === 1;
+  a.className = 'card' + (styleApp ? ' app-card' : '') + (isHidden ? ' card-hidden' : '');
   a.href = '#';
   a.dataset.id = item.id; // 排序模式拖拽落位后按 data-id 收集顺序
   // 筛选/最近常用依赖的 data-* 属性
@@ -1494,6 +1495,15 @@ function buildCard(item, styleApp) {
     const badge = document.createElement('span');
     badge.className = 'lan-badge';
     badge.textContent = '内网';
+    a.appendChild(badge);
+  }
+
+  // 隐藏标识（仅 admin/editor 登录态下可见，非管理员后端已过滤）
+  if (isHidden) {
+    const badge = document.createElement('span');
+    badge.className = 'hidden-badge';
+    badge.textContent = '🚫 已隐藏';
+    badge.title = '该卡片已在前端隐藏，仅登录管理员可见';
     a.appendChild(badge);
   }
 
