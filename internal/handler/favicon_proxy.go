@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -61,7 +62,7 @@ func (h *FaviconProxyHandler) Proxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if disk, _, ext := faviconCachePath(h.cfg, host); disk != "" {
-		h.serveFile(w, disk, ext)
+		h.serveFile(w, r, disk, ext)
 		return
 	}
 
@@ -72,7 +73,7 @@ func (h *FaviconProxyHandler) Proxy(w http.ResponseWriter, r *http.Request) {
 		<-wait.done
 		if wait.path != "" {
 			if disk, _, e := faviconCachePath(h.cfg, host); disk != "" {
-				h.serveFile(w, disk, e)
+				h.serveFile(w, r, disk, e)
 				return
 			}
 		}
@@ -90,7 +91,7 @@ func (h *FaviconProxyHandler) Proxy(w http.ResponseWriter, r *http.Request) {
 	faviconInflight.Delete(host)
 
 	if disk, _, e := faviconCachePath(h.cfg, host); disk != "" {
-		h.serveFile(w, disk, e)
+		h.serveFile(w, r, disk, e)
 		return
 	}
 	log.Printf("[favicon] host=%s — all candidates + fallback failed, serving inline SVG", host)
@@ -116,7 +117,28 @@ func (h *FaviconProxyHandler) serveFallbackSVG(w http.ResponseWriter, host strin
 	w.Write([]byte(svg))
 }
 
-func (h *FaviconProxyHandler) serveFile(w http.ResponseWriter, diskPath, ext string) {
+func (h *FaviconProxyHandler) serveFile(w http.ResponseWriter, r *http.Request, diskPath, ext string) {
+	st, err := os.Stat(diskPath)
+	if err != nil || st.Size() == 0 {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	// ETag = size + mtime unix → 文件未变时稳定
+	etag := `"` + strconv.FormatInt(st.Size(), 10) + `-` + strconv.FormatInt(st.ModTime().Unix(), 10) + `"`
+
+	// 协商缓存：浏览器发 If-None-Match → 匹配直接 304，零响应体
+	if inm := r.Header.Get("If-None-Match"); inm != "" {
+		for _, tag := range strings.Split(inm, ",") {
+			if strings.TrimSpace(tag) == etag {
+				w.Header().Set("ETag", etag)
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+		}
+	}
+
+	// 有新内容：读文件返回 200
 	data, err := os.ReadFile(diskPath)
 	if err != nil || len(data) == 0 {
 		w.WriteHeader(http.StatusNotFound)
@@ -127,7 +149,9 @@ func (h *FaviconProxyHandler) serveFile(w http.ResponseWriter, diskPath, ext str
 		ct = "application/octet-stream"
 	}
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("ETag", etag)
 	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Last-Modified", st.ModTime().UTC().Format(http.TimeFormat))
 	w.WriteHeader(http.StatusOK)
 	w.Write(data)
 }

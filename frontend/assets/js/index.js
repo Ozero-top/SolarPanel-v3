@@ -1152,7 +1152,7 @@ function renderGroupsNavbar() {
       };
       mobile.appendChild(item);
     });
-    mobile.hidden = visibleTop.length > 0;  // PC 有 tabs 时隐藏移动端
+    mobile.hidden = false;   // 移动端始终显示（CSS media query 控制 ≤640px 可见）
   } else {
     if (mobile) mobile.hidden = true;
   }

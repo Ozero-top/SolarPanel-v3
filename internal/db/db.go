@@ -298,7 +298,7 @@ func SeedPresetGroupsAndItems() {
 				pid = v
 			}
 		}
-		res, err := DB.Exec("INSERT INTO item_groups (parent_id, title, icon, description, sort, is_visible, user_id) VALUES (?, ?, '', ?, 1, ?)",
+		res, err := DB.Exec("INSERT INTO item_groups (parent_id, title, icon, description, sort, is_visible, user_id) VALUES (?, ?, '', ?, ?, 1, ?)",
 			pid, e.Name, e.Description, sort, adminID)
 		if err != nil {
 			log.Printf("[db] seed group '%s': %v\n", e.Name, err)

@@ -28,7 +28,7 @@ func Load() *Config {
 	os.MkdirAll(uploadDir, 0755)
 
 	return &Config{
-		ServerPort:        getEnv("SERVER_PORT", "18080"),
+		ServerPort:        getEnv("SERVER_PORT", "10080"),
 		HTTPSPort:         os.Getenv("HTTPS_PORT"),
 		CertFile:          getEnv("CERT_FILE", filepath.Join(dataDir, "cert.pem")),
 		KeyFile:           getEnv("KEY_FILE", filepath.Join(dataDir, "key.pem")),

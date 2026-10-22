@@ -3,10 +3,11 @@
 [![Version](https://img.shields.io/badge/Version-v3.0.0-5B8DEF?logo=semanticrelease)
 [![Go](https://img.shields.io/badge/Go-1.23-00ADD8?logo=go)](https://go.dev)
 [![Architecture](https://img.shields.io/badge/Architecture-chi+sqlite-50C878)](https://github.com/go-chi/chi)
-[![Image](https://img.shields.io/badge/Docker-18MB-2496ED?logo=docker)](https://hub.docker.com/)
+[![Multi-Arch](https://img.shields.io/badge/Arch-amd64__arm64__armv7-7A51F5)](https://hub.docker.com/r/ovitor/solarpanel-v3)
+[![Image](https://img.shields.io/badge/Docker-14MB-2496ED?logo=docker)](https://hub.docker.com/r/ovitor/solarpanel-v3)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-> 一个轻量自托管导航面板。Go 纯后端，零 CGO 单二进制，内嵌前端，Docker 镜像仅 ~18MB。
+> 轻量自托管导航面板。Go 纯后端 · 零 CGO 单二进制 · 内嵌前端 · 三架构 Docker 镜像仅 ~14MB。
 
 ## ✨ 特性
 
@@ -19,6 +20,8 @@
 - **安全** — CSRF 令牌 + Session 管理 + 接口限流 + 受信设备 + 审计日志
 - **PWA** — Service Worker 离线缓存，可安装为应用
 - **有序幂等迁移** — `schema_versions` 表追踪，新增 schema 变更只需在迁移列表末尾追加
+- **镜像内置预置数据** — Docker 构建时通过 `initdb` 子命令把 `seed_groups.json` 的 26 分组 + 144 卡片直接 bake 进镜像，首次访问零种子开销
+- **favicon 智能缓存** — 三源并发抓取（主站 favicon.ico · Google s2 · DuckDuckGo icons），Go `sync.Map` inflight 去重，磁盘 MD5 缓存，响应头 `Cache-Control: immutable` + `ETag` 协商（二次访问浏览器直接走磁盘，后端返回 304 零 body）
 
 ## 🏗 技术栈
 
@@ -48,15 +51,15 @@ modernc.org/sqlite             — 纯 Go SQLite driver（零 CGO）
 ```bash
 # 直接拉取镜像并运行
 docker run -d \
-  --name solarpanel \
+  --name solarpanel-v3 \
   --restart unless-stopped \
-  -p 18080:18080 \
+  -p 10080:10080 \
   -v $(pwd)/data:/app/data \
-  -e SERVER_PORT=18080 \
+  -e SERVER_PORT=10080 \
   ovitor/solarpanel-v3:latest
 
 # Windows PowerShell
-docker run -d --name solarpanel-v3 --restart unless-stopped -p 18080:18080 -v ${PWD}/data:/app/data -e SERVER_PORT=18080 ovitor/solarpanel-v3:latest
+docker run -d --name solarpanel-v3 --restart unless-stopped -p 10080:10080 -v ${PWD}/data:/app/data -e SERVER_PORT=10080 ovitor/solarpanel-v3:latest
 ```
 
 #### docker run（本地构建）
@@ -65,7 +68,7 @@ docker run -d --name solarpanel-v3 --restart unless-stopped -p 18080:18080 -v ${
 git clone https://github.com/Ozero-top/SolarPanel-v3.git
 cd SolarPanel-v3
 docker build -t solarpanel-v3:local .
-docker run -d --name solarpanel-v3 -p 18080:18080 -v $(pwd)/data:/app/data solarpanel-v3:local
+docker run -d --name solarpanel-v3 -p 10080:10080 -v $(pwd)/data:/app/data solarpanel-v3:local
 ```
 
 #### docker compose（完整）
@@ -78,11 +81,11 @@ services:
     container_name: solarpanel-v3
     restart: unless-stopped
     ports:
-      - "18080:18080"
+      - "10080:10080"
     volumes:
       - ./data:/app/data
     environment:
-      - SERVER_PORT=18080
+      - SERVER_PORT=10080
       # - HTTPS_PORT=18443              # 启用 HTTPS（自动生成自签名证书）
 
 # 启动
@@ -97,7 +100,7 @@ docker compose down
 docker compose up -d --build
 ```
 
-浏览器访问 `http://localhost:18080`。数据目录 `./data/` 自动创建，包含 `solarpanel.db`（SQLite 数据库）和 `uploads/`（用户上传文件）。
+浏览器访问 `http://localhost:10080`。数据目录 `./data/` 自动创建，包含 `solarpanel.db`（SQLite 数据库）和 `uploads/`（用户上传文件）。
 
 ### 方式二：单二进制
 
@@ -128,7 +131,7 @@ go run .
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `SERVER_PORT` | `18080` | HTTP 监听端口 |
+| `SERVER_PORT` | `10080` | HTTP 监听端口 |
 | `HTTPS_PORT` | （空，不启用） | HTTPS 端口，启用时自动生成自签名证书 |
 | `CERT_FILE` | `data/cert.pem` | HTTPS 证书路径 |
 | `KEY_FILE` | `data/key.pem` | HTTPS 私钥路径 |
@@ -179,7 +182,8 @@ SolarPanel/
 - **类型**：SQLite，WAL 模式，`modernc.org/sqlite` 纯 Go driver
 - **连接池**：`SetMaxOpenConns(15)` · `busy_timeout=15s` · `cache_size=-20000`
 - **迁移**：`schema_versions` 表追踪已应用版本。新增 DDL/DML 在 `migrations` 列表末尾追加，`Version` 必须严格递增
-- **种子**：首次安装时从 `data/seed_groups.json` 注入 26 个分组 + 144 张卡片。重置初始状态会完整恢复
+- **种子**：Docker 镜像构建时 `initdb` 子命令把 `seed_groups.json` 的 26 分组 + 144 卡片 bake 进 `data/solarpanel.db`，运行时零种子开销。用户挂载空 `data/` 目录时自动兜底幂等补种子；「重置初始状态」API 会完整恢复
+- **favicon 缓存**：抓取到的站点图标落盘 `uploads/favicon/md5(host).ext`，永久有效；首次访问并发抓三源，后续浏览器靠 `ETag` + `Cache-Control: immutable` 直接走磁盘
 
 ## 🎨 主题定制
 
@@ -212,6 +216,7 @@ SolarPanel/
 | `GET /api/install.php` | 无需 | 首次安装状态检查 |
 | `GET /api/weather.php` | 无需 | 天气数据 |
 | `GET /api/news.php` | 无需 | 热点新闻源列表 / 聚合 |
+| `GET /api/favicon.php?host=xxx` | 无需 | 站点图标代理（三源并发抓取 · 磁盘缓存 · ETag 协商） |
 | `POST /api/settings.php` | 登录 + CSRF | 设置读取 / 保存 |
 | `POST /api/groups.php` | 登录 + CSRF | 分组增删改查 |
 | `POST /api/items.php` | 登录 + CSRF | 卡片增删改查 / 排序 |

@@ -264,11 +264,12 @@
 .nm-item:active .nm-face {
   transform: scale(0.9);
 }
-/* 选中态：强调色描边圆 + 内部透明，沿用轻阴影、不发光晕 */
+/* 选中态：实心强调色填充 + 白色 emoji，柔和投影强化选中感 */
 .nm-item.active .nm-face {
-  background: transparent;
+  background: var(--accent);
   border: 2px solid var(--accent);
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.12);
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22);
 }
 
 @media (max-width: 640px) {
@@ -276,6 +277,32 @@
   .navbar-tabs { display: none; }
   .navbar-tabs[hidden] { display: none; }
   .navbar-mobile { display: flex; }
+  /* 侧边栏分组标题：flex-start 替代 baseline，避免渐变裁剪 h3 与 desc 文本基线错位 */
+  .group-parent-head {
+    align-items: flex-start;
+    padding: 6px 10px 10px;
+  }
+  .group-parent-head h3 {
+    font-size: 16px;
+    letter-spacing: 0;
+    min-width: 0;
+    flex-shrink: 1;
+  }
+  .group-parent-head .desc {
+    font-size: 11px;
+    max-width: 100%;
+    flex-basis: 100%;
+  }
+  .group-parent {
+    padding: 12px 12px 6px;
+    margin-bottom: 14px;
+    border-radius: 16px;
+  }
+  .group-child {
+    padding: 10px 12px 12px;
+    margin-bottom: 10px;
+    border-radius: 12px;
+  }
 }
 
 /* 窄屏手机：图标字号略收窄（圆形随槽位自动变小） */
