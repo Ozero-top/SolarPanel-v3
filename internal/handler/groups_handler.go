@@ -144,16 +144,28 @@ func (h *GroupsHandler) Edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := db.DB.Exec("UPDATE item_groups SET parent_id=?, title=?, icon=?, description=? WHERE id=?",
+	tx, err := db.DB.Begin()
+	if err != nil {
+		Fail(w, "保存失败")
+		return
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec("UPDATE item_groups SET parent_id=?, title=?, icon=?, description=? WHERE id=?",
 		body.ParentID, body.Title, icon, body.Description, body.ID)
 	if err != nil {
 		Fail(w, "保存失败")
 		return
 	}
 
-	g, err := scanItemGroup(db.DB.QueryRow("SELECT id, title, icon, description, sort, is_visible, user_id, created_at FROM item_groups WHERE id=?", body.ID))
+	g, err := scanItemGroup(tx.QueryRow("SELECT id, parent_id, title, icon, description, sort, is_visible, user_id, created_at FROM item_groups WHERE id=?", body.ID))
 	if err != nil {
 		Fail(w, "分组不存在")
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		Fail(w, "保存失败")
 		return
 	}
 	OK(w, g)
