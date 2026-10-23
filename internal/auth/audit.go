@@ -15,7 +15,7 @@ func AuditLog(w http.ResponseWriter, r *http.Request, action, target, result, ac
 	}
 	ip := ClientIP(r)
 	ua := r.UserAgent()
-	_, err := db.DB.Exec(`INSERT INTO audit_logs (action, target, result, actor, actor_role, ip, user_agent, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+	_, err := db.DB.Exec(`INSERT INTO audit_logs (action, target, result, actor, actor_role, ip, user_agent, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`,
 		action, target, result, actor, actorRole, ip, ua, detail)
 	if err != nil {
 		log.Printf("[audit] write failed: %v", err)

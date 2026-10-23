@@ -64,7 +64,7 @@ func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
 	db.DB.QueryRow("SELECT COUNT(*) FROM audit_logs").Scan(&total)
 
 	offset := (page - 1) * pageSize
-	rows, err := db.DB.Query("SELECT id, action, target, result, actor, actor_role, ip, user_agent, detail, created_at FROM audit_logs ORDER BY created_at DESC LIMIT ? OFFSET ?", pageSize, offset)
+	rows, err := db.DB.Query("SELECT id, action, target, result, actor, actor_role, ip, user_agent, detail, created_at FROM audit_logs ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?", pageSize, offset)
 	if err != nil {
 		Err(w, http.StatusInternalServerError, 1, "查询失败")
 		return

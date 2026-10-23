@@ -1,6 +1,6 @@
 # SolarPanel v3
 
-[![Version](https://img.shields.io/badge/Version-v3.0.0-5B8DEF?logo=semanticrelease)](#)
+[![Version](https://img.shields.io/badge/Version-v3.1.0-5B8DEF?logo=semanticrelease)](#)
 [![Go](https://img.shields.io/badge/Go-1.23-00ADD8?logo=go)](https://go.dev)
 [![Architecture](https://img.shields.io/badge/Architecture-chi%2Bsqlite-50C878)](https://github.com/go-chi/chi)
 [![Multi-Arch](https://img.shields.io/badge/Arch-amd64__arm64__armv7-7A51F5)](https://hub.docker.com/r/ovitor/solarpanel-v3)
@@ -332,6 +332,28 @@ SolarPanel/
 - **新增主题**只改 `frontend/themes.json` 并跑 `build-themes.js`，不要手改 `themes.css`
 - **前端资源变更**后必须跑 `build-frontend.js`，否则浏览器仍命中旧 SHA1 缓存
 - **Docker 重建**：`docker compose down && docker compose up -d --build`；若镜像未更新，加 `--no-cache` 排除 buildx 缓存干扰
+
+## 📋 更新日志
+
+### v3.1.0（2026-10-23）
+
+- **空库启动**：首次启动不再注入预置分组与卡片，只写入默认设置与管理员账号；「恢复初始状态」同样只恢复默认设置
+- **默认端口 10080 → 10086**：规避 Chromium 受限端口导致的 `ERR_UNSAFE_PORT`
+- **分组管理树形化**：二级分组紧跟所属一级分组展示，排序与显示/隐藏均在同级内生效，跨级拖动会被拒绝
+- **修复分组「上移」无效**：后端此前只读 `dir`，前端传的是 `direction`
+- **改挂父级自动排序**：二级分组换到另一个一级分组时，`sort` 自动排到新父级末尾
+- **修复审计日志无时间**：写入时补齐 `created_at`，列表按 `created_at DESC, id DESC` 稳定排序
+- **备份导入明确为整体替换**：清空 `items` / `item_groups` / `settings` 后按备份重建，分组 ID 重映射，文件路径限制在 `uploads` 内
+- **favicon 协商缓存**：新增 `ETag` / `Last-Modified`，命中返回 304
+- **镜像**：移除 `initdb` 预置库构建步骤，三架构仍约 14MB（amd64 13.9MB / arm64 13.8MB / armv7 13MB）
+- **文档**：README 全量重写（完整路由表、端口说明、备份格式、开发注意事项）
+
+### v3.0.0（2026-10-21）
+
+- Go 纯后端架构重写（chi + `modernc.org/sqlite`，零 CGO 单二进制），彻底废弃 PHP 版本
+- 主题体系精简为 `soft`（默认）+ `blueprint`
+- 热点新闻 24 源、天气组件、每日壁纸、PWA、CSRF + Session + 限流 + TOTP 受信设备
+- 设置中心化、前端 SHA1 资源戳构建链、`schema_versions` 有序幂等迁移
 
 ## 📝 License
 
