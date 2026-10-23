@@ -407,7 +407,11 @@
             <div class="form-hint">关闭后主页「📰 热点新闻」入口和新闻视图均不显示，方便暂时停用热点功能。</div>
           </div>
           <div class="form-item">
-            <label>数据源（勾选主页新闻视图展示的热榜；拖动行首 ⠿ 或用「上移/下移」调整主页显示顺序，保存后生效；全部勾选 = 全部启用）</label>
+            <label>数据源（勾选主页新闻视图展示的热榜；未勾选任何数据源时主页入口自动隐藏；拖动行首 ⠿ 或用「上移/下移」调整主页显示顺序，保存后生效）</label>
+            <div style="display:flex;gap:8px;margin:4px 0 10px">
+              <button class="btn btn-sm" type="button" id="newsSelectAll">全选</button>
+              <button class="btn btn-sm" type="button" id="newsSelectInvert">反选</button>
+            </div>
             <div id="newsSourceRows" class="news-source-wrap">
               <div class="form-hint">数据源加载中…</div>
             </div>

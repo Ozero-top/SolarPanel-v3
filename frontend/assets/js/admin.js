@@ -1382,9 +1382,14 @@ function fillSettingsForm(s) {
 async function loadNewsSourceRows(saved, savedOrder) {
   const wrap = document.getElementById('newsSourceRows');
   if (!wrap) return;
+  // 空配置 = 未启用任何源（与后端 newsEnabledSetting 语义一致），不再默认全选
   let checked = [];
   try { checked = JSON.parse(saved || '[]'); } catch (e) { checked = []; }
   if (!Array.isArray(checked)) checked = [];
+  if (!checked.length && saved && !/^\[/.test(String(saved).trim())) {
+    // 兼容旧版逗号分隔格式
+    checked = String(saved).split(',').map(s => s.trim()).filter(Boolean);
+  }
   let order = [];
   try { order = JSON.parse(savedOrder || '[]'); } catch (e) { order = []; }
   if (!Array.isArray(order)) order = [];
@@ -1450,8 +1455,7 @@ async function loadNewsSourceRows(saved, savedOrder) {
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.value = src.id;
-      // 空配置 = 全部启用；非空按保存值勾选
-      cb.checked = checked.length === 0 || checked.includes(src.id);
+      cb.checked = checked.includes(src.id);
       cb.title = '勾选后在主页新闻视图显示';
       tdVis.appendChild(cb);
       // 第 5 列：操作（上移/下移）
@@ -1479,6 +1483,16 @@ async function loadNewsSourceRows(saved, savedOrder) {
     });
     wrap.appendChild(table);
     refreshNewsOrderNumbers();
+
+    // 全选 / 反选（表格每次重绘后重新绑定）
+    const allBtn = document.getElementById('newsSelectAll');
+    const invertBtn = document.getElementById('newsSelectInvert');
+    if (allBtn) allBtn.onclick = () => {
+      wrap.querySelectorAll('tbody input[type="checkbox"]').forEach(cb => { cb.checked = true; });
+    };
+    if (invertBtn) invertBtn.onclick = () => {
+      wrap.querySelectorAll('tbody input[type="checkbox"]').forEach(cb => { cb.checked = !cb.checked; });
+    };
   } catch (e) {
     wrap.innerHTML = '<div class="form-hint">数据源列表加载失败：' + esc(e.message) + '</div>';
   }
@@ -1779,12 +1793,13 @@ function collectSetting(key) {
   if (key === 'search_width') return numSetting('s_search_width', '640');
   if (key === 'wallpaper_blur') return numSetting('s_wallpaper_blur', '6');
   if (key === 'news_sources') {
-    // 勾选的数据源 id：全选时存空串 = 全部启用；列表未加载成功则不提交，避免误存空数组关掉全部源
+    // 始终保存显式 id 列表：全选时也写入全部 id，避免后端把空值判定为“未启用”
+    // 列表未加载成功则不提交，避免误存空数组关掉全部源
     const boxes = document.querySelectorAll('#newsSourceRows input[type="checkbox"]');
     if (!boxes.length) return undefined;
     const ids = [];
     boxes.forEach(cb => { if (cb.checked && cb.value) ids.push(cb.value); });
-    return ids.length === boxes.length ? '' : JSON.stringify(ids);
+    return JSON.stringify(ids);
   }
   if (key === 'news_order') {
     // 全部数据源（含未勾选）的显示顺序，按当前行排列收集；列表未加载成功则不提交

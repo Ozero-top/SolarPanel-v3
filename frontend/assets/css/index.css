@@ -1404,6 +1404,8 @@
   align-items: center;
   justify-content: center;
 }
+/* display:inline-flex 会覆盖 hidden 属性的 UA 样式，关闭热点新闻后按钮仍会显示 */
+.hotnews-btn[hidden] { display: none; }
 .hotnews-btn:hover {
   color: var(--text);
   background: var(--accent-soft);

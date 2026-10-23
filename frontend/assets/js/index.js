@@ -1866,13 +1866,24 @@ const newsState = {
   list: {},      // id -> 最近一次数据
 };
 
-/** 热点新闻按钮显隐：跟着 state.settings.news_show 走
+/** 是否至少配置了一个新闻源（与后端 newsEnabledSetting 判定保持一致） */
+function hasConfiguredNewsSources() {
+  const raw = String((state.settings || {}).news_sources || '').trim();
+  if (!raw) return false;
+  try {
+    const arr = JSON.parse(raw);
+    if (Array.isArray(arr)) return arr.length > 0;
+  } catch (e) { /* 旧版逗号分隔格式 */ }
+  return raw.split(',').some(s => s.trim());
+}
+
+/** 热点新闻按钮显隐：开关开启且至少一个数据源时才显示
  *  独立成函数方便 reloadPublic / 后台保存后重新执行（不依赖刷新页面）
  */
 function updateNewsBtnVisible() {
   const btn = document.getElementById('hotNewsBtn');
   if (!btn) return;
-  const enabled = state.settings.news_show !== '0';
+  const enabled = (state.settings || {}).news_show !== '0' && hasConfiguredNewsSources();
   btn.hidden = !enabled;
   // 已关闭时退出新闻视图（避免用户停留在"未开启"空页面）
   if (!enabled && !document.getElementById('newsView').hidden) {
