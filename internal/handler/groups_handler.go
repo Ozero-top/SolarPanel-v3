@@ -88,8 +88,35 @@ func (h *GroupsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	rows.Close() // 必须先关，释放读锁后才能再开 QueryRow
 
-	result := make([]groupListItem, 0, len(groups))
+	// 树形展开：一级分组按 sort 排，子分组紧跟所属一级分组之后（同级内按 sort）
+	children := make(map[int][]ItemGroupRow)
 	for _, g := range groups {
+		if g.ParentID != 0 {
+			children[g.ParentID] = append(children[g.ParentID], g)
+		}
+	}
+	ordered := make([]ItemGroupRow, 0, len(groups))
+	placed := make(map[int]bool, len(groups))
+	for _, g := range groups {
+		if g.ParentID != 0 {
+			continue
+		}
+		ordered = append(ordered, g)
+		placed[g.ID] = true
+		for _, c := range children[g.ID] {
+			ordered = append(ordered, c)
+			placed[c.ID] = true
+		}
+	}
+	// 父分组已不存在的孤儿分组兜底追加，避免数据“消失”
+	for _, g := range groups {
+		if !placed[g.ID] {
+			ordered = append(ordered, g)
+		}
+	}
+
+	result := make([]groupListItem, 0, len(groups))
+	for _, g := range ordered {
 		var cnt int
 		db.DB.QueryRow("SELECT COUNT(*) FROM items WHERE group_id=?", g.ID).Scan(&cnt)
 		result = append(result, groupListItem{ItemGroupRow: g, ItemCount: cnt})
@@ -151,11 +178,27 @@ func (h *GroupsHandler) Edit(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
+	var oldParent int
+	if err := tx.QueryRow("SELECT parent_id FROM item_groups WHERE id=?", body.ID).Scan(&oldParent); err != nil {
+		Fail(w, "分组不存在")
+		return
+	}
+
 	_, err = tx.Exec("UPDATE item_groups SET parent_id=?, title=?, icon=?, description=? WHERE id=?",
 		body.ParentID, body.Title, icon, body.Description, body.ID)
 	if err != nil {
 		Fail(w, "保存失败")
 		return
+	}
+
+	// 改挂到另一个一级分组时，sort 必须在新父级内重新排到末尾，否则会与同级分组抢同一序号
+	if body.ParentID != oldParent {
+		var maxSort sql.NullInt64
+		tx.QueryRow("SELECT COALESCE(MAX(sort), -1) FROM item_groups WHERE parent_id=? AND id<>?", body.ParentID, body.ID).Scan(&maxSort)
+		if _, err := tx.Exec("UPDATE item_groups SET sort=? WHERE id=?", int(maxSort.Int64)+1, body.ID); err != nil {
+			Fail(w, "保存失败")
+			return
+		}
 	}
 
 	g, err := scanItemGroup(tx.QueryRow("SELECT id, parent_id, title, icon, description, sort, is_visible, user_id, created_at FROM item_groups WHERE id=?", body.ID))
@@ -199,39 +242,45 @@ func (h *GroupsHandler) Sort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		ID  uint   `json:"id"`
-		Dir string `json:"dir"`
+		ID        uint   `json:"id"`
+		Dir       string `json:"dir"`
+		Direction string `json:"direction"`
 	}
 	if err := BindJSON(r, &body); err != nil || body.ID == 0 {
 		Fail(w, "参数错误")
 		return
 	}
+	dir := body.Dir
+	if dir == "" {
+		dir = body.Direction
+	}
 
-	var curSort int
-	err := db.DB.QueryRow("SELECT sort FROM item_groups WHERE id=?", body.ID).Scan(&curSort)
+	// 排序只在同级（相同 parent_id）内进行，一级分组与二级分组互不干扰
+	var curSort, curParent int
+	err := db.DB.QueryRow("SELECT sort, parent_id FROM item_groups WHERE id=?", body.ID).Scan(&curSort, &curParent)
 	if err != nil {
 		Fail(w, "分组不存在")
 		return
 	}
 
 	var otherSort int
-	if body.Dir == "up" {
-		err = db.DB.QueryRow("SELECT sort FROM item_groups WHERE sort < ? ORDER BY sort DESC, id DESC LIMIT 1", curSort).Scan(&otherSort)
+	if dir == "up" {
+		err = db.DB.QueryRow("SELECT sort FROM item_groups WHERE parent_id=? AND sort < ? ORDER BY sort DESC, id DESC LIMIT 1", curParent, curSort).Scan(&otherSort)
 	} else {
-		err = db.DB.QueryRow("SELECT sort FROM item_groups WHERE sort > ? ORDER BY sort ASC, id ASC LIMIT 1", curSort).Scan(&otherSort)
+		err = db.DB.QueryRow("SELECT sort FROM item_groups WHERE parent_id=? AND sort > ? ORDER BY sort ASC, id ASC LIMIT 1", curParent, curSort).Scan(&otherSort)
 	}
 	if err != nil {
-		Fail(w, map[string]string{"up": "已经是第一个", "down": "已经是最后一个"}[body.Dir])
+		Fail(w, map[string]string{"up": "已经是第一个", "down": "已经是最后一个"}[dir])
 		return
 	}
 
 	db.DB.Exec("UPDATE item_groups SET sort=? WHERE id=?", otherSort, body.ID)
 	// 找 other 的 id 来更新
 	var otherID int
-	if body.Dir == "up" {
-		db.DB.QueryRow("SELECT id FROM item_groups WHERE sort=? AND id!=? ORDER BY sort ASC, id ASC LIMIT 1", otherSort, body.ID).Scan(&otherID)
+	if dir == "up" {
+		db.DB.QueryRow("SELECT id FROM item_groups WHERE parent_id=? AND sort=? AND id<>? ORDER BY id ASC LIMIT 1", curParent, otherSort, body.ID).Scan(&otherID)
 	} else {
-		db.DB.QueryRow("SELECT id FROM item_groups WHERE sort=? AND id!=? ORDER BY sort DESC, id DESC LIMIT 1", otherSort, body.ID).Scan(&otherID)
+		db.DB.QueryRow("SELECT id FROM item_groups WHERE parent_id=? AND sort=? AND id<>? ORDER BY id DESC LIMIT 1", curParent, otherSort, body.ID).Scan(&otherID)
 	}
 	if otherID > 0 {
 		db.DB.Exec("UPDATE item_groups SET sort=? WHERE id=?", curSort, otherID)
@@ -254,12 +303,20 @@ func (h *GroupsHandler) SortBatch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tx, _ := db.DB.Begin()
-	for i, id := range body.IDs {
-		if _, err := tx.Exec("UPDATE item_groups SET sort=? WHERE id=?", i, id); err != nil {
+	// 序号按父级各自编号：一级分组从 0 递增，每个父级下的二级分组也各自从 0 递增
+	counters := make(map[int]int)
+	for _, id := range body.IDs {
+		var parentID int
+		if err := tx.QueryRow("SELECT parent_id FROM item_groups WHERE id=?", id).Scan(&parentID); err != nil {
+			continue
+		}
+		idx := counters[parentID]
+		if _, err := tx.Exec("UPDATE item_groups SET sort=? WHERE id=?", idx, id); err != nil {
 			tx.Rollback()
 			Fail(w, "排序失败")
 			return
 		}
+		counters[parentID] = idx + 1
 	}
 	tx.Commit()
 	OK(w, nil)

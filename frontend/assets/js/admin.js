@@ -481,12 +481,15 @@ function renderGroupsTable() {
   }
   state.groups.forEach((g, i) => {
     const vis = (g.is_visible ?? 1) ? 1 : 0;
+    const isChild = (g.parent_id || 0) !== 0;
     const tr = document.createElement('tr');
     tr.dataset.idx = i;
     if (!vis) tr.classList.add('row-hidden');
+    if (isChild) tr.classList.add('row-child');
     tr.innerHTML =
       '<td class="drag-cell"><span class="drag-handle" title="拖动调整顺序">⠿</span></td>' +
-      '<td><span class="g-table-name">' +
+      '<td><span class="g-table-name' + (isChild ? ' is-child' : '') + '">' +
+        (isChild ? '<span class="g-level-tag">二级</span>' : '') +
         (g.icon ? '<span class="g-table-icon">' + esc(g.icon) + '</span>' : '') +
         '<span>' + esc(g.title) + '</span>' +
       '</span></td>' +
@@ -1042,12 +1045,19 @@ function saveGroupsOrder() {
 
 function bindDragSort() {
   // 卡片排序已移至前端主页（管理员登录后进入排序模式拖拽保存）；后台仅保留上移/下移按钮
-  // 分组：全表顺序，可直接拖
+  // 分组：按树形顺序拖拽，只允许在同一级分组内调整
   bindTableDrag('groupsTbody', {
     canDrag: () => true,
     reorder: (from, insertAt) => {
-      const moved = state.groups.splice(from, 1)[0];
-      state.groups.splice(insertAt > from ? insertAt - 1 : insertAt, 0, moved);
+      const next = state.groups.slice();
+      const moved = next.splice(from, 1)[0];
+      next.splice(insertAt > from ? insertAt - 1 : insertAt, 0, moved);
+      if (!isSiblingContiguous(next)) {
+        toast('只能在同一级分组内拖动排序，跨级请用「编辑」改所属一级分组', 'error');
+        renderGroupsTable();
+        return;
+      }
+      state.groups = next;
       renderGroupsTable();
       setGroupsOrderDirty(true);
     },
@@ -1056,6 +1066,19 @@ function bindDragSort() {
     saveGroupsOrder().catch(e => toast(e.message, 'error'));
   };
   document.getElementById('resetGroupsOrderBtn').onclick = () => { setGroupsOrderDirty(false); loadGroups(); };
+}
+
+/** 校验树形顺序：每个二级分组必须紧跟所属一级分组或同父级的二级分组 */
+function isSiblingContiguous(list) {
+  for (let i = 0; i < list.length; i += 1) {
+    const pid = list[i].parent_id || 0;
+    if (pid === 0) continue;
+    const prev = list[i - 1];
+    if (!prev) return false;
+    const prevPid = prev.parent_id || 0;
+    if (prevPid !== pid && !(prevPid === 0 && prev.id === pid)) return false;
+  }
+  return true;
 }
 
 function bindItems() {
