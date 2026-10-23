@@ -335,6 +335,8 @@ SolarPanel/
 
 ## 📋 更新日志
 
+完整变更明细见 [updates.md](./updates.md)。维护约定：每次升版同时更新 `updates.md` 与本节，并与 `frontend/assets/js/api.js` 的 `APP_VERSION` / `APP_CHANGELOG` 保持一致。
+
 ### v3.1.0（2026-10-23）
 
 - **空库启动**：首次启动不再注入预置分组与卡片，只写入默认设置与管理员账号；「恢复初始状态」同样只恢复默认设置

@@ -1,0 +1,35 @@
+# SolarPanel 更新日志
+
+
+## v3.1.0（2026-10-23）
+
+### 变更
+- **空库启动**：首次启动不再注入预置分组与卡片，只写入默认设置与管理员账号；后台「恢复初始状态」同样只恢复默认设置，不再生成演示内容
+- **默认端口 10080 → 10086**：10080 位于 Chromium 受限端口列表（`net/base/port_util.cc` 的 `kRestrictedPorts`，Amanda），浏览器会以 `ERR_UNSAFE_PORT` 拦截
+- **分组管理树形化**：二级分组紧跟所属一级分组展示并缩进，带「二级」标识；排序与显示/隐藏在同级内生效，跨级拖动会被拒绝
+- **备份导入语义明确**：整体替换（清空 `items` / `item_groups` / `settings` 后重建），分组按 `parent_id` 排序并做新旧 ID 重映射，文件路径限制在 `uploads` 内、`.svg` 清洗
+- **favicon 协商缓存**：新增 `ETag` / `Last-Modified`，命中返回 304，二次加载走磁盘
+- **镜像构建**：Dockerfile 移除 `initdb` 预置库步骤，三架构体积约 14MB（amd64 13.9MB / arm64 13.8MB / armv7 13MB）
+- **README 全量重写**：补齐完整路由表、端口说明、备份格式、后台模块、开发注意事项
+
+### 修复
+- 分组「上移」无效：后端只读 `dir`，前端传的是 `direction`
+- 分组保存后提示「分组不存在」：SELECT 列与 `scanItemGroup` 的 9 个 Scan 目标错位，且写后读未包进同一事务
+- 分组/卡片显示隐藏不生效：`ToggleHidden` 未包事务导致 WAL 快照读不到新值；前端补隐藏角标与降透明度
+- 审计日志无时间记录：`INSERT` 漏写 `created_at`，已改为 `datetime('now','localtime')`，列表按 `created_at DESC, id DESC` 排序
+- 改挂父级后排序冲突：二级分组换一级分组时 `sort` 自动排到新父级末尾
+- 移动端分组切换：下拉框改为圆形图标横向滑动，修复标题竖排错位
+
+### 升级说明
+- 端口变更：请同步修改 `SERVER_PORT` 与端口映射（`10086:10086`）
+- 旧版本预置数据不会自动删除；如需干净环境请在后台执行「恢复初始状态」
+- 旧备份可直接导入：`version` 仅作记录，缺字段按空集处理，分组 ID 自动重映射
+
+## v3.0.0（2026-10-21）
+
+- Go 纯后端架构重写（chi/v5 + `modernc.org/sqlite`，零 CGO 单二进制），彻底废弃 PHP 版本
+- 主题体系精简为 `soft`（默认）+ `blueprint`
+- 热点新闻 24 源、天气组件、每日壁纸、PWA 离线缓存
+- CSRF + Session + 接口限流 + TOTP 双因子 + 受信设备 + 审计日志
+- 设置中心化（`internal/settings/defaults.go`）、前端 SHA1 资源戳构建链、`schema_versions` 有序幂等迁移
+- 备份导出/导入（含上传文件 base64）与浏览器书签 HTML 导入
