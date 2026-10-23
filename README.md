@@ -92,6 +92,7 @@ services:
     volumes:
       - ./data:/app/data
     environment:
+      - TZ=Asia/Shanghai
       - SERVER_PORT=10086
       # - HTTPS_PORT=18443               # 启用内置自签名 HTTPS
 ```
