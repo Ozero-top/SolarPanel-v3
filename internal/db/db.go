@@ -2,11 +2,7 @@ package db
 
 import (
 	"database/sql"
-	"embed"
-	"encoding/json"
-	"io/fs"
 	"log"
-	"strings"
 	"time"
 
 	"solarpanel/internal/config"
@@ -15,22 +11,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 )
-
-//go:embed data/seed_groups.json
-var seedFS embed.FS
-
-// seedGroupEntry 对应 data/seed_groups.json 的每项
-type seedGroupEntry struct {
-	Name        string `json:"name"`
-	Parent      string `json:"parent"`
-	Description string `json:"description"`
-	Items       []struct {
-		Title       string `json:"title"`
-		URL         string `json:"url"`
-		Description string `json:"description"`
-		Logo        string `json:"logo"`
-	} `json:"items"`
-}
 
 var DB *sql.DB
 
@@ -192,38 +172,8 @@ var schemaDDL = []string{
 	)`,
 }
 
-// backfillParentIDs 回填孤儿分组的 parent_id
-// v1 迁移只造虚拟父，种子注入后子分组可能 parent_id=0 但 title 匹配虚拟父，需要重挂
+// backfillParentIDs 孤儿分组清理：parent_id 指向不存在的 id 时重置为 0
 func backfillParentIDs() {
-	type mapping struct {
-		parentTitle string
-		children    []string
-	}
-	mappings := []mapping{
-		{"灵感采集", []string{"发现产品", "界面灵感", "网页灵感"}},
-		{"素材资源", []string{"图标素材", "LOGO设计", "平面素材", "UI资源", "Sketch资源", "字体资源", "Mockup", "摄影图库", "PPT资源"}},
-		{"常用工具", []string{"图形创意", "界面设计", "交互动效", "在线配色", "在线工具", "Chrome插件"}},
-		{"学习教程", []string{"设计规范", "视频教程", "设计文章", "设计电台", "交互设计"}},
-	}
-
-	for _, m := range mappings {
-		var parentID int
-		err := DB.QueryRow("SELECT id FROM item_groups WHERE title=? AND parent_id=0 LIMIT 1", m.parentTitle).Scan(&parentID)
-		if err != nil {
-			// 虚拟父不存在 → 造一个
-			res, _ := DB.Exec("INSERT INTO item_groups (parent_id, title, description, sort, is_visible, user_id) VALUES (0, ?, '', 999, 1, 1)",
-				m.parentTitle)
-			pid, _ := res.LastInsertId()
-			parentID = int(pid)
-		}
-		// 子分组 title 匹配 → 重挂到这个 parent
-		for _, c := range m.children {
-			DB.Exec("UPDATE item_groups SET parent_id=? WHERE title=? AND parent_id=0", parentID, c)
-		}
-	}
-
-	// 孤儿扫描：parent_id 指向不存在的 id → 重置为 0
-	// 注意：SetMaxOpenConns(1) 下 rows 未 Close 时不能再嵌套 QueryRow，否则死锁！
 	type pair struct{ id, pid int }
 	var orphans []pair
 	rows, _ := DB.Query("SELECT id, parent_id FROM item_groups WHERE parent_id != 0")
@@ -243,105 +193,7 @@ func backfillParentIDs() {
 	}
 }
 
-// SeedPresetGroupsAndItems 从 data/seed_groups.json 注入完整预置分组 + 卡片
-// 幂等：判"常用推荐"顶级分组存在即视为种子完整，否则清光重造
-func SeedPresetGroupsAndItems() {
-	// 种子完整性判定
-	var presetOK int
-	DB.QueryRow("SELECT COUNT(*) FROM item_groups WHERE title='常用推荐' AND parent_id=0").Scan(&presetOK)
-	if presetOK > 0 {
-		log.Println("[db] 预置种子已完整，跳过")
-		return
-	}
-
-	// 种子残缺 → 清光重造（items 依赖 item_groups，先清 items 再清 groups）
-	DB.Exec("DELETE FROM items")
-	DB.Exec("DELETE FROM item_groups")
-
-	data, err := fs.ReadFile(seedFS, "data/seed_groups.json")
-	if err != nil {
-		log.Printf("[db] seed_groups.json 读取失败: %v\n", err)
-		return
-	}
-
-	var entries []seedGroupEntry
-	if err := json.Unmarshal(data, &entries); err != nil {
-		log.Printf("[db] seed_groups.json 解析失败: %v\n", err)
-		return
-	}
-
-	var adminID int
-	DB.QueryRow("SELECT id FROM users WHERE role='admin' LIMIT 1").Scan(&adminID)
-	if adminID == 0 {
-		adminID = 1
-	}
-
-	// 第一步：造所有虚拟父（parent 字段指向但自己不是顶级的那些）
-	// seed_groups.json 里的 parent 引用了 "灵感采集" / "素材资源" / "常用工具" / "学习教程"
-	// 这些是虚拟父，在 JSON 里没有独立条目，需要我们造
-	virtualParents := []string{"灵感采集", "素材资源", "常用工具", "学习教程", "社区资讯", "UED团队"}
-	parentIDMap := map[string]int{}
-	for _, vp := range virtualParents {
-		res, _ := DB.Exec("INSERT INTO item_groups (parent_id, title, description, sort, is_visible, user_id) VALUES (0, ?, '', 999, 1, ?)",
-			vp, adminID)
-		pid, _ := res.LastInsertId()
-		parentIDMap[vp] = int(pid)
-	}
-
-	// 第二步：造 JSON 里的每个分组（顶级 parent="" / 子分组 parent="虚拟父名"）
-	sort := 0
-	groupIDMap := map[string]int{}
-	for _, e := range entries {
-		pid := 0
-		if e.Parent != "" {
-			if v, ok := parentIDMap[e.Parent]; ok {
-				pid = v
-			}
-		}
-		res, err := DB.Exec("INSERT INTO item_groups (parent_id, title, icon, description, sort, is_visible, user_id) VALUES (?, ?, '', ?, ?, 1, ?)",
-			pid, e.Name, e.Description, sort, adminID)
-		if err != nil {
-			log.Printf("[db] seed group '%s': %v\n", e.Name, err)
-			continue
-		}
-		gid, _ := res.LastInsertId()
-		groupIDMap[e.Name] = int(gid)
-		sort++
-	}
-
-	// 第三步：造每个分组下的卡片
-	itemSort := 0
-	for _, e := range entries {
-		gid, ok := groupIDMap[e.Name]
-		if !ok {
-			continue
-		}
-		for _, it := range e.Items {
-			iconType := "favicon"
-			if strings.HasSuffix(it.Logo, ".svg") || it.Logo == "" {
-				iconType = "favicon"
-			}
-			_, err := DB.Exec(`INSERT INTO items
-				(group_id, title, url, description, icon_type, icon_value, open_method, sort, user_id)
-				VALUES (?, ?, ?, ?, ?, ?, 2, ?, ?)`,
-				gid, it.Title, it.URL, it.Description, iconType, it.Logo, itemSort, adminID)
-			if err != nil {
-				log.Printf("[db] seed item '%s': %v\n", it.Title, err)
-			}
-			itemSort++
-		}
-	}
-
-	// 第四步：再跑一次 backfillParentIDs 保证孤儿子分组也挂到正确父
-	backfillParentIDs()
-
-	var groups, items int
-	DB.QueryRow("SELECT COUNT(*) FROM item_groups").Scan(&groups)
-	DB.QueryRow("SELECT COUNT(*) FROM items").Scan(&items)
-	log.Printf("[db] ✅ 预置种子注入完成：%d 分组 + %d 卡片\n", groups, items)
-}
-
-// seedIfEmpty 首次安装写种子；已安装实例补全缺失设置键 + 兜底注入预置分组卡片
+// seedIfEmpty 首次安装写默认设置与管理员账号；已安装实例只补全缺失设置键
 func seedIfEmpty() {
 	defaults := settings.Defaults()
 
@@ -349,16 +201,14 @@ func seedIfEmpty() {
 	DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&userCount)
 
 	if userCount == 0 {
-		log.Println("[db] 首次安装，写入种子数据...")
+		log.Println("[db] 首次安装，写入默认设置与管理员账号...")
 		for k, v := range defaults {
 			DB.Exec("INSERT INTO settings (config_name, config_value) VALUES (?, ?)", k, v)
 		}
 		hashed, _ := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
 		DB.Exec("INSERT INTO users (username, password, name, status, role) VALUES (?, ?, ?, ?, ?)",
 			"admin", string(hashed), "管理员", 1, "admin")
-
-		SeedPresetGroupsAndItems()
-		log.Println("[db] 种子数据写入完成，管理员: admin / admin123")
+		log.Println("[db] 初始化完成，管理员: admin / admin123")
 	} else {
 		var missing int
 		for k, v := range defaults {
@@ -371,12 +221,6 @@ func seedIfEmpty() {
 		}
 		if missing > 0 {
 			log.Printf("[db] 补全 %d 个缺失的设置键\n", missing)
-		}
-		// 兜底：Reset 清光后重启 → presetOK==0 时注入
-		var presetOK int
-		DB.QueryRow("SELECT COUNT(*) FROM item_groups WHERE title='常用推荐' AND parent_id=0").Scan(&presetOK)
-		if presetOK == 0 {
-			SeedPresetGroupsAndItems()
 		}
 	}
 }

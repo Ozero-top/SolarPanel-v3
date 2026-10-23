@@ -174,56 +174,7 @@ func generateSelfSignedCert(certPath, keyPath string) error {
 	return nil
 }
 
-// runInitDB 用于 Docker 构建时生成带预置种子的 SQLite 数据库文件，
-// 然后把它 copy 到指定目标路径供运行时直接挂载使用（跳过运行时种子注入）。
-func runInitDB() {
-	dst := "/data/solarpanel.db"
-	if len(os.Args) >= 3 {
-		dst = os.Args[2]
-	}
-
-	tmpDir, err := os.MkdirTemp("", "sp-initdb-")
-	if err != nil {
-		log.Fatal("[initdb] 创建临时目录失败:", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	cfg := &config.Config{
-		ServerPort:        "10080",
-		DBPath:            filepath.Join(tmpDir, "solarpanel.db"),
-		UploadDir:         filepath.Join(tmpDir, "uploads"),
-		SessionTTL:        86400,
-		SessionCookieName: "sp_session",
-		CSRFCookieName:    "csrf_token",
-	}
-	os.MkdirAll(cfg.UploadDir, 0o755)
-
-	if err := db.Init(cfg); err != nil {
-		log.Fatal("[initdb] 初始化 DB 失败:", err)
-	}
-	db.Close()
-
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		log.Fatal("[initdb] 创建目标目录失败:", err)
-	}
-	data, err := os.ReadFile(cfg.DBPath)
-	if err != nil {
-		log.Fatal("[initdb] 读取临时 DB 失败:", err)
-	}
-	if err := os.WriteFile(dst, data, 0o644); err != nil {
-		log.Fatal("[initdb] 写入目标 DB 失败:", err)
-	}
-	log.Println("[initdb] ✅ 预置 DB 已写入:", dst, "size=", len(data), "bytes")
-}
-
 func main() {
-	// initdb 子命令：Docker 构建时生成带种子的预置 DB 供 bake 进镜像
-	// 用法：solarpanel initdb /data/solarpanel.db
-	if len(os.Args) >= 2 && os.Args[1] == "initdb" {
-		runInitDB()
-		return
-	}
-
 	cfg := config.Load()
 
 	if err := db.Init(cfg); err != nil {

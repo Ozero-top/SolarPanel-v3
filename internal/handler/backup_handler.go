@@ -304,9 +304,6 @@ func (h *BackupHandler) Reset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Commit 后再跑预置种子（seedPresetGroupsAndItems 依赖独立查询 item_groups 空来判定）
-	db.SeedPresetGroupsAndItems()
-
 	h.clearUploadDirPreserveWeather()
 	OK(w, nil)
 }
