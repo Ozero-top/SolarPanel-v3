@@ -33,10 +33,17 @@ type backupPayload struct {
 	Settings []SettingRow      `json:"settings"`
 	Groups   []ItemGroupRow    `json:"groups"`
 	Items    []ItemRow         `json:"items"`
+	Feeds    []CustomFeedRow   `json:"feeds"`
 	Files    map[string]string `json:"files"`
 }
 
 const backupMaxFileSize = 20 * 1024 * 1024
+
+// backupAllowedFileExt 备份只允许还原图片类资源，避免任意文件写入上传目录
+var backupAllowedFileExt = map[string]bool{
+	"jpg": true, "jpeg": true, "png": true, "gif": true,
+	"webp": true, "bmp": true, "ico": true, "svg": true,
+}
 
 func (h *BackupHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
 	method := r.Method
@@ -61,8 +68,18 @@ func (h *BackupHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BackupHandler) Export(w http.ResponseWriter, r *http.Request) {
-	// Use direct query
-	settingQ, _ := db.DB.Query("SELECT id, config_name, config_value FROM settings")
+	// 备份包含全部设置（含访客密码哈希）与上传资源，仅管理员可导出
+	sess := auth.GetSessionFromRequest(r)
+	if sess == nil || sess.Role != "admin" {
+		Err(w, http.StatusForbidden, 1, "仅管理员可导出备份")
+		return
+	}
+
+	settingQ, err := db.DB.Query("SELECT id, config_name, config_value FROM settings")
+	if err != nil {
+		Err(w, http.StatusInternalServerError, 1, "读取设置失败")
+		return
+	}
 	var settings []SettingRow
 	for settingQ.Next() {
 		var s SettingRow
@@ -71,7 +88,11 @@ func (h *BackupHandler) Export(w http.ResponseWriter, r *http.Request) {
 	}
 	settingQ.Close()
 
-	groupQ, _ := db.DB.Query("SELECT id, parent_id, title, icon, description, sort, is_visible, user_id, created_at FROM item_groups ORDER BY parent_id ASC, sort ASC, id ASC")
+	groupQ, err := db.DB.Query("SELECT id, parent_id, title, icon, description, sort, is_visible, user_id, created_at FROM item_groups ORDER BY parent_id ASC, sort ASC, id ASC")
+	if err != nil {
+		Err(w, http.StatusInternalServerError, 1, "读取分组失败")
+		return
+	}
 	var groups []ItemGroupRow
 	for groupQ.Next() {
 		var g ItemGroupRow
@@ -80,7 +101,11 @@ func (h *BackupHandler) Export(w http.ResponseWriter, r *http.Request) {
 	}
 	groupQ.Close()
 
-	itemQ, _ := db.DB.Query("SELECT id, group_id, title, url, lan_url, description, icon_type, icon_value, icon_bg, open_method, sort, is_hidden, user_id, created_at FROM items")
+	itemQ, err := db.DB.Query("SELECT id, group_id, title, url, lan_url, description, icon_type, icon_value, icon_bg, open_method, sort, is_hidden, user_id, created_at FROM items")
+	if err != nil {
+		Err(w, http.StatusInternalServerError, 1, "读取卡片失败")
+		return
+	}
 	var items []ItemRow
 	for itemQ.Next() {
 		var it ItemRow
@@ -89,10 +114,23 @@ func (h *BackupHandler) Export(w http.ResponseWriter, r *http.Request) {
 	}
 	itemQ.Close()
 
+	feedQ, err := db.DB.Query("SELECT id, title, url, sort, enabled, created_at FROM custom_feeds ORDER BY sort ASC, id ASC")
+	if err != nil {
+		Err(w, http.StatusInternalServerError, 1, "读取 RSS 源失败")
+		return
+	}
+	var feeds []CustomFeedRow
+	for feedQ.Next() {
+		var f CustomFeedRow
+		feedQ.Scan(&f.ID, &f.Title, &f.URL, &f.Sort, &f.Enabled, &f.CreatedAt)
+		feeds = append(feeds, f)
+	}
+	feedQ.Close()
+
 	files := make(map[string]string)
 	skipDirs := map[string]bool{"weather": true}
 
-	err := filepath.Walk(h.cfg.UploadDir, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(h.cfg.UploadDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -127,7 +165,7 @@ func (h *BackupHandler) Export(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	payload := backupPayload{
 		Version: "1.0", Time: now.Format("2006-01-02 15:04:05"),
-		Settings: settings, Groups: groups, Items: items, Files: files,
+		Settings: settings, Groups: groups, Items: items, Feeds: feeds, Files: files,
 	}
 
 	raw, err := json.Marshal(payload)
@@ -146,6 +184,14 @@ func (h *BackupHandler) Export(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BackupHandler) Import(w http.ResponseWriter, r *http.Request) {
+	// 导入会整体替换设置/分组/卡片并写入上传目录，仅管理员可执行
+	sess := auth.GetSessionFromRequest(r)
+	if sess == nil || sess.Role != "admin" {
+		Err(w, http.StatusForbidden, 1, "仅管理员可导入备份")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 128<<20)
 	file, _, err := r.FormFile("file")
 	if err != nil {
 		file, _, err = r.FormFile("backup")
@@ -177,9 +223,16 @@ func (h *BackupHandler) Import(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tx, _ := db.DB.Begin()
+	tx, err := db.DB.Begin()
+	if err != nil {
+		Err(w, http.StatusInternalServerError, 1, "导入失败：无法开启事务")
+		return
+	}
+	defer tx.Rollback()
+
 	tx.Exec("DELETE FROM items")
 	tx.Exec("DELETE FROM item_groups")
+	tx.Exec("DELETE FROM custom_feeds")
 	tx.Exec("DELETE FROM settings")
 
 	for _, s := range payload.Settings {
@@ -208,8 +261,12 @@ func (h *BackupHandler) Import(w http.ResponseWriter, r *http.Request) {
 				newParentID = 0
 			}
 		}
-		res, _ := tx.Exec("INSERT INTO item_groups (parent_id, title, icon, description, sort, is_visible, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		res, err := tx.Exec("INSERT INTO item_groups (parent_id, title, icon, description, sort, is_visible, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
 			newParentID, g.Title, sanitizeGroupIcon(g.Icon), g.Description, g.Sort, g.IsVisible, 1)
+		if err != nil {
+			log.Printf("[backup] 导入分组 '%s' 失败: %v", g.Title, err)
+			continue
+		}
 		newID, _ := res.LastInsertId()
 		groupIDMap[int64(g.ID)] = newID
 	}
@@ -221,6 +278,10 @@ func (h *BackupHandler) Import(w http.ResponseWriter, r *http.Request) {
 		}
 		tx.Exec("INSERT INTO items (group_id, title, url, lan_url, description, icon_type, icon_value, icon_bg, open_method, sort, is_hidden, user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
 			newGroupID, it.Title, it.URL, it.LanURL, it.Description, it.IconType, it.IconValue, it.IconBG, it.OpenMethod, it.Sort, it.IsHidden, 1)
+	}
+
+	for _, f := range payload.Feeds {
+		tx.Exec("INSERT INTO custom_feeds (title, url, sort, enabled) VALUES (?, ?, ?, ?)", f.Title, f.URL, f.Sort, f.Enabled)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -246,6 +307,10 @@ func (h *BackupHandler) Import(w http.ResponseWriter, r *http.Request) {
 			if strings.Contains(relPath, "..") {
 				continue
 			}
+			ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(relPath), "."))
+			if !backupAllowedFileExt[ext] {
+				continue
+			}
 			absPath := filepath.Join(h.cfg.UploadDir, filepath.FromSlash(relPath))
 			if !strings.HasPrefix(filepath.Clean(absPath), h.cfg.UploadDir) {
 				continue
@@ -257,7 +322,7 @@ func (h *BackupHandler) Import(w http.ResponseWriter, r *http.Request) {
 			if int64(len(content)) > backupMaxFileSize {
 				continue
 			}
-			if ext := strings.ToLower(filepath.Ext(relPath)); ext == ".svg" {
+			if ext == "svg" {
 				content = sanitizeSVG(content)
 			}
 			if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
@@ -274,6 +339,7 @@ func (h *BackupHandler) Import(w http.ResponseWriter, r *http.Request) {
 		"settings": len(payload.Settings),
 		"groups":   len(payload.Groups),
 		"items":    len(payload.Items),
+		"feeds":    len(payload.Feeds),
 		"files":    writtenFiles,
 	})
 }
@@ -289,9 +355,16 @@ func (h *BackupHandler) Reset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, _ := db.DB.Begin()
+	tx, err := db.DB.Begin()
+	if err != nil {
+		Err(w, http.StatusInternalServerError, 1, "重置失败：无法开启事务")
+		return
+	}
+	defer tx.Rollback()
+
 	tx.Exec("DELETE FROM items")
 	tx.Exec("DELETE FROM item_groups")
+	tx.Exec("DELETE FROM custom_feeds")
 	tx.Exec("DELETE FROM settings")
 
 	defaults := settings.Defaults()

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -16,8 +17,6 @@ import (
 )
 
 type NewsHandler struct{}
-
-func NewNewsHandler() *NewsHandler { return &NewsHandler{} }
 
 var allNewsSources = []newsSourceMeta{
 	{ID: "zhihu", Name: "知乎热榜", Color: "#0084ff", Type: "hottest", Home: "https://www.zhihu.com/hot", Logo: "https://static.zhihu.com/heifetz/favicon.ico", Interval: 600},
@@ -148,15 +147,29 @@ func runFetch(src newsSourceMeta) []newsItem {
 }
 
 func fetchCustomFeed(feedURL string) []newsItem {
-	if u, err := url.Parse(feedURL); err == nil && u.Hostname() != "" {
-		if isPrivateHost(u.Hostname()) {
-			return nil
-		}
-	} else {
+	u, err := url.Parse(feedURL)
+	if err != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") {
 		return nil
 	}
-	status, body, err := newsHTTP("GET", feedURL, map[string]string{"User-Agent": "SolarPanel/Go"}, nil, 15*time.Second)
-	if err != nil || status != 200 || len(body) == 0 {
+	if isPrivateHost(u.Hostname()) {
+		return nil
+	}
+	// 自定义源地址来自数据库，使用带内网 IP 拦截的连接器防止 DNS 重绑定 SSRF
+	req, err := http.NewRequest("GET", feedURL, nil)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("User-Agent", "SolarPanel/Go")
+	resp, err := newSafeHTTPClient(15 * time.Second).Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil || len(body) == 0 {
 		return nil
 	}
 	return parseRSS(body)
@@ -338,13 +351,15 @@ func (h *NewsHandler) All(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var customFeeds []CustomFeedRow
-	feedQ, _ := db.DB.Query("SELECT id, title, url, sort, enabled, created_at FROM custom_feeds WHERE enabled=1 ORDER BY sort ASC, id ASC")
-	for feedQ.Next() {
-		var cf CustomFeedRow
-		feedQ.Scan(&cf.ID, &cf.Title, &cf.URL, &cf.Sort, &cf.Enabled, &cf.CreatedAt)
-		customFeeds = append(customFeeds, cf)
+	feedQ, err := db.DB.Query("SELECT id, title, url, sort, enabled, created_at FROM custom_feeds WHERE enabled=1 ORDER BY sort ASC, id ASC")
+	if err == nil {
+		for feedQ.Next() {
+			var cf CustomFeedRow
+			feedQ.Scan(&cf.ID, &cf.Title, &cf.URL, &cf.Sort, &cf.Enabled, &cf.CreatedAt)
+			customFeeds = append(customFeeds, cf)
+		}
+		feedQ.Close()
 	}
-	feedQ.Close()
 
 	for _, cf := range customFeeds {
 		srcID := "feed_" + strconv.Itoa(cf.ID)

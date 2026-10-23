@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"solarpanel/internal/auth"
 	"solarpanel/internal/db"
 )
 
@@ -76,6 +77,10 @@ func (h *FeedsHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FeedsHandler) Save(w http.ResponseWriter, r *http.Request) {
+	if s := auth.GetSessionFromRequest(r); s == nil || (s.Role != "admin" && s.Role != "editor") {
+		Err(w, http.StatusForbidden, 1, "无操作权限")
+		return
+	}
 	var body map[string]any
 	if r.Body != nil && r.ContentLength > 0 {
 		body = map[string]any{}
@@ -152,13 +157,21 @@ func (h *FeedsHandler) Save(w http.ResponseWriter, r *http.Request) {
 		db.DB.Exec("UPDATE custom_feeds SET title=?, url=?, sort=?, enabled=? WHERE id=?", title, urlStr, sort, enabled, id)
 		OK(w, nil)
 	} else {
-		res, _ := db.DB.Exec("INSERT INTO custom_feeds (title, url, sort, enabled) VALUES (?, ?, ?, ?)", title, urlStr, sort, enabled)
+		res, err := db.DB.Exec("INSERT INTO custom_feeds (title, url, sort, enabled) VALUES (?, ?, ?, ?)", title, urlStr, sort, enabled)
+		if err != nil {
+			Err(w, http.StatusInternalServerError, 1, "保存失败")
+			return
+		}
 		lastID, _ := res.LastInsertId()
 		OK(w, CustomFeedRow{ID: int(lastID), Title: title, URL: urlStr, Sort: sort, Enabled: enabled})
 	}
 }
 
 func (h *FeedsHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	if s := auth.GetSessionFromRequest(r); s == nil || (s.Role != "admin" && s.Role != "editor") {
+		Err(w, http.StatusForbidden, 1, "无操作权限")
+		return
+	}
 	var body struct {
 		ID int `json:"id"`
 	}
@@ -180,6 +193,10 @@ func (h *FeedsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FeedsHandler) Toggle(w http.ResponseWriter, r *http.Request) {
+	if s := auth.GetSessionFromRequest(r); s == nil || (s.Role != "admin" && s.Role != "editor") {
+		Err(w, http.StatusForbidden, 1, "无操作权限")
+		return
+	}
 	var body struct {
 		ID int `json:"id"`
 	}
@@ -274,7 +291,8 @@ func newsHTTP(method, u string, headers map[string]string, body []byte, timeout 
 		return 0, nil, err
 	}
 	defer resp.Body.Close()
-	b, err := io.ReadAll(resp.Body)
+	// 上游响应限 10MB，避免异常数据源耗尽内存
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 	if err != nil {
 		return 0, nil, err
 	}

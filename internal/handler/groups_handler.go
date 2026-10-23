@@ -24,8 +24,6 @@ func sanitizeGroupIcon(s string) string {
 
 type GroupsHandler struct{}
 
-func NewGroupsHandler() *GroupsHandler { return &GroupsHandler{} }
-
 type ItemGroupRow struct {
 	ID          int    `json:"id"`
 	ParentID    int    `json:"parent_id"`
@@ -115,11 +113,21 @@ func (h *GroupsHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// 一次聚合查询取全部分组卡片数，避免逐分组 N+1 查询
+	itemCounts := make(map[int]int, len(groups))
+	if cntRows, err := db.DB.Query("SELECT group_id, COUNT(*) FROM items GROUP BY group_id"); err == nil {
+		for cntRows.Next() {
+			var gid, cnt int
+			if cntRows.Scan(&gid, &cnt) == nil {
+				itemCounts[gid] = cnt
+			}
+		}
+		cntRows.Close()
+	}
+
 	result := make([]groupListItem, 0, len(groups))
 	for _, g := range ordered {
-		var cnt int
-		db.DB.QueryRow("SELECT COUNT(*) FROM items WHERE group_id=?", g.ID).Scan(&cnt)
-		result = append(result, groupListItem{ItemGroupRow: g, ItemCount: cnt})
+		result = append(result, groupListItem{ItemGroupRow: g, ItemCount: itemCounts[g.ID]})
 	}
 	if result == nil {
 		result = []groupListItem{}
@@ -149,6 +157,26 @@ func (h *GroupsHandler) Edit(w http.ResponseWriter, r *http.Request) {
 	if body.Title == "" {
 		Fail(w, "标题不能为空")
 		return
+	}
+	if body.ParentID != 0 {
+		if body.ParentID == int(body.ID) {
+			Fail(w, "分组不能以自己为父分组")
+			return
+		}
+		var parentOfParent int
+		if err := db.DB.QueryRow("SELECT parent_id FROM item_groups WHERE id=?", body.ParentID).Scan(&parentOfParent); err != nil || parentOfParent != 0 {
+			Fail(w, "所属一级分组不存在或不是一级分组")
+			return
+		}
+		// 两级结构：已有子分组的一级分组不能再降级为二级
+		if body.ID != 0 {
+			var childCount int
+			db.DB.QueryRow("SELECT COUNT(*) FROM item_groups WHERE parent_id=?", body.ID).Scan(&childCount)
+			if childCount > 0 {
+				Fail(w, "该分组下还有二级分组，不能改为二级分组")
+				return
+			}
+		}
 	}
 	icon := sanitizeGroupIcon(body.Icon)
 
@@ -254,6 +282,10 @@ func (h *GroupsHandler) Sort(w http.ResponseWriter, r *http.Request) {
 	if dir == "" {
 		dir = body.Direction
 	}
+	if dir != "up" && dir != "down" {
+		Fail(w, "参数错误")
+		return
+	}
 
 	// 排序只在同级（相同 parent_id）内进行，一级分组与二级分组互不干扰
 	var curSort, curParent int
@@ -302,7 +334,12 @@ func (h *GroupsHandler) SortBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, _ := db.DB.Begin()
+	tx, err := db.DB.Begin()
+	if err != nil {
+		Fail(w, "排序失败")
+		return
+	}
+	defer tx.Rollback()
 	// 序号按父级各自编号：一级分组从 0 递增，每个父级下的二级分组也各自从 0 递增
 	counters := make(map[int]int)
 	for _, id := range body.IDs {

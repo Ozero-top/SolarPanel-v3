@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strings"
 	"time"
 
 	"solarpanel/internal/config"
@@ -225,9 +224,13 @@ func (h *WallpaperHandler) downloadImage(client *http.Client, url string) ([]byt
 		return nil, err
 	}
 	defer resp.Body.Close()
-	bin, err := io.ReadAll(resp.Body)
+	// 限制单张壁纸最大 20MB，避免上游异常响应耗尽内存
+	bin, err := io.ReadAll(io.LimitReader(resp.Body, 20<<20+1))
 	if err != nil {
 		return nil, err
+	}
+	if len(bin) > 20<<20 {
+		return nil, fmt.Errorf("图片过大（超过 20MB）")
 	}
 	if len(bin) < 2048 {
 		return nil, fmt.Errorf("图片过小（%d bytes）", len(bin))
@@ -294,11 +297,3 @@ func normalizeWallpaperSource(raw string) string {
 		return "bing_cn"
 	}
 }
-
-// ===== News 的 fetch 函数都定义在 news_handler.go =====
-
-// 这些 fetch 函数直接内联在 news_handler.go，以下只是补充 weather 包
-// newsSourcePublic, newsSourceListEntry, newsMetaResponse, newsAllResponse, newsSourceResponse
-// 这些类型在 feeds_handler.go 里定义了
-
-var _ = strings.TrimSpace

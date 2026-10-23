@@ -2,6 +2,7 @@ package auth
 
 import (
 	"log"
+	"net"
 	"net/http"
 	"strings"
 
@@ -22,23 +23,42 @@ func AuditLog(w http.ResponseWriter, r *http.Request, action, target, result, ac
 	}
 }
 
-// ClientIP 解析真实客户端 IP（支持 X-Forwarded-For / X-Real-IP）
+// isPrivateAddr 判断连接来源是否为内网/回环地址（即前置反向代理）
+func isPrivateAddr(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() {
+		return true
+	}
+	return false
+}
+
+// ClientIP 解析真实客户端 IP。
+// 仅当直连来源是内网/回环（典型 Docker + Nginx 反代）时才采信 X-Forwarded-For / X-Real-IP，
+// 直连公网客户端无法通过伪造转发头绕过限流或污染审计日志。
 func ClientIP(r *http.Request) string {
 	if r == nil {
 		return ""
 	}
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		return strings.TrimSpace(parts[0])
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
 	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return strings.TrimSpace(xri)
+	remoteIP := net.ParseIP(host)
+
+	if isPrivateAddr(remoteIP) {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.Split(xff, ",")
+			if ip := strings.TrimSpace(parts[0]); ip != "" {
+				return ip
+			}
+		}
+		if xri := r.Header.Get("X-Real-IP"); xri != "" {
+			return strings.TrimSpace(xri)
+		}
 	}
-	addr := r.RemoteAddr
-	if i := strings.LastIndex(addr, ":"); i >= 0 {
-		return addr[:i]
-	}
-	return addr
+	return host
 }
 
 // AuditCleanup 清理 7 天前的审计日志（每小时调用一次）

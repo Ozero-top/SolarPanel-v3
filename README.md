@@ -1,6 +1,6 @@
 # SolarPanel v3
 
-[![Version](https://img.shields.io/badge/Version-v3.1.0-5B8DEF?logo=semanticrelease)](#)
+[![Version](https://img.shields.io/badge/Version-v3.1.1-5B8DEF?logo=semanticrelease)](#)
 [![Go](https://img.shields.io/badge/Go-1.23-00ADD8?logo=go)](https://go.dev)
 [![Architecture](https://img.shields.io/badge/Architecture-chi%2Bsqlite-50C878)](https://github.com/go-chi/chi)
 [![Multi-Arch](https://img.shields.io/badge/Arch-amd64__arm64__armv7-7A51F5)](https://hub.docker.com/r/ovitor/solarpanel-v3)
@@ -17,7 +17,7 @@
 - **零依赖单二进制** — Go + `modernc.org/sqlite`（纯 Go SQLite 实现），无 CGO、无外部数据库、无 PHP
 - **空库启动** — 首次启动只建表 + 写入默认设置 + 管理员账号，**不注入任何预置分组与卡片**，内容完全由用户自建
 - **两级分组导航** — 支持父子嵌套，侧边栏自动展开/折叠，实时搜索过滤
-- **双主题** — `soft` 柔和浮雕（默认）· `blueprint` 工程蓝图（深蓝底 · 白线网格 · 等宽字 · 橙色标注）
+- **六主题** — `soft` 柔和浮雕（默认）· `blueprint` 工程蓝图 · `clarity` 清透极简 · `soft-utility` 柔和工具 · `aurora` 动态极光 · `iris` 深空 HUD（氙蓝/酸绿 · 漂移网格 · 扫描线）
 - **热点新闻聚合** — 24 个内置源（微博 / 知乎 / B站 / GitHub Trending / IT之家 / V2EX / 少数派 / 掘金 等）+ 自定义 RSS
 - **天气 + 每日壁纸** — 顶部时钟、天气组件；壁纸源支持 `bing_cn`（默认）/ `nasa` / `picsum`
 - **卡片图标智能获取** — 手输域名自动抓取 favicon，也可上传本地图标
@@ -212,7 +212,7 @@ SolarPanel/
 
 ## 🎨 主题定制
 
-主题唯一事实源为 `frontend/themes.json`，当前仅两套：`soft`（默认）与 `blueprint`。
+主题唯一事实源为 `frontend/themes.json`，当前六套：`soft`（默认）、`blueprint`、`clarity`、`soft-utility`、`aurora` 与 `iris`。
 
 ```json
 {
@@ -229,7 +229,7 @@ SolarPanel/
 
 - `frontend/assets/css/themes.css`（主题样式）
 - `api.js` 中的主题白名单
-- `settings_handler.go` 的 `allowedSettingKeys` 自动放行
+- `settings_handler.go` 的取值白名单 `settingValueWhitelist`（需手动追加主题名）
 
 默认明暗模式由设置项 `default_theme`（`light` / `dark`）控制，主题风格由 `theme_style` 控制。
 
@@ -336,6 +336,13 @@ SolarPanel/
 ## 📋 更新日志
 
 完整变更明细见 [updates.md](./updates.md)。维护约定：每次升版同时更新 `updates.md` 与本节，并与 `frontend/assets/js/api.js` 的 `APP_VERSION` / `APP_CHANGELOG` 保持一致。
+
+### v3.1.1（2026-10-24）
+
+- **安全性加固**：完善接口权限、上传与备份校验、访问控制
+- **问题修复**：修复分组、卡片、设置与备份相关的若干异常行为
+- **性能优化**：优化列表查询与首页渲染，清理冗余代码
+- **样式更新**：主题与界面细节调整
 
 ### v3.1.0（2026-10-23）
 

@@ -176,7 +176,11 @@ var schemaDDL = []string{
 func backfillParentIDs() {
 	type pair struct{ id, pid int }
 	var orphans []pair
-	rows, _ := DB.Query("SELECT id, parent_id FROM item_groups WHERE parent_id != 0")
+	rows, err := DB.Query("SELECT id, parent_id FROM item_groups WHERE parent_id != 0")
+	if err != nil {
+		log.Printf("[db] 读取分组父子关系失败: %v", err)
+		return
+	}
 	for rows.Next() {
 		var p pair
 		rows.Scan(&p.id, &p.pid)
@@ -233,20 +237,4 @@ func GetSetting(key string) string {
 		return ""
 	}
 	return v
-}
-
-// GetSettingDefault 读单个设置，不存在返回指定默认值
-func GetSettingDefault(key, def string) string {
-	v := GetSetting(key)
-	if v == "" {
-		return def
-	}
-	return v
-}
-
-// SetSetting 写单个设置（用于非 HTTP 上下文）
-func SetSetting(key, value string) {
-	DB.Exec(`INSERT INTO settings (config_name, config_value) VALUES (?, ?)
-		ON CONFLICT(config_name) DO UPDATE SET config_value=excluded.config_value, updated_at=?`,
-		key, value, NowStr())
 }

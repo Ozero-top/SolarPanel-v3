@@ -281,7 +281,7 @@ function syncGroupLevel(currentParentId) {
 
   // 填充 parent 下拉（只列一级分组）
   const tops = (state.groups || []).filter(g => (g.parent_id || 0) === 0);
-  parentSel.innerHTML = tops.map(t => `<option value="${t.id}">${t.icon || ''} ${t.title}</option>`).join('');
+  parentSel.innerHTML = tops.map(t => `<option value="${Number(t.id)}">${esc(t.icon || '')} ${esc(t.title)}</option>`).join('');
   if (pid !== 0) parentSel.value = pid;
 }
 
@@ -744,6 +744,9 @@ function renderItemsTable() {
     // 图标预览：iconFor 统一返回 HTML（img 或 grid span），直接 innerHTML
     const iconCell = tr.querySelector('[data-cell="icon"]');
     iconCell.innerHTML = iconFor(item);
+    if (typeof spDetectIconTone === 'function') {
+      iconCell.querySelectorAll('img').forEach(img => spDetectIconTone(img, iconCell));
+    }
     tr.querySelectorAll('[data-act]').forEach(btn => {
       btn.onclick = () => itemAction(btn.dataset.act, item);
     });
@@ -1477,7 +1480,7 @@ async function loadNewsSourceRows(saved, savedOrder) {
     wrap.appendChild(table);
     refreshNewsOrderNumbers();
   } catch (e) {
-    wrap.innerHTML = '<div class="form-hint">数据源列表加载失败：' + e.message + '</div>';
+    wrap.innerHTML = '<div class="form-hint">数据源列表加载失败：' + esc(e.message) + '</div>';
   }
 }
 

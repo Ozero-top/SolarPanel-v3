@@ -12,8 +12,6 @@ import (
 
 type SettingsHandler struct{}
 
-func NewSettingsHandler() *SettingsHandler { return &SettingsHandler{} }
-
 var allowedSettingKeys = map[string]struct{}{
 	"site_title": {}, "site_logo": {}, "wallpaper": {}, "mask_opacity": {},
 	"wallpaper_blur": {}, "announcement": {}, "announcement_show": {},
@@ -32,7 +30,7 @@ var allowedSettingKeys = map[string]struct{}{
 
 // settingValueWhitelist 特定键的取值白名单（与 frontend/themes.json / card_style 可选项保持同步）
 var settingValueWhitelist = map[string]map[string]bool{
-	"theme_style": {"soft": true, "blueprint": true},
+	"theme_style": {"soft": true, "blueprint": true, "clarity": true, "soft-utility": true, "aurora": true, "iris": true, "sketch-style": true},
 	"card_style":  {"nav": true, "navapp": true},
 }
 
@@ -51,6 +49,8 @@ func (h *SettingsHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
 		switch action {
 		case "save":
 			h.Save(w, r)
+		default:
+			Fail(w, "未知操作")
 		}
 		return
 	}
@@ -64,6 +64,9 @@ func (h *SettingsHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SettingsHandler) List(w http.ResponseWriter, r *http.Request) {
+	sess := auth.GetSessionFromRequest(r)
+	isAdmin := sess != nil && sess.Role == "admin"
+
 	rows, err := db.DB.Query("SELECT id, config_name, config_value FROM settings")
 	if err != nil {
 		Err(w, http.StatusInternalServerError, 1, "读取设置失败")
@@ -74,6 +77,9 @@ func (h *SettingsHandler) List(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var row SettingRow
 		rows.Scan(&row.ID, &row.ConfigName, &row.ConfigValue)
+		if !isAdmin && sensitiveSettingKeys[row.ConfigName] {
+			continue
+		}
 		m[row.ConfigName] = row.ConfigValue
 	}
 	OK(w, m)
@@ -124,13 +130,12 @@ func (h *SettingsHandler) Save(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	OK(w, map[string]int{"saved": saved})
-
 	if saved > 0 {
 		auth.AuditLog(w, r, "settings.save",
 			"保存 "+strconv.Itoa(saved)+" 项", "success",
 			usernameByUID(sess.UID), sess.Role, "")
 	}
+	OK(w, map[string]int{"saved": saved})
 }
 
 func usernameByUID(uid uint) string {

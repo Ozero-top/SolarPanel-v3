@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"solarpanel/internal/auth"
@@ -63,28 +64,36 @@ var htmlDecodeReplacer = strings.NewReplacer(
 )
 
 var (
-	reTitle     = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
-	reOGTitle   = regexp.MustCompile(`(?is)<meta[^>]+(?:property|name)\s*=\s*["']og:title["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
-	reOGTitle2  = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*(?:property|name)\s*=\s*["']og:title["'][^>]*>`)
-	reTwTitle   = regexp.MustCompile(`(?is)<meta[^>]+name\s*=\s*["']twitter:title["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
-	reTwTitle2  = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*name\s*=\s*["']twitter:title["'][^>]*>`)
-	reMetaDesc  = regexp.MustCompile(`(?is)<meta[^>]+(?:name|property)\s*=\s*["']description["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
-	reMetaDesc2 = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*(?:name|property)\s*=\s*["']description["'][^>]*>`)
-	reOGDesc    = regexp.MustCompile(`(?is)<meta[^>]+(?:property|name)\s*=\s*["']og:description["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
-	reOGDesc2   = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*(?:property|name)\s*=\s*["']og:description["'][^>]*>`)
-	reTwDesc    = regexp.MustCompile(`(?is)<meta[^>]+name\s*=\s*["']twitter:description["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
-	reTwDesc2   = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*name\s*=\s*["']twitter:description["'][^>]*>`)
-	reOGImage   = regexp.MustCompile(`(?is)<meta[^>]+(?:property|name)\s*=\s*["']og:image["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
-	reOGImage2  = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*(?:property|name)\s*=\s*["']og:image["'][^>]*>`)
-	reTwImage   = regexp.MustCompile(`(?is)<meta[^>]+name\s*=\s*["']twitter:image["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
-	reTwImage2  = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*name\s*=\s*["']twitter:image["'][^>]*>`)
-	reKeywords  = regexp.MustCompile(`(?is)<meta[^>]+name\s*=\s*["']keywords["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
-	reKeywords2 = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*name\s*=\s*["']keywords["'][^>]*>`)
-	reLinkIcon  = regexp.MustCompile(`(?is)<link\b([^>]*)>`)
-	reScriptTag = regexp.MustCompile(`(?is)<script[^>]*>[\s\S]*?</script>`)
-	reStyleTag  = regexp.MustCompile(`(?is)<style[^>]*>[\s\S]*?</style>`)
-	reStripTags = regexp.MustCompile(`<[^>]+>`)
+	reTitle      = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
+	reOGTitle    = regexp.MustCompile(`(?is)<meta[^>]+(?:property|name)\s*=\s*["']og:title["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
+	reOGTitle2   = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*(?:property|name)\s*=\s*["']og:title["'][^>]*>`)
+	reTwTitle    = regexp.MustCompile(`(?is)<meta[^>]+name\s*=\s*["']twitter:title["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
+	reTwTitle2   = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*name\s*=\s*["']twitter:title["'][^>]*>`)
+	reMetaDesc   = regexp.MustCompile(`(?is)<meta[^>]+(?:name|property)\s*=\s*["']description["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
+	reMetaDesc2  = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*(?:name|property)\s*=\s*["']description["'][^>]*>`)
+	reOGDesc     = regexp.MustCompile(`(?is)<meta[^>]+(?:property|name)\s*=\s*["']og:description["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
+	reOGDesc2    = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*(?:property|name)\s*=\s*["']og:description["'][^>]*>`)
+	reTwDesc     = regexp.MustCompile(`(?is)<meta[^>]+name\s*=\s*["']twitter:description["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
+	reTwDesc2    = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*name\s*=\s*["']twitter:description["'][^>]*>`)
+	reOGImage    = regexp.MustCompile(`(?is)<meta[^>]+(?:property|name)\s*=\s*["']og:image["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
+	reOGImage2   = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*(?:property|name)\s*=\s*["']og:image["'][^>]*>`)
+	reTwImage    = regexp.MustCompile(`(?is)<meta[^>]+name\s*=\s*["']twitter:image["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
+	reTwImage2   = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*name\s*=\s*["']twitter:image["'][^>]*>`)
+	reKeywords   = regexp.MustCompile(`(?is)<meta[^>]+name\s*=\s*["']keywords["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
+	reKeywords2  = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*name\s*=\s*["']keywords["'][^>]*>`)
+	reLinkIcon   = regexp.MustCompile(`(?is)<link\b([^>]*)>`)
+	reLinkRel    = regexp.MustCompile(`(?is)\brel\s*=\s*["']([^"']+)["']`)
+	reLinkHref   = regexp.MustCompile(`(?is)\bhref\s*=\s*["']([^"']+)["']`)
+	reScriptTag  = regexp.MustCompile(`(?is)<script[^>]*>[\s\S]*?</script>`)
+	reStyleTag   = regexp.MustCompile(`(?is)<style[^>]*>[\s\S]*?</style>`)
+	reStripTags  = regexp.MustCompile(`<[^>]+>`)
 	reMultiSpace = regexp.MustCompile(`\s+`)
+
+	// SVG 清洗规则：上传/抓取/导入的 SVG 均不可信，需移除脚本与可执行协议
+	reSvgDangerTag = regexp.MustCompile(`(?is)<(iframe|embed|object|foreignObject)\b[^>]*>[\s\S]*?</(iframe|embed|object|foreignObject)>`)
+	reSvgBareTag   = regexp.MustCompile(`(?is)<(iframe|embed|object|script)\b[^>]*/>`)
+	reSvgEventAttr = regexp.MustCompile(`(?is)\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)`)
+	reSvgBadScheme = regexp.MustCompile(`(?is)((?:xlink:)?href\s*=\s*["']\s*)(?:javascript|vbscript|data:text/html)[^"']*`)
 )
 
 var privateCIDRs []*net.IPNet
@@ -99,31 +108,51 @@ func init() {
 	}
 }
 
+func isPrivateIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() {
+		return true
+	}
+	for _, c := range privateCIDRs {
+		if c.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 func isPrivateHost(host string) bool {
 	host = strings.TrimSpace(host)
 	if host == "" {
 		return true
 	}
 	if ip := net.ParseIP(host); ip != nil {
-		for _, c := range privateCIDRs {
-			if c.Contains(ip) {
-				return true
-			}
-		}
-		return false
+		return isPrivateIP(ip)
 	}
 	ips, err := net.LookupIP(host)
 	if err != nil || len(ips) == 0 {
 		return true
 	}
 	for _, ip := range ips {
-		for _, c := range privateCIDRs {
-			if c.Contains(ip) {
-				return true
-			}
+		if isPrivateIP(ip) {
+			return true
 		}
 	}
 	return false
+}
+
+// blockPrivateDial 在建立连接时校验真实目标 IP，防止 DNS 重绑定绕过前置域名检查
+func blockPrivateDial(_, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	if isPrivateIP(net.ParseIP(host)) {
+		return fmt.Errorf("blocked private address: %s", host)
+	}
+	return nil
 }
 
 func newSafeHTTPClient(timeout time.Duration) *http.Client {
@@ -131,7 +160,12 @@ func newSafeHTTPClient(timeout time.Duration) *http.Client {
 		Proxy: nil, ForceAttemptHTTP2: false, MaxIdleConns: 10,
 		IdleConnTimeout: 30 * time.Second, TLSHandshakeTimeout: 10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+			Control:   blockPrivateDial,
+		}).DialContext,
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 	client := &http.Client{Timeout: timeout, Transport: transport}
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
@@ -188,10 +222,8 @@ func extractIconLinks(html, scheme, host string) []string {
 	var cands []cand
 	for _, m := range matches {
 		attrs := m[1]
-		relRe := regexp.MustCompile(`(?is)\brel\s*=\s*["']([^"']+)["']`)
-		hrefRe := regexp.MustCompile(`(?is)\bhref\s*=\s*["']([^"']+)["']`)
-		relMatch := relRe.FindStringSubmatch(attrs)
-		hrefMatch := hrefRe.FindStringSubmatch(attrs)
+		relMatch := reLinkRel.FindStringSubmatch(attrs)
+		hrefMatch := reLinkHref.FindStringSubmatch(attrs)
 		if relMatch == nil || hrefMatch == nil {
 			continue
 		}
@@ -217,8 +249,10 @@ func extractIconLinks(html, scheme, host string) []string {
 func sanitizeSVG(data []byte) []byte {
 	s := string(data)
 	s = reScriptTag.ReplaceAllString(s, "")
-	s = regexp.MustCompile(`(?is)\son\w+\s*=\s*"[^"]*"`).ReplaceAllString(s, "")
-	s = regexp.MustCompile(`(?is)<foreignObject\b[^>]*>[\s\S]*?</foreignObject>`).ReplaceAllString(s, "")
+	s = reSvgDangerTag.ReplaceAllString(s, "")
+	s = reSvgBareTag.ReplaceAllString(s, "")
+	s = reSvgEventAttr.ReplaceAllString(s, "")
+	s = reSvgBadScheme.ReplaceAllString(s, `${1}#`)
 	return []byte(s)
 }
 
@@ -590,13 +624,6 @@ func extractMeta(html string) (title, description, favicon string) {
 	return title, description, favicon
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // ===== Dispatch 与 CRUD =====
 
 func (h *ItemsHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
@@ -623,20 +650,6 @@ func (h *ItemsHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *ItemsHandler) PublicDispatch(w http.ResponseWriter, r *http.Request) {
-	action := r.URL.Query().Get("action")
-	switch action {
-	case "", "list":
-		h.List(w, r)
-	case "favicon":
-		h.Favicon(w, r)
-	case "fetch_meta":
-		h.FetchMeta(w, r)
-	default:
-		Fail(w, "未知操作")
-	}
-}
-
 func scanItem(row *sql.Row) (*ItemRow, error) {
 	var it ItemRow
 	err := row.Scan(&it.ID, &it.GroupID, &it.Title, &it.URL, &it.LanURL, &it.Description,
@@ -646,6 +659,11 @@ func scanItem(row *sql.Row) (*ItemRow, error) {
 }
 
 func (h *ItemsHandler) Favicon(w http.ResponseWriter, r *http.Request) {
+	// 会触发服务端外网抓取与落盘，仅编辑者及以上可用
+	if s := auth.GetSessionFromRequest(r); s == nil || (s.Role != "admin" && s.Role != "editor") {
+		Err(w, http.StatusForbidden, 1, "无操作权限")
+		return
+	}
 	rawURL := r.URL.Query().Get("url")
 	if rawURL == "" {
 		Fail(w, "url 不能为空")
@@ -684,6 +702,11 @@ func (h *ItemsHandler) Favicon(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ItemsHandler) FetchMeta(w http.ResponseWriter, r *http.Request) {
+	// 会触发服务端外网抓取与落盘，仅编辑者及以上可用
+	if s := auth.GetSessionFromRequest(r); s == nil || (s.Role != "admin" && s.Role != "editor") {
+		Err(w, http.StatusForbidden, 1, "无操作权限")
+		return
+	}
 	rawURL := r.URL.Query().Get("url")
 	if rawURL == "" {
 		Fail(w, "url 不能为空")
@@ -828,6 +851,11 @@ func (h *ItemsHandler) Edit(w http.ResponseWriter, r *http.Request) {
 		Fail(w, "请选择分组")
 		return
 	}
+	var groupExists int
+	if err := db.DB.QueryRow("SELECT COUNT(*) FROM item_groups WHERE id=?", body.GroupID).Scan(&groupExists); err != nil || groupExists == 0 {
+		Fail(w, "分组不存在")
+		return
+	}
 	if body.Title == "" {
 		Fail(w, "标题不能为空")
 		return
@@ -914,6 +942,11 @@ func (h *ItemsHandler) Sort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if body.Dir != "up" && body.Dir != "down" {
+		Fail(w, "参数错误")
+		return
+	}
+
 	var curGroupID, curSort int
 	err := db.DB.QueryRow("SELECT group_id, sort FROM items WHERE id=?", body.ID).Scan(&curGroupID, &curSort)
 	if err != nil {
@@ -957,7 +990,12 @@ func (h *ItemsHandler) SortBatch(w http.ResponseWriter, r *http.Request) {
 		Fail(w, "参数错误")
 		return
 	}
-	tx, _ := db.DB.Begin()
+	tx, err := db.DB.Begin()
+	if err != nil {
+		Fail(w, "排序失败")
+		return
+	}
+	defer tx.Rollback()
 	for i, id := range body.IDs {
 		if _, err := tx.Exec("UPDATE items SET sort=? WHERE id=?", i, id); err != nil {
 			tx.Rollback()

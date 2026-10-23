@@ -270,8 +270,9 @@ function renderBase() {
   beian.innerHTML = '';
   const addBeian = (number, link) => {
     if (!number) return;
-    const el = link ? document.createElement('a') : document.createElement('span');
-    if (link) { el.href = link; el.target = '_blank'; el.rel = 'noopener'; }
+    const safeLink = link && safeUrl(link) ? link : '';
+    const el = safeLink ? document.createElement('a') : document.createElement('span');
+    if (safeLink) { el.href = safeLink; el.target = '_blank'; el.rel = 'noopener'; }
     el.textContent = number;
     beian.appendChild(el);
   };
@@ -318,11 +319,12 @@ function renderBase() {
 }
 
 /* ---------- 天气 ---------- */
-async function renderWeather(city) {
+async function renderWeather(city, attempt) {
   const el = document.getElementById('weatherArea');
+  attempt = attempt || 0;
   try {
     const w = await API.get(API_BASE + 'weather.php?action=current' + (city ? '&city=' + encodeURIComponent(city) : ''));
-    if (!w || w.temp === undefined) return;
+    if (!w || w.temp === undefined) throw new Error('天气数据为空');
     // 主行：emoji + 天气描述 + 温度；副行：城市 + 湿度 + 风速（emoji+文字）
     el.innerHTML =
       '<div class="w-main">' +
@@ -339,8 +341,13 @@ async function renderWeather(city) {
       '</div>';
     el.hidden = false;
   } catch (e) {
-    // 天气服务不可用时静默隐藏，不影响主页
-    el.hidden = true;
+    // 上游定位/天气服务偶发抖动：自动重试两次，避免必须手动刷新页面才出现
+    if (attempt < 2) {
+      setTimeout(() => renderWeather(city, attempt + 1), 1200 * (attempt + 1));
+      return;
+    }
+    // 已有内容时保留旧天气，不整块隐藏
+    if (!el.innerHTML) el.hidden = true;
   }
 }
 
@@ -768,8 +775,7 @@ function renderGroups() {
         const ph = document.createElement('div');
         ph.className = 'group-parent-head glass';
         const h = document.createElement('h3');
-        if (tg.icon) h.textContent = tg.icon + ' ';
-        h.textContent = tg.title;
+        h.textContent = (tg.icon ? tg.icon + ' ' : '') + tg.title;
         ph.appendChild(h);
         if (tg.description) {
           const d = document.createElement('span');
@@ -883,38 +889,6 @@ function bindNavChrome() {
     __gnManual = false;
     __gnShowNow();
   }, { passive: true });
-}
-
-/** 构建一个目录项（targetId=跳转目标元素 id，dotColor=色点颜色，空则用默认灰点，icon=分组图标） */
-function buildNavItem(targetId, label, dotColor, icon) {
-  const a = document.createElement('a');
-  a.href = '#';
-  a.className = 'gn-item';
-  a.dataset.target = targetId;
-  const dot = document.createElement('span');
-  dot.className = 'gn-dot';
-  if (dotColor) { dot.style.background = dotColor; dot.style.opacity = '1'; }
-  if (icon) {
-    const ic = document.createElement('span');
-    ic.className = 'gn-icon';
-    ic.textContent = icon;
-    a.appendChild(ic);
-  } else {
-    a.appendChild(dot);
-  }
-  const lab = document.createElement('span');
-  lab.className = 'gn-label';
-  lab.textContent = label;
-  a.appendChild(lab);
-  a.addEventListener('click', e => {
-    e.preventDefault();
-    const target = document.getElementById(targetId);
-    if (target) {
-      const y = target.getBoundingClientRect().top + window.pageYOffset - 90;
-      window.scrollTo({ top: y, behavior: 'smooth' });
-    }
-  });
-  return a;
 }
 
 /** 导航视图：分组目录（两级 — 顶级分组 + 可展开的二级子分组） */
@@ -1391,6 +1365,8 @@ function showWhenDecoded(img, icon, iconDoneRef) {
     iconDoneRef.done = true;
     icon.style.background = '';
     icon.classList.add('has-img');
+    // 深色模式下黑色/深色 logo 会自动加浅色底板
+    if (typeof spDetectIconTone === 'function') spDetectIconTone(img, icon);
   };
   if (img.decode) img.decode().then(finish).catch(finish);
   else finish();
@@ -1911,9 +1887,7 @@ function initNewsSwitch() {
   updateNewsBtnVisible();
   if (btn.hidden) return;  // 整体关闭：不绑定 onclick、不自动切新闻视图
 
-  const mode = state.settings.home_view || 'both';
-  if (mode === 'news') switchView('news');
-  else switchView('nav');
+  switchView('nav');
 
   btn.onclick = () => {
     const isNews = !document.getElementById('newsView').hidden;

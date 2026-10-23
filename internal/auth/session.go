@@ -22,14 +22,12 @@ type Store struct {
 	TTL      time.Duration
 	mu       sync.RWMutex
 	sessions map[string]*Session
-	csrfMap  map[string]string
 }
 
 func NewSessionStore(ttlSeconds int) *Store {
 	s := &Store{
 		TTL:      time.Duration(ttlSeconds) * time.Second,
 		sessions: make(map[string]*Session),
-		csrfMap:  make(map[string]string),
 	}
 	go s.gcLoop()
 	return s
@@ -49,7 +47,6 @@ func (s *Store) gc() {
 	now := time.Now()
 	for sid, sess := range s.sessions {
 		if now.After(sess.Expires) {
-			delete(s.csrfMap, sess.CSRFToken)
 			delete(s.sessions, sid)
 		}
 	}
@@ -72,7 +69,6 @@ func (s *Store) CreateSession(uid uint, role string) (sid, csrf string) {
 	csrf = NewCSRFToken()
 	s.mu.Lock()
 	s.sessions[sid] = &Session{UID: uid, CSRFToken: csrf, Role: role, Expires: time.Now().Add(s.TTL)}
-	s.csrfMap[csrf] = sid
 	s.mu.Unlock()
 	return
 }
@@ -90,24 +86,9 @@ func (s *Store) GetSession(sid string) *Session {
 func (s *Store) DestroySession(sid string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if sess, ok := s.sessions[sid]; ok {
-		delete(s.csrfMap, sess.CSRFToken)
+	if _, ok := s.sessions[sid]; ok {
 		delete(s.sessions, sid)
 	}
-}
-
-func (s *Store) RotateCSRF(sid string) string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	sess, ok := s.sessions[sid]
-	if !ok {
-		return ""
-	}
-	delete(s.csrfMap, sess.CSRFToken)
-	sess.CSRFToken = NewCSRFToken()
-	s.csrfMap[sess.CSRFToken] = sid
-	sess.Expires = time.Now().Add(s.TTL)
-	return sess.CSRFToken
 }
 
 func (s *Store) Touch(sid string) {
@@ -130,11 +111,6 @@ const (
 func GetSessionFromRequest(r *http.Request) *Session {
 	sess, _ := r.Context().Value(ctxSession).(*Session)
 	return sess
-}
-
-func getSessionIDFromRequest(r *http.Request) string {
-	sid, _ := r.Context().Value(ctxSessionID).(string)
-	return sid
 }
 
 // GetSessionIDFromRequest 从请求上下文取 session ID（handler 内调用）
@@ -180,6 +156,16 @@ func (s *Store) CSRFMiddleware(csrfCookieName string) func(http.Handler) http.Ha
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// VerifyCSRF 校验请求头中的 CSRF 令牌（用于未挂载 CSRFMiddleware 的已登录接口）
+func VerifyCSRF(r *http.Request) bool {
+	sess := GetSessionFromRequest(r)
+	if sess == nil {
+		return false
+	}
+	token := r.Header.Get("X-CSRF-Token")
+	return token != "" && token == sess.CSRFToken
 }
 
 // RequireLogin 必须登录

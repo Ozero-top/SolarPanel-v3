@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"database/sql"
 	"net/http"
 
 	"solarpanel/internal/auth"
@@ -10,7 +9,10 @@ import (
 
 type PublicHandler struct{}
 
-func NewPublicHandler() *PublicHandler { return &PublicHandler{} }
+// sensitiveSettingKeys 不允许下发给非管理员的设置项
+var sensitiveSettingKeys = map[string]bool{
+	"guest_password_hash": true,
+}
 
 type GroupWithItems struct {
 	ItemGroupRow
@@ -20,11 +22,18 @@ type GroupWithItems struct {
 func (h *PublicHandler) Public(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store, max-age=0")
 
-	settingsQ, _ := db.DB.Query("SELECT config_name, config_value FROM settings")
+	settingsQ, err := db.DB.Query("SELECT config_name, config_value FROM settings")
+	if err != nil {
+		Err(w, http.StatusInternalServerError, 1, "读取设置失败")
+		return
+	}
 	settings := make(map[string]string)
 	for settingsQ.Next() {
 		var name, val string
 		settingsQ.Scan(&name, &val)
+		if sensitiveSettingKeys[name] {
+			continue
+		}
 		settings[name] = val
 	}
 	settingsQ.Close()
@@ -68,12 +77,15 @@ func (h *PublicHandler) Public(w http.ResponseWriter, r *http.Request) {
 	}
 
 	groupQuery := "SELECT id, parent_id, title, icon, description, sort, is_visible, user_id, created_at FROM item_groups"
-	groupArgs := []any{}
 	if !isAdmin {
 		groupQuery += " WHERE is_visible = 1"
 	}
 	groupQuery += " ORDER BY parent_id ASC, sort ASC, id ASC"
-	groupQ, _ := db.DB.Query(groupQuery, groupArgs...)
+	groupQ, err := db.DB.Query(groupQuery)
+	if err != nil {
+		Err(w, http.StatusInternalServerError, 1, "读取分组失败")
+		return
+	}
 	var groups []ItemGroupRow
 	for groupQ.Next() {
 		var g ItemGroupRow
@@ -82,7 +94,11 @@ func (h *PublicHandler) Public(w http.ResponseWriter, r *http.Request) {
 	}
 	groupQ.Close()
 
-	itemQ, _ := db.DB.Query("SELECT id, group_id, title, url, lan_url, description, icon_type, icon_value, icon_bg, open_method, sort, is_hidden, user_id, created_at FROM items ORDER BY sort ASC, id ASC")
+	itemQ, err := db.DB.Query("SELECT id, group_id, title, url, lan_url, description, icon_type, icon_value, icon_bg, open_method, sort, is_hidden, user_id, created_at FROM items ORDER BY sort ASC, id ASC")
+	if err != nil {
+		Err(w, http.StatusInternalServerError, 1, "读取卡片失败")
+		return
+	}
 	var items []ItemRow
 	for itemQ.Next() {
 		var it ItemRow
@@ -93,22 +109,24 @@ func (h *PublicHandler) Public(w http.ResponseWriter, r *http.Request) {
 	}
 	itemQ.Close()
 
+	// 先按分组归档卡片，避免分组 × 卡片的双重遍历
+	itemsByGroup := make(map[int][]ItemRow, len(groups))
+	for _, it := range items {
+		if !canSeeHiddenItems && it.IsHidden == 1 {
+			continue
+		}
+		itemsByGroup[it.GroupID] = append(itemsByGroup[it.GroupID], it)
+	}
+
 	grouped := make([]GroupWithItems, 0, len(groups))
 	for _, g := range groups {
-		gw := GroupWithItems{ItemGroupRow: g, Items: []ItemRow{}}
-		for _, it := range items {
-			if it.GroupID != g.ID {
-				continue
-			}
-			if !canSeeHiddenItems && it.IsHidden == 1 {
-				continue
-			}
-			gw.Items = append(gw.Items, it)
+		gw := GroupWithItems{ItemGroupRow: g, Items: itemsByGroup[g.ID]}
+		if gw.Items == nil {
+			gw.Items = []ItemRow{}
 		}
 		grouped = append(grouped, gw)
 	}
 
-	_ = sql.ErrNoRows
 	OK(w, map[string]any{
 		"settings":       settings,
 		"groups":         grouped,

@@ -17,7 +17,6 @@ func (InstallHandler) Status(w http.ResponseWriter, r *http.Request) {
 		"installed":   count > 0,
 		"app_version": AppVersion,
 		"db_engine":   "SQLite",
-		"php_rewrite": "1",
 	})
 }
 

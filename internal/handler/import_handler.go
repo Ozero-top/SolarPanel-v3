@@ -53,7 +53,7 @@ func (h *ImportHandler) Bookmarks(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	data, err := io.ReadAll(file)
+	data, err := io.ReadAll(io.LimitReader(file, 10<<20))
 	if err != nil {
 		Err(w, http.StatusBadRequest, 1, "读取文件失败")
 		return

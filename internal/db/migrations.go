@@ -35,7 +35,10 @@ var migrations = []Migration{
 func backfillV2SettingsUpdatedAt() error {
 	// 确认列存在
 	var has bool
-	rows, _ := DB.Query("PRAGMA table_info(settings)")
+	rows, err := DB.Query("PRAGMA table_info(settings)")
+	if err != nil {
+		return err
+	}
 	defer rows.Close()
 	for rows.Next() {
 		var cid int
@@ -148,7 +151,10 @@ func RunMigrations() {
 func backfillV1ParentIDs() error {
 	// 确认列存在（ALTER TABLE 可能因 duplicate column 被 skip）
 	var has bool
-	rows, _ := DB.Query("PRAGMA table_info(item_groups)")
+	rows, err := DB.Query("PRAGMA table_info(item_groups)")
+	if err != nil {
+		return err
+	}
 	defer rows.Close()
 	for rows.Next() {
 		var cid int

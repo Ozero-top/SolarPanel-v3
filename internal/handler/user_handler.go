@@ -11,8 +11,6 @@ import (
 
 type UserHandler struct{}
 
-func NewUserHandler() *UserHandler { return &UserHandler{} }
-
 var validRoles = map[string]bool{"admin": true, "editor": true, "viewer": true, "guest": true}
 
 func isValidRole(role string) bool { return validRoles[role] }
@@ -255,6 +253,7 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db.DB.Exec("DELETE FROM users WHERE id=?", body.ID)
+	db.DB.Exec("DELETE FROM trusted_devices WHERE user_id=?", body.ID)
 	OK(w, nil)
 }
 
@@ -368,15 +367,15 @@ func (h *UserHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
 		Fail(w, "新密码至少 6 位，至多 64 位")
 		return
 	}
+	if sess.Role != "admin" {
+		Fail(w, "仅管理员可重置密码")
+		return
+	}
 
 	var existingID int
 	err := db.DB.QueryRow("SELECT id FROM users WHERE id=?", body.ID).Scan(&existingID)
 	if err != nil {
 		Fail(w, "用户不存在")
-		return
-	}
-	if sess.Role != "admin" {
-		Fail(w, "仅管理员可重置密码")
 		return
 	}
 

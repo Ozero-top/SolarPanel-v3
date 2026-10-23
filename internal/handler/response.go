@@ -7,11 +7,6 @@ import (
 	"net/http"
 )
 
-// JSON 标准成功响应 {code:0, data:x, msg:""}
-func JSON(w http.ResponseWriter, code int, data any) {
-	writeResp(w, code, data, "")
-}
-
 // Err 标准错误响应
 func Err(w http.ResponseWriter, httpCode int, appCode int, msg string) {
 	writeRespErr(w, httpCode, appCode, msg)
@@ -55,17 +50,6 @@ func BindJSON(r *http.Request, v any) error {
 
 // GetQuery 取 query 参数
 func GetQuery(r *http.Request, key, def string) string {
-	if v := r.URL.Query().Get(key); v != "" {
-		return v
-	}
-	return def
-}
-
-// PostForm 取 form / query 参数（兼容两种）
-func PostForm(r *http.Request, key, def string) string {
-	if v := r.FormValue(key); v != "" {
-		return v
-	}
 	if v := r.URL.Query().Get(key); v != "" {
 		return v
 	}

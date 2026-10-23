@@ -66,7 +66,10 @@ func contentTypeByExt(path string) string {
 
 func seedPresetWallpapers(uploadDir string) {
 	presetDir := filepath.Join(uploadDir, "weather")
-	os.MkdirAll(presetDir, 0755)
+	if err := os.MkdirAll(presetDir, 0755); err != nil {
+		log.Printf("[seed] 创建预置壁纸目录失败: %v", err)
+		return
+	}
 
 	entries, err := fs.ReadDir(frontendFS, "frontend/uploads/weather")
 	if err != nil {
@@ -188,8 +191,18 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.RealIP)
+	// 不启用 middleware.RealIP：它会无条件信任 X-Forwarded-For，
+	// 客户端可伪造 IP 绕过限流；由 auth.ClientIP 只在前置代理为内网时采信转发头
 	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h := w.Header()
+			h.Set("X-Content-Type-Options", "nosniff")
+			h.Set("X-Frame-Options", "SAMEORIGIN")
+			h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			next.ServeHTTP(w, r)
+		})
+	})
 	// session 注入
 	r.Use(sessionStore.SessionMiddleware(cfg.SessionCookieName))
 
@@ -236,12 +249,12 @@ func main() {
 		api.With(rateLimitMW("favicon", 120, 60)).Get("/favicon.php", faviconProxyHandler.Proxy)
 		api.Get("/install.php", installHandler.Status)
 		api.Post("/install.php", installHandler.Setup)
-		api.With(rateLimitMW("weather", 10, 60)).Get("/weather.php", weatherHandler.Get)
+		api.With(rateLimitMW("weather", 30, 60)).Get("/weather.php", weatherHandler.Get)
 		api.With(rateLimitMW("news", 30, 60)).Post("/news.php", newsHandler.Dispatch)
 		api.With(rateLimitMW("news", 30, 60)).Get("/news.php", newsHandler.Dispatch)
 		api.With(rateLimitMW("news", 30, 60)).Get("/news/meta", newsHandler.Sources)
-		api.Get("/news/all", newsHandler.All)
-		api.Get("/news/source", newsHandler.Source)
+		api.With(rateLimitMW("news", 30, 60)).Get("/news/all", newsHandler.All)
+		api.With(rateLimitMW("news", 30, 60)).Get("/news/source", newsHandler.Source)
 		api.With(rateLimitMW("wallpaper", 10, 60)).Post("/wallpaper.php", wallpaperHandler.Dispatch)
 		// auth.php — 全局 session 已注入
 		api.Post("/auth.php", authHandler.Dispatch)
@@ -276,13 +289,7 @@ func main() {
 	protectAdminHTML := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			sess := auth.GetSessionFromRequest(r)
-			guestEnabled := db.GetSetting("guest_access_enabled") == "1"
-			if sess == nil {
-				if guestEnabled {
-					http.Redirect(w, r, "/login.html", http.StatusFound)
-					return
-				}
-			} else if sess.Role == "guest" {
+			if sess == nil || sess.Role == "guest" {
 				http.Redirect(w, r, "/login.html", http.StatusFound)
 				return
 			}
@@ -322,9 +329,16 @@ func main() {
 	r.With(protectAdminHTML).Get("/admin.html", serveEmbed("frontend/admin.html", "text/html; charset=utf-8"))
 
 	// 用户上传文件目录（磁盘直读）
+	// 上传内容来源不可信（可能含 SVG），用 CSP sandbox + default-src 'none' 阻止脚本执行
 	fileServer := http.FileServer(http.Dir(cfg.UploadDir))
-	r.Mount("/frontend/uploads", http.StripPrefix("/frontend/uploads", fileServer))
-	r.Mount("/uploads", http.StripPrefix("/uploads", fileServer))
+	guardUploads := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox")
+			next.ServeHTTP(w, r)
+		})
+	}
+	r.Mount("/frontend/uploads", guardUploads(http.StripPrefix("/frontend/uploads", fileServer)))
+	r.Mount("/uploads", guardUploads(http.StripPrefix("/uploads", fileServer)))
 
 	// embed 静态资源兜底（/assets/xxx 或 /frontend/assets/xxx）
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
@@ -332,6 +346,19 @@ func main() {
 		cleanPath := strings.TrimPrefix(path, "/frontend")
 		if cleanPath == "" {
 			cleanPath = path
+		}
+		// 防止通过 /frontend/admin.html 绕过登录保护
+		switch cleanPath {
+		case "/admin.html":
+			if sess := auth.GetSessionFromRequest(r); sess == nil || sess.Role == "guest" {
+				http.Redirect(w, r, "/login.html", http.StatusFound)
+				return
+			}
+		case "/login.html":
+			if sess := auth.GetSessionFromRequest(r); sess != nil && sess.Role != "guest" {
+				http.Redirect(w, r, "/admin.html", http.StatusFound)
+				return
+			}
 		}
 		embedPath := "frontend" + cleanPath
 		data, err := frontendFS.ReadFile(embedPath)

@@ -52,6 +52,10 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		Err(w, http.StatusForbidden, 1, "无操作权限")
 		return
 	}
+	// 必须先限制请求体再解析表单，否则 FormValue 会先把整个 multipart 读进内存
+	const maxUploadBytes = 10 << 20
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes+1<<20)
+
 	typ := strings.ToLower(strings.TrimSpace(r.FormValue("type")))
 	if typ == "" {
 		typ = "icon"
@@ -62,8 +66,6 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		Fail(w, "type 参数无效")
 		return
 	}
-
-	r.Body = http.MaxBytesReader(w, r.Body, limit+1024)
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
@@ -100,6 +102,17 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	filename := fmt.Sprintf("%s_%s.%s", ts, randomHex(4), ext)
 	targetPath := filepath.Join(targetDir, filename)
 
+	// SVG 可携带脚本，落盘前统一清洗（与 favicon / 备份导入保持一致）
+	var content io.Reader = file
+	if ext == "svg" {
+		raw, err := io.ReadAll(io.LimitReader(file, limit))
+		if err != nil {
+			Err(w, http.StatusInternalServerError, 1, "读取文件失败")
+			return
+		}
+		content = strings.NewReader(string(sanitizeSVG(raw)))
+	}
+
 	dst, err := os.Create(targetPath)
 	if err != nil {
 		Err(w, http.StatusInternalServerError, 1, "保存文件失败")
@@ -107,7 +120,7 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dst.Close()
 
-	if _, err := io.Copy(dst, file); err != nil {
+	if _, err := io.Copy(dst, content); err != nil {
 		Err(w, http.StatusInternalServerError, 1, "写入文件失败")
 		return
 	}

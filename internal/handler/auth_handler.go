@@ -34,6 +34,9 @@ type AuthHandler struct {
 	rateAttempts map[string][]time.Time
 }
 
+// dummyPasswordHash 用户不存在时也执行一次 bcrypt 比对，避免通过响应耗时枚举用户名
+var dummyPasswordHash, _ = bcrypt.GenerateFromPassword([]byte("solarpanel-dummy-password"), bcrypt.DefaultCost)
+
 func NewAuthHandler(store *auth.Store, cfg *config.Config) *AuthHandler {
 	h := &AuthHandler{
 		Store:        store,
@@ -139,6 +142,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	err := db.DB.QueryRow("SELECT id, username, name, password, status, role, totp_secret FROM users WHERE username=?", body.Username).Scan(
 		&u.ID, &u.Username, &u.Name, &u.Password, &u.Status, &u.Role, &u.TOTPSecret)
 	if err != nil {
+		bcrypt.CompareHashAndPassword(dummyPasswordHash, []byte(body.Password))
 		auth.AuditLog(w, r, "auth.login", body.Username, "fail", body.Username, "", "用户不存在或密码错误")
 		Fail(w, "用户名或密码错误")
 		return
@@ -187,6 +191,10 @@ func (h *AuthHandler) LoginWith2FA(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := BindJSON(r, &body); err != nil || body.UID == 0 || body.Code == "" {
 		Fail(w, "参数错误")
+		return
+	}
+	if !h.checkRate(auth.ClientIP(r)) {
+		Fail(w, "尝试过于频繁，请 60 秒后再试")
 		return
 	}
 
@@ -314,6 +322,10 @@ func (h *AuthHandler) TwoFAEnable(w http.ResponseWriter, r *http.Request) {
 		Err(w, http.StatusForbidden, 1, "仅 admin 角色可修改 2FA 设置")
 		return
 	}
+	if !auth.VerifyCSRF(r) {
+		Err(w, http.StatusForbidden, 1, "CSRF 令牌无效或已过期，请刷新页面后重试")
+		return
+	}
 	var body struct {
 		Secret string `json:"secret"`
 		Code   string `json:"code"`
@@ -339,6 +351,10 @@ func (h *AuthHandler) TwoFADisable(w http.ResponseWriter, r *http.Request) {
 	}
 	if sess.Role != "admin" {
 		Err(w, http.StatusForbidden, 1, "仅 admin 角色可修改 2FA 设置")
+		return
+	}
+	if !auth.VerifyCSRF(r) {
+		Err(w, http.StatusForbidden, 1, "CSRF 令牌无效或已过期，请刷新页面后重试")
 		return
 	}
 	var body struct {
@@ -497,7 +513,17 @@ func (h *AuthHandler) ListTrustedDevices(w http.ResponseWriter, r *http.Request)
 	}
 	db.DB.Exec("DELETE FROM trusted_devices WHERE user_id=? AND expires_at < ?", sess.UID, db.NowStr())
 
-	rows, _ := db.DB.Query("SELECT id, device_name, ip_snippet, last_used_at, expires_at FROM trusted_devices WHERE user_id=? ORDER BY last_used_at DESC, created_at DESC", sess.UID)
+	currentHash := ""
+	if cookie, err := r.Cookie(trustedDeviceCookie); err == nil && cookie.Value != "" {
+		hash := sha256.Sum256([]byte(cookie.Value))
+		currentHash = hex.EncodeToString(hash[:])
+	}
+
+	rows, err := db.DB.Query("SELECT id, device_name, ip_snippet, last_used_at, expires_at, token_hash FROM trusted_devices WHERE user_id=? ORDER BY last_used_at DESC, created_at DESC", sess.UID)
+	if err != nil {
+		Err(w, http.StatusInternalServerError, 1, "读取受信任设备失败")
+		return
+	}
 	var list []struct {
 		ID        int    `json:"id"`
 		DeviceName string `json:"device_name"`
@@ -516,28 +542,16 @@ func (h *AuthHandler) ListTrustedDevices(w http.ResponseWriter, r *http.Request)
 			IsCurrent  bool   `json:"is_current"`
 		}
 		var lu sql.NullString
-		rows.Scan(&d.ID, &d.DeviceName, &d.IPSnippet, &lu, &d.ExpiresAt)
+		var tokenHash string
+		rows.Scan(&d.ID, &d.DeviceName, &d.IPSnippet, &lu, &d.ExpiresAt, &tokenHash)
 		if lu.Valid {
 			d.LastUsedAt = lu.String
 		}
+		d.IsCurrent = currentHash != "" && tokenHash == currentHash
 		list = append(list, d)
 	}
 	rows.Close()
 
-	currentHash := ""
-	if cookie, err := r.Cookie(trustedDeviceCookie); err == nil && cookie.Value != "" {
-		hash := sha256.Sum256([]byte(cookie.Value))
-		currentHash = hex.EncodeToString(hash[:])
-	}
-	if currentHash != "" {
-		for i := range list {
-			var dbHash string
-			db.DB.QueryRow("SELECT token_hash FROM trusted_devices WHERE id=?", list[i].ID).Scan(&dbHash)
-			if dbHash == currentHash {
-				list[i].IsCurrent = true
-			}
-		}
-	}
 	if list == nil {
 		list = []struct {
 			ID        int    `json:"id"`
@@ -555,6 +569,10 @@ func (h *AuthHandler) DeleteTrustedDevice(w http.ResponseWriter, r *http.Request
 	sess := auth.GetSessionFromRequest(r)
 	if sess == nil {
 		Err(w, http.StatusUnauthorized, 1, "未登录")
+		return
+	}
+	if !auth.VerifyCSRF(r) {
+		Err(w, http.StatusForbidden, 1, "CSRF 令牌无效或已过期，请刷新页面后重试")
 		return
 	}
 	var body struct {
@@ -590,6 +608,10 @@ func (h *AuthHandler) RevokeAllTrustedDevices(w http.ResponseWriter, r *http.Req
 	sess := auth.GetSessionFromRequest(r)
 	if sess == nil {
 		Err(w, http.StatusUnauthorized, 1, "未登录")
+		return
+	}
+	if !auth.VerifyCSRF(r) {
+		Err(w, http.StatusForbidden, 1, "CSRF 令牌无效或已过期，请刷新页面后重试")
 		return
 	}
 	db.DB.Exec("DELETE FROM trusted_devices WHERE user_id=?", sess.UID)

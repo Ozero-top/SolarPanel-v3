@@ -26,6 +26,11 @@ const DRY_RUN = process.argv.includes('--dry-run');
 const DISPLAY_NAMES = {
   'soft': 'Soft 柔和浮雕（默认）',
   'blueprint': 'Blueprint 工程蓝图（深蓝底 · 白线网格 · 等宽字 · 橙色标注）',
+  'clarity': 'Clarity 清透极简（雾白细线 · 大留白 · 静谧蓝）',
+  'soft-utility': 'Soft Utility 柔和工具（深青主色 · 薄荷状态 · 清晰边界）',
+  'aurora': 'Aurora 动态极光（柔光渐变 · 缓慢流动 · 光环描边）',
+  'iris': 'IRIS 光圈（深空 HUD · 氙蓝酸绿 · 漂移网格）',
+  'sketch-style': '铅笔手绘风（纸张纹理 · 虚线铅笔框 · 涂黑反白）',
 };
 
 function displayName(name) {

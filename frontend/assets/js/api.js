@@ -1,10 +1,16 @@
-/**
+﻿/**
  * 前端公共：API 请求封装 + 工具函数
  */
 
 /* ================= 应用版本与更新日志（每次更新只需改这里） ================= */
-const APP_VERSION = 'v3.1.0';
+const APP_VERSION = 'v3.1.1';
 const APP_CHANGELOG = [
+  { ver: 'v3.1.1', date: '2026-10-24', items: [
+    '🔐 安全性加固：完善接口权限、上传与备份校验、访问控制',
+    '🐛 修复分组、卡片、设置与备份相关的若干异常行为',
+    '⚡ 优化列表查询与首页渲染性能，清理冗余代码',
+    '🎨 主题与样式细节更新',
+  ]},
   { ver: 'v3.1.0', date: '2026-10-23', items: [
     '🗂️ 首次启动改为空库启动：不再注入预置分组与卡片，只写入默认设置与管理员账号',
     '🔢 默认端口 10080 → 10086，规避 Chromium 受限端口导致的 ERR_UNSAFE_PORT',
@@ -263,7 +269,7 @@ function buildBgCss(color, alphaPercent) {
 }
 
 /** 可选风格主题（与 themes.css 的 html[data-style] 对应） */
-const SP_STYLES = ['soft', 'blueprint'];
+const SP_STYLES = ['soft', 'aurora', 'blueprint', 'clarity', 'iris', 'sketch-style', 'soft-utility'];
 
 /** 应用深浅模式（light/dark/system），system 实时跟随系统深浅 */
 function setThemeMode(mode) {
@@ -271,6 +277,90 @@ function setThemeMode(mode) {
   root.dataset.mode = mode === 'system' ? 'system' : mode;
   const dark = window.matchMedia('(prefers-color-scheme: dark)');
   root.dataset.theme = mode === 'system' ? (dark.matches ? 'dark' : 'light') : mode;
+}
+
+/**
+ * IRIS 风格：鼠标跟随晕光。把指针位置平滑写入 --sp-mx / --sp-my，
+ * 由 themes.css 的 .style-fx 径向渐变消费；仅在 iris + 精细指针 + 未减弱动效时启用。
+ */
+function spIrisField() {
+  const root = document.documentElement;
+  if (root.dataset.style !== 'iris' || window.__spIrisField) return;
+  if (!window.matchMedia || !window.matchMedia('(pointer: fine)').matches) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  window.__spIrisField = true;
+
+  let targetX = 72, targetY = 22, curX = 72, curY = 22, trailX = 72, trailY = 22, raf = 0;
+  const loop = () => {
+    curX += (targetX - curX) * 0.07;
+    curY += (targetY - curY) * 0.07;
+    // 第二层拖尾光晕：更慢的跟随，形成流动的视差层次，避免单点"手电筒"感
+    trailX += (curX - trailX) * 0.035;
+    trailY += (curY - trailY) * 0.035;
+    root.style.setProperty('--sp-mx', curX.toFixed(2) + '%');
+    root.style.setProperty('--sp-my', curY.toFixed(2) + '%');
+    root.style.setProperty('--sp-mx2', trailX.toFixed(2) + '%');
+    root.style.setProperty('--sp-my2', trailY.toFixed(2) + '%');
+    // 收敛后停止 rAF，避免空闲时持续耗电
+    if (Math.abs(targetX - curX) < 0.05 && Math.abs(targetY - curY) < 0.05 &&
+        Math.abs(curX - trailX) < 0.05 && Math.abs(curY - trailY) < 0.05) { raf = 0; return; }
+    raf = requestAnimationFrame(loop);
+  };
+  window.addEventListener('pointermove', (e) => {
+    targetX = (e.clientX / window.innerWidth) * 100;
+    targetY = (e.clientY / window.innerHeight) * 100;
+    if (!raf) raf = requestAnimationFrame(loop);
+  }, { passive: true });
+}
+
+/** 指针跟随型主题（卡片内聚光）：把指针在卡片内的相对位置写入 --px / --py */
+function spCardPointerGlow() {
+  const style = document.documentElement.dataset.style;
+  if ((style !== 'iris' && style !== 'aurora') || window.__spCardPointerGlow) return;
+  if (!window.matchMedia || !window.matchMedia('(pointer: fine)').matches) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  window.__spCardPointerGlow = true;
+
+  document.addEventListener('pointermove', (e) => {
+    const card = e.target && e.target.closest ? e.target.closest('.card') : null;
+    if (!card) return;
+    const r = card.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    card.style.setProperty('--px', (((e.clientX - r.left) / r.width) * 100).toFixed(1) + '%');
+    card.style.setProperty('--py', (((e.clientY - r.top) / r.height) * 100).toFixed(1) + '%');
+  }, { passive: true });
+}
+
+/**
+ * 图片图标色调识别：读取图片平均亮度，在容器上标记 data-icon-tone="dark|light|mid"。
+ * 供深色模式给黑色/深色 logo 自动加浅色底板（跨域图片无法读像素时静默跳过，由 CSS 光晕兜底）。
+ */
+
+function spDetectIconTone(img, box) {
+  if (!img || !box || box.dataset.iconTone) return;
+  const run = () => {
+    if (box.dataset.iconTone || !img.naturalWidth) return;
+    try {
+      const size = 24;
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = size;
+      const ctx = cv.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, size, size);
+      const data = ctx.getImageData(0, 0, size, size).data;
+      let sum = 0;
+      let count = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] < 24) continue; // 跳过透明像素
+        sum += 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+        count++;
+      }
+      if (!count) return;
+      const lum = sum / count / 255;
+      box.dataset.iconTone = lum < 0.38 ? 'dark' : (lum > 0.86 ? 'light' : 'mid');
+    } catch (e) { /* 跨域图片 canvas 被污染，忽略 */ }
+  };
+  if (img.complete && img.naturalWidth) run();
+  else img.addEventListener('load', run, { once: true });
 }
 
 /** 主题：localStorage 手动锁定 > 后端默认设置；风格主题由 theme_style 决定；返回当前模式 */
@@ -285,6 +375,8 @@ function applyTheme(settings) {
     ? saved
     : (settings && ['light', 'dark', 'system'].includes(settings.default_theme) ? settings.default_theme : 'dark');
   setThemeMode(mode);
+  spIrisField();
+  spCardPointerGlow();
 
   // 跟随系统：系统深浅变化时实时切换（仅绑定一次）
   if (!window.__spSysThemeHook) {

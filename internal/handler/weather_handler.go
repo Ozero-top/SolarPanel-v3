@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"solarpanel/internal/config"
@@ -21,10 +22,20 @@ import (
 
 type WeatherHandler struct {
 	cfg *config.Config
+
+	flightMu sync.Mutex
+	flights  map[string]*weatherFlight
+}
+
+// weatherFlight 同一缓存键的并发请求合并为一次上游拉取，避免刷新风暴触发限流与偶发失败
+type weatherFlight struct {
+	done chan struct{}
+	data map[string]any
+	msg  string
 }
 
 func NewWeatherHandler(cfg *config.Config) *WeatherHandler {
-	return &WeatherHandler{cfg: cfg}
+	return &WeatherHandler{cfg: cfg, flights: map[string]*weatherFlight{}}
 }
 
 var wmoCodeMap = map[int][2]string{
@@ -93,13 +104,14 @@ func (h *WeatherHandler) cacheKey(prefix, key string) string {
 	hash := md5.Sum([]byte(prefix + ":" + key))
 	return filepath.Join(h.cacheDir(), hex.EncodeToString(hash[:])+".json")
 }
-func (h *WeatherHandler) readCache(prefix, key string) (map[string]any, bool) {
+// readCache 读取磁盘缓存；ttl<=0 表示不校验过期（用于上游故障时回退陈旧数据）
+func (h *WeatherHandler) readCache(prefix, key string, ttl time.Duration, requireKey string) (map[string]any, bool) {
 	p := h.cacheKey(prefix, key)
 	info, err := os.Stat(p)
 	if err != nil {
 		return nil, false
 	}
-	if time.Since(info.ModTime()) > 30*time.Minute {
+	if ttl > 0 && time.Since(info.ModTime()) > ttl {
 		return nil, false
 	}
 	data, err := os.ReadFile(p)
@@ -110,18 +122,41 @@ func (h *WeatherHandler) readCache(prefix, key string) (map[string]any, bool) {
 	if err := json.Unmarshal(data, &cached); err != nil {
 		return nil, false
 	}
-	if _, ok := cached["temp"]; !ok {
-		return nil, false
+	if requireKey != "" {
+		if _, ok := cached[requireKey]; !ok {
+			return nil, false
+		}
 	}
 	cached["cached"] = true
 	return cached, true
 }
+
 func (h *WeatherHandler) writeCache(prefix, key string, data map[string]any) {
 	cd := h.cacheDir()
-	os.MkdirAll(cd, 0755)
+	if err := os.MkdirAll(cd, 0755); err != nil {
+		return
+	}
+	b, err := json.Marshal(data)
+	if err != nil {
+		return
+	}
 	p := h.cacheKey(prefix, key)
-	b, _ := json.Marshal(data)
-	os.WriteFile(p, b, 0644)
+	// 先写临时文件再 rename：避免并发读到半截 JSON 被判为缓存失效，造成天气偶发不显示
+	tmp, err := os.CreateTemp(cd, "tmp-*.json")
+	if err != nil {
+		return
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return
+	}
+	tmp.Close()
+	if err := os.Rename(tmpName, p); err != nil {
+		os.Remove(tmpName)
+		return
+	}
 	h.trimCache(cd, 300)
 }
 func (h *WeatherHandler) trimCache(dir string, max int) {
@@ -170,7 +205,7 @@ func (h *WeatherHandler) httpFetch(u string, timeout time.Duration) ([]byte, err
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	return io.ReadAll(resp.Body)
+	return io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 }
 
 func isPublicIP(ipStr string) bool {
@@ -178,13 +213,8 @@ func isPublicIP(ipStr string) bool {
 	if ip == nil {
 		return false
 	}
-	for _, cidr := range []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "169.254.0.0/16", "0.0.0.0/8"} {
-		_, n, _ := net.ParseCIDR(cidr)
-		if n.Contains(ip) {
-			return false
-		}
-	}
-	return true
+	// 复用 items_handler.go 中预解析的内网网段，避免每次调用都 ParseCIDR
+	return !isPrivateIP(ip)
 }
 
 func (h *WeatherHandler) clientIP(r *http.Request) string {
@@ -368,78 +398,150 @@ func (h *WeatherHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
 	h.Get(w, r)
 }
 
+// resolveLocation 定位结果单独缓存（6 小时），减少上游定位服务抖动导致的整块天气失败
+func (h *WeatherHandler) resolveLocation(city, ip string) *geoResult {
+	key := "server"
+	switch {
+	case city != "":
+		key = "city:" + city
+	case isPublicIP(ip):
+		key = "ip:" + ip
+	}
+
+	fromCache := func(c map[string]any) *geoResult {
+		lat, _ := c["lat"].(float64)
+		lon, _ := c["lon"].(float64)
+		name, _ := c["city"].(string)
+		return &geoResult{Lat: lat, Lon: lon, City: name}
+	}
+
+	if c, ok := h.readCache("geo2", key, 6*time.Hour, "lat"); ok {
+		return fromCache(c)
+	}
+
+	var loc *geoResult
+	if city != "" {
+		loc = h.locateByCity(city)
+	} else {
+		if isPublicIP(ip) {
+			loc = h.locateByIP(ip)
+		}
+		if loc == nil {
+			loc = h.locateByServerIP()
+		}
+	}
+	if loc == nil {
+		// 上游定位失败时回退陈旧定位缓存，天气数据仍可刷新
+		if c, ok := h.readCache("geo2", key, 0, "lat"); ok {
+			return fromCache(c)
+		}
+		return nil
+	}
+	h.writeCache("geo2", key, map[string]any{"lat": loc.Lat, "lon": loc.Lon, "city": loc.City})
+	return loc
+}
+
+// runFlight 同一 key 的并发请求只执行一次 fn，其余请求等待并复用结果
+func (h *WeatherHandler) runFlight(key string, fn func() (map[string]any, string)) (map[string]any, string) {
+	h.flightMu.Lock()
+	if f, ok := h.flights[key]; ok {
+		h.flightMu.Unlock()
+		<-f.done
+		return f.data, f.msg
+	}
+	f := &weatherFlight{done: make(chan struct{})}
+	h.flights[key] = f
+	h.flightMu.Unlock()
+
+	f.data, f.msg = fn()
+	close(f.done)
+
+	h.flightMu.Lock()
+	delete(h.flights, key)
+	h.flightMu.Unlock()
+	return f.data, f.msg
+}
+
 func (h *WeatherHandler) Get(w http.ResponseWriter, r *http.Request) {
 	city := strings.TrimSpace(r.URL.Query().Get("city"))
 	ip := h.clientIP(r)
 
 	var cachePrefix, cacheKeyStr string
 	if city != "" {
-		cachePrefix = "city2"
+		cachePrefix = "city3"
 		cacheKeyStr = city
 	} else {
-		cachePrefix = "ip"
+		cachePrefix = "ip3"
+		// 私网 / 无法识别的 IP（Docker 反代直连）统一按服务器定位缓存，
+		// 避免所有访客共用同一个空 key 互相覆盖、也避免反复触发上游定位
 		cacheKeyStr = ip
+		if !isPublicIP(ip) {
+			cacheKeyStr = "server"
+		}
 	}
 
-	if cached, ok := h.readCache(cachePrefix, cacheKeyStr); ok {
+	if cached, ok := h.readCache(cachePrefix, cacheKeyStr, 30*time.Minute, "temp"); ok {
 		OK(w, cached)
 		return
 	}
 
-	var loc *geoResult
-	if city != "" {
-		loc = h.locateByCity(city)
-		if loc == nil {
-			Fail(w, fmt.Sprintf("城市「%s」定位失败：名称可能有误，或定位服务暂不可达", city))
-			return
+	data, msg := h.runFlight(cachePrefix+":"+cacheKeyStr, func() (map[string]any, string) {
+		if cached, ok := h.readCache(cachePrefix, cacheKeyStr, 30*time.Minute, "temp"); ok {
+			return cached, ""
 		}
-	} else {
-		if ip != "" && isPublicIP(ip) {
-			loc = h.locateByIP(ip)
-		}
-		if loc == nil {
-			loc = h.locateByServerIP()
-		}
-		if loc == nil {
-			Fail(w, "定位失败：无法确定地区，可在后台手动指定城市")
-			return
-		}
-	}
 
-	var wr *weatherResult
-	wr = h.providerOpenMeteo(loc.Lat, loc.Lon)
-	if wr == nil {
-		var wttrQuery string
-		if city != "" {
-			wttrQuery = city
-		} else {
-			wttrQuery = fmt.Sprintf("%.4f,%.4f", loc.Lat, loc.Lon)
+		loc := h.resolveLocation(city, ip)
+		if loc == nil {
+			if city != "" {
+				return nil, fmt.Sprintf("城市「%s」定位失败：名称可能有误，或定位服务暂不可达", city)
+			}
+			return nil, "定位失败：无法确定地区，可在后台手动指定城市"
 		}
-		wr = h.providerWttr(wttrQuery)
-		if wr != nil && loc.City != "" {
-			wr.City = loc.City
+
+		wr := h.providerOpenMeteo(loc.Lat, loc.Lon)
+		if wr == nil {
+			var wttrQuery string
+			if city != "" {
+				wttrQuery = city
+			} else {
+				wttrQuery = fmt.Sprintf("%.4f,%.4f", loc.Lat, loc.Lon)
+			}
+			wr = h.providerWttr(wttrQuery)
+			if wr != nil && loc.City != "" {
+				wr.City = loc.City
+			}
 		}
-	}
-	if wr == nil {
-		Fail(w, "天气数据获取失败（天气服务暂不可用或服务器网络受限），请稍后重试")
+		if wr == nil {
+			return nil, "天气数据获取失败（天气服务暂不可用或服务器网络受限），请稍后重试"
+		}
+
+		cityName := wr.City
+		if cityName == "" {
+			if loc.City != "" {
+				cityName = loc.City
+			} else if city != "" {
+				cityName = city
+			} else {
+				cityName = "未知地区"
+			}
+		}
+
+		d := map[string]any{
+			"city": cityName, "temp": wr.Temp, "desc": wr.Desc, "emoji": wr.Emoji,
+			"humidity": wr.Humidity, "wind": wr.Wind, "cached": false,
+		}
+		h.writeCache(cachePrefix, cacheKeyStr, d)
+		return d, ""
+	})
+	if data != nil {
+		OK(w, data)
 		return
 	}
 
-	cityName := wr.City
-	if cityName == "" {
-		if loc.City != "" {
-			cityName = loc.City
-		} else if city != "" {
-			cityName = city
-		} else {
-			cityName = "未知地区"
-		}
+	// 上游整体不可用时回退过期缓存：宁可展示旧天气，也不让天气模块整块消失
+	if stale, ok := h.readCache(cachePrefix, cacheKeyStr, 0, "temp"); ok {
+		OK(w, stale)
+		return
 	}
-
-	data := map[string]any{
-		"city": cityName, "temp": wr.Temp, "desc": wr.Desc, "emoji": wr.Emoji,
-		"humidity": wr.Humidity, "wind": wr.Wind, "cached": false,
-	}
-	h.writeCache(cachePrefix, cacheKeyStr, data)
-	OK(w, data)
+	Fail(w, msg)
 }
