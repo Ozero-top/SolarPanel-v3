@@ -2,7 +2,7 @@
 <img src="https://updates.ozero.top/SolarPanel.ico" width="64" height="64"> 
 </div>
 
-# SolarPanel v3
+<h1 align=center>SolarPanel - 轻量自托管导航面板</h1>
 
 [![Version](https://img.shields.io/badge/Version-v3.1.2-5B8DEF?logo=semanticrelease)](#)
 [![Go](https://img.shields.io/badge/Go-1.23-00ADD8?logo=go)](https://go.dev)
