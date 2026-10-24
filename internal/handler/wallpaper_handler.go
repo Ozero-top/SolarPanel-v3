@@ -595,13 +595,27 @@ func (h *WallpaperHandler) downloadImage(client *http.Client, rawURL string) ([]
 	if err != nil {
 		return nil, fmt.Errorf("invalid url")
 	}
+	// SSRF 防御：严格校验 scheme 和 host 白名单
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return nil, fmt.Errorf("unsupported scheme: %s", u.Scheme)
 	}
-	if !isAllowedPinHost(u.Hostname()) {
-		return nil, fmt.Errorf("host not allowed: %s", u.Hostname())
+	host := strings.ToLower(u.Hostname())
+	if !(host == "bing.com" || strings.HasSuffix(host, ".bing.com") ||
+		host == "picsum.photos" || strings.HasSuffix(host, ".picsum.photos")) {
+		return nil, fmt.Errorf("host not allowed: %s", host)
 	}
-	resp, err := client.Get(u.String())
+	// 用 host + path 重组 URL，确保只有白名单 host 被请求
+	safeURL := &url.URL{
+		Scheme:   u.Scheme,
+		Host:     u.Host,
+		Path:     u.Path,
+		RawQuery: u.RawQuery,
+	}
+	req, err := http.NewRequest("GET", safeURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
