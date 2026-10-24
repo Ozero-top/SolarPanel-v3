@@ -1,3 +1,7 @@
+<div align=center>
+<img src="https://updates.ozero.top/SolarPanel.ico" width="64" height="64"> 
+</div>
+
 # SolarPanel v3
 
 [![Version](https://img.shields.io/badge/Version-v3.1.2-5B8DEF?logo=semanticrelease)](#)
