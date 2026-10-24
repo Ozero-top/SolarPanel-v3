@@ -1151,13 +1151,22 @@
   color: var(--accent) !important;
   box-shadow: none;
 }
-/* 图片/favicon 图标：背景完全透明（含边框与投影），图标按原比例居中；
-   文字图标仍用主色块。用 :root body 提升特异度，压过各主题 .card .icon.has-img 的底板，
-   但低于深色模式 data-icon-tone 的浅色托底规则（保留深色 logo 可见性）。 */
-:root body .card .icon.has-img {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
+/* 图片/favicon 图标：所有主题一律透明底（含边框、投影与 hover 态）。
+   各主题给 .card .icon.has-img 设的白底/描边特异性更高（如 liquid-glass 的白色玻璃底、
+   corporate-clean 的纯白底），此处用 !important 兜底；只有在读出图标色调后
+   （data-icon-tone=dark/light）才允许出现可见性托底底板，故用 :not 排除。 */
+:root body .card .icon.has-img:not([data-icon-tone='dark']):not([data-icon-tone='light']) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+/* 色调与当前明暗模式不匹配时同样透明，只在真正需要托底时才露出底板：
+   深色模式 → 深色图标；浅色模式 → 近白图标 */
+:root[data-theme='light'] body .card .icon.has-img[data-icon-tone='dark'],
+:root[data-theme='dark'] body .card .icon.has-img[data-icon-tone='light'] {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 .card .icon.has-img img {
   object-fit: contain;

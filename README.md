@@ -4,7 +4,7 @@
 
 <h1 align=center>SolarPanel V3 - 轻量自托管导航面板</h1>
 
-[![Version](https://img.shields.io/badge/Version-v3.2.2-5B8DEF?logo=semanticrelease)](#)
+[![Version](https://img.shields.io/badge/Version-v3.2.3-5B8DEF?logo=semanticrelease)](#)
 [![Go](https://img.shields.io/badge/Go-1.23-00ADD8?logo=go)](https://go.dev)
 [![Architecture](https://img.shields.io/badge/Architecture-chi%2Bsqlite-50C878)](https://github.com/go-chi/chi)
 [![Multi-Arch](https://img.shields.io/badge/Arch-amd64__arm64__armv7-7A51F5)](https://hub.docker.com/r/ovitor/solarpanel-v3)
@@ -355,6 +355,10 @@ SolarPanel/
 ## 📋 更新日志
 
 完整变更明细见 [updates.md](./updates.md)。维护约定：每次升版同时更新 `updates.md` 与本节，并与 `frontend/assets/js/api.js` 的 `APP_VERSION` / `APP_CHANGELOG` 保持一致。
+
+### v3.2.3（2026-10-24）
+
+- **修复图标白色底板**：`liquid-glass` / `corporate-clean` 等主题的白底规则特异性高于透明底，导致部分透明 PNG 图标露出白色方块；现统一强制透明（含 hover 态）
 
 ### v3.2.2（2026-10-24）
 
