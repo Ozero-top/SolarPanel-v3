@@ -17,20 +17,6 @@
 - Docker Hub：<https://hub.docker.com/r/ovitor/solarpanel-v3>
 - DEMO：<https://demo.ozero.top>
 
-## ⬆️ 从 V2.1 系列升级到 V3
-
-V3 不自动迁移 V2.1 的数据库，请按「先导出、后导入」的顺序升级：
-
-1. 在 **V2.1 系列后台 → 系统备份 → 导出配置**，保存导出的备份文件
-2. 部署 V3（建议使用新的数据目录），首次启动为空库，使用 `admin` / `admin123` 登录
-3. 在 **V3 后台 → 系统备份 → 导入配置**，选择第 1 步的备份文件完成恢复
-
-注意事项：
-
-- 导入为**整体替换**：V3 现有的分组、卡片与设置会被备份内容覆盖
-- 备份中的上传文件（图标 / Logo / 壁纸）随备份一起导入，无需单独拷贝 `uploads`
-- 升级后立即修改默认管理员密码；旧版浏览器缓存建议强制刷新一次
-
 ## ✨ 特性
 
 - **零依赖单二进制** — Go + `modernc.org/sqlite`（纯 Go SQLite 实现），无 CGO、无外部数据库、无 PHP
@@ -139,6 +125,25 @@ docker compose up -d --build  # 重新构建
 启动后访问 <http://localhost:10086>。数据目录 `./data/` 自动创建，包含 `solarpanel.db` 与 `uploads/`。
 
 > 镜像内**未声明 `VOLUME`**，挂载到 `/app/data` 即持久化；不挂载则重建容器后数据随之丢失。
+
+#### ARM 设备 / OpenWrt 系（iStoreOS · ImmortalWrt）
+
+适用于 iStoreOS、ImmortalWrt 与带 Docker 的原生 OpenWrt（ARMv7 / ARM64），镜像会按设备架构自动匹配。先在「应用商店 / 软件包」中安装 Docker（iStoreOS 为「iStore 应用商店 → Docker」），再执行：
+
+```bash
+docker run -d --name solarpanel-v3 --restart unless-stopped \
+  -p 10086:10086 \
+  -v /volume1/docker/solarpanel/data:/app/data \
+  -v /:/host:ro \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e NAS_HOST_ROOT=/host -e DOCKER_SOCKET=/var/run/docker.sock \
+  ovitor/solarpanel-v3:latest
+```
+
+- 数据目录按设备实际存储位置填写，例如 `/mnt/sda1/docker/solarpanel/data` 或 `/overlay/docker/solarpanel/data`
+- 面板会自动识别 OpenWrt 系系统名与 `/overlay` 可用容量；不需要容器列表时可去掉 `docker.sock` 挂载与 `DOCKER_SOCKET`
+- 需要整机网速口径时追加 `--network host` 并去掉 `-p 10086:10086`，直接访问 `http://设备IP:10086`
+- 低配设备（内存 ≤ 512MB）建议把后台「刷新间隔」调到 5~10 秒，减少采集开销
 
 ### ⚠️ 关于端口 10086
 
@@ -395,6 +400,20 @@ SolarPanel/
 ## 📋 更新日志
 
 完整变更明细见 [updates.md](./updates.md)。维护约定：每次升版同时更新 `updates.md` 与本节，并与 `frontend/assets/js/api.js` 的 `APP_VERSION` / `APP_CHANGELOG` 保持一致。
+
+## ⬆️ 从 V2.1 系列升级到 V3
+
+V3 不自动迁移 V2.1 的数据库，请按「先导出、后导入」的顺序升级：
+
+1. 在 **V2.1 系列后台 → 系统备份 → 导出配置**，保存导出的备份文件
+2. 部署 V3（建议使用新的数据目录），首次启动为空库，使用 `admin` / `admin123` 登录
+3. 在 **V3 后台 → 系统备份 → 导入配置**，选择第 1 步的备份文件完成恢复
+
+注意事项：
+
+- 导入为**整体替换**：V3 现有的分组、卡片与设置会被备份内容覆盖
+- 备份中的上传文件（图标 / Logo / 壁纸）随备份一起导入，无需单独拷贝 `uploads`
+- 升级后立即修改默认管理员密码；旧版浏览器缓存建议强制刷新一次
 
 ### v3.3.0（2026-10-24）
 
