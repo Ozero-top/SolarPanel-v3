@@ -202,17 +202,28 @@ func RequireRoles(roles ...string) func(http.Handler) http.Handler {
 }
 
 // SetCookies 下发 session + csrf cookie
-func SetCookies(w http.ResponseWriter, sid, sessCSRF, sessionCookieName, csrfCookieName string) {
+// secure 参数控制 Secure 属性：HTTPS 部署时传 true
+func SetCookies(w http.ResponseWriter, sid, sessCSRF, sessionCookieName, csrfCookieName string, secure bool) {
 	http.SetCookie(w, &http.Cookie{
-		Name: sessionCookieName, Value: sid, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 86400,
+		Name: sessionCookieName, Value: sid, Path: "/",
+		HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 86400,
+		Secure: secure,
 	})
 	http.SetCookie(w, &http.Cookie{
-		Name: csrfCookieName, Value: sessCSRF, Path: "/", HttpOnly: false, SameSite: http.SameSiteLaxMode, MaxAge: 86400,
+		Name: csrfCookieName, Value: sessCSRF, Path: "/",
+		HttpOnly: false, SameSite: http.SameSiteLaxMode, MaxAge: 86400,
+		Secure: secure,
 	})
 }
 
 // ClearCookies 登出时清除
-func ClearCookies(w http.ResponseWriter, sessionCookieName, csrfCookieName string) {
-	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", MaxAge: -1})
-	http.SetCookie(w, &http.Cookie{Name: csrfCookieName, Value: "", Path: "/", MaxAge: -1})
+func ClearCookies(w http.ResponseWriter, sessionCookieName, csrfCookieName string, secure bool) {
+	http.SetCookie(w, &http.Cookie{
+		Name: sessionCookieName, Value: "", Path: "/",
+		HttpOnly: true, MaxAge: -1, Secure: secure,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name: csrfCookieName, Value: "", Path: "/",
+		HttpOnly: true, MaxAge: -1, Secure: secure,
+	})
 }

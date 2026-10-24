@@ -1402,11 +1402,21 @@ function bindUploads() {
 }
 
 /* ================= 站点设置 ================= */
+function isSafeAssetUrl(val) {
+  if (!val || typeof val !== 'string') return false;
+  // 拒绝 javascript/vbscript 等危险协议（大小写不敏感）
+  if (/^\s*(javascript|vbscript|livescript|data:text\/html)\s*:/i.test(val)) return false;
+  // 拒绝 HTML 标签和事件处理器注入
+  if (/<[^>]+>/i.test(val)) return false;
+  if (/on\w+\s*=/i.test(val)) return false;
+  return true;
+}
+
 function updateSettingPreview(id) {
   const img = document.getElementById('p_' + id.replace('s_', ''));
   if (!img) return;
   const val = document.getElementById(id).value.trim();
-  if (val) {
+  if (val && isSafeAssetUrl(val)) {
     img.src = assetUrl(val);
     img.classList.add('show');
     img.onerror = () => img.classList.remove('show');

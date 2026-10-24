@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"crypto/md5"
-	"crypto/tls"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
@@ -175,7 +174,6 @@ var safeHTTPTransport = &http.Transport{
 		KeepAlive: 30 * time.Second,
 		Control:   blockPrivateDial,
 	}).DialContext,
-	TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 }
 
 func newSafeHTTPClient(timeout time.Duration) *http.Client {
@@ -332,6 +330,13 @@ func fetchPageHTML(rawURL string) (string, *url.URL, error) {
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+	// Sink 前再次校验 URL，防止 request forgery
+	if req.URL == nil || (req.URL.Scheme != "http" && req.URL.Scheme != "https") {
+		return "", nil, fmt.Errorf("invalid request URL scheme")
+	}
+	if isPrivateHost(req.URL.Hostname()) {
+		return "", nil, fmt.Errorf("request to private host blocked")
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", nil, err

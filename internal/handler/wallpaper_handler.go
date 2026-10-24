@@ -79,8 +79,16 @@ func (h *WallpaperHandler) Daily(w http.ResponseWriter, r *http.Request) {
 	}
 
 	today := time.Now().Format("2006-01-02")
-	cacheFile := filepath.Join(cacheDir, fmt.Sprintf("%s_%s.json", source, today))
-	imageFile := filepath.Join(cacheDir, fmt.Sprintf("%s_%s.jpg", source, today))
+	cacheFile, err := safeJoin(cacheDir, source+"_"+today+".json")
+	if err != nil {
+		Err(w, http.StatusInternalServerError, 1, "路径错误")
+		return
+	}
+	imageFile, err := safeJoin(cacheDir, source+"_"+today+".jpg")
+	if err != nil {
+		Err(w, http.StatusInternalServerError, 1, "路径错误")
+		return
+	}
 
 	if meta, ok := h.readDailyCache(cacheDir, source, today); ok {
 		meta["cache"] = "hit"
@@ -313,7 +321,7 @@ func (h *WallpaperHandler) Pin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &http.Client{Timeout: 25 * time.Second}
-	bin, err := h.downloadImage(client, req.URL)
+	bin, err := h.downloadImage(client, req.URL, allowedPinHosts)
 	if err != nil {
 		Fail(w, "图片下载失败："+err.Error())
 		return
@@ -325,7 +333,12 @@ func (h *WallpaperHandler) Pin(w http.ResponseWriter, r *http.Request) {
 
 	cacheDir := filepath.Join(h.cfg.UploadDir, "daily_wallpaper")
 	os.MkdirAll(cacheDir, 0755)
-	if err := os.WriteFile(filepath.Join(cacheDir, "pinned_"+req.Source+".jpg"), bin, 0644); err != nil {
+	pinnedJPG, err := safeJoin(cacheDir, "pinned_"+req.Source+".jpg")
+	if err != nil {
+		Err(w, http.StatusInternalServerError, 1, "路径错误")
+		return
+	}
+	if err := os.WriteFile(pinnedJPG, bin, 0644); err != nil {
 		Err(w, http.StatusInternalServerError, 1, "保存壁纸失败")
 		return
 	}
@@ -335,7 +348,10 @@ func (h *WallpaperHandler) Pin(w http.ResponseWriter, r *http.Request) {
 		"pinned_at": time.Now().Format("2006-01-02 15:04:05"),
 	}
 	if b, err := json.Marshal(meta); err == nil {
-		os.WriteFile(filepath.Join(cacheDir, "pinned_"+req.Source+".json"), b, 0644)
+		pinnedJSON, _ := safeJoin(cacheDir, "pinned_"+req.Source+".json")
+		if pinnedJSON != "" {
+			os.WriteFile(pinnedJSON, b, 0644)
+		}
 	}
 	OK(w, map[string]any{
 		"source": req.Source,
@@ -360,20 +376,35 @@ func (h *WallpaperHandler) Unpin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cacheDir := filepath.Join(h.cfg.UploadDir, "daily_wallpaper")
-	os.Remove(filepath.Join(cacheDir, "pinned_"+req.Source+".jpg"))
-	os.Remove(filepath.Join(cacheDir, "pinned_"+req.Source+".json"))
+	pinnedJPG, _ := safeJoin(cacheDir, "pinned_"+req.Source+".jpg")
+	pinnedJSON, _ := safeJoin(cacheDir, "pinned_"+req.Source+".json")
+	if pinnedJPG != "" {
+		os.Remove(pinnedJPG)
+	}
+	if pinnedJSON != "" {
+		os.Remove(pinnedJSON)
+	}
 	OK(w, nil)
 }
 
 func (h *WallpaperHandler) readPinned(cacheDir, source string) (map[string]any, bool) {
-	jsonPath := filepath.Join(cacheDir, "pinned_"+source+".json")
-	imgPath := filepath.Join(cacheDir, "pinned_"+source+".jpg")
+	if !safePathComponent(source) {
+		return nil, false
+	}
+	jsonPath, err := safeJoin(cacheDir, "pinned_"+source+".json")
+	if err != nil {
+		return nil, false
+	}
+	imgPath, err := safeJoin(cacheDir, "pinned_"+source+".jpg")
+	if err != nil {
+		return nil, false
+	}
 	data, err := os.ReadFile(jsonPath)
 	if err != nil {
 		return nil, false
 	}
 	var meta map[string]any
-	if json.Unmarshal(data, &meta) != nil || !isUsableWallpaperFile(imgPath) {
+	if json.Unmarshal(data, &meta) != nil || !isUsableWallpaperFile(cacheDir, imgPath) {
 		return nil, false
 	}
 	meta["url"] = "/frontend/uploads/daily_wallpaper/pinned_" + source + ".jpg"
@@ -415,14 +446,23 @@ func (h *WallpaperHandler) fetchDailyWithRetry(client *http.Client, source, toda
 }
 
 func (h *WallpaperHandler) readDailyCache(cacheDir, source, today string) (map[string]any, bool) {
-	cacheFile := filepath.Join(cacheDir, fmt.Sprintf("%s_%s.json", source, today))
-	imageFile := filepath.Join(cacheDir, fmt.Sprintf("%s_%s.jpg", source, today))
+	if !safePathComponent(source) {
+		return nil, false
+	}
+	cacheFile, err := safeJoin(cacheDir, source+"_"+today+".json")
+	if err != nil {
+		return nil, false
+	}
+	imageFile, err := safeJoin(cacheDir, source+"_"+today+".jpg")
+	if err != nil {
+		return nil, false
+	}
 	data, err := os.ReadFile(cacheFile)
 	if err != nil {
 		return nil, false
 	}
 	var meta map[string]any
-	if json.Unmarshal(data, &meta) != nil || !isUsableWallpaperFile(imageFile) {
+	if json.Unmarshal(data, &meta) != nil || !isUsableWallpaperFile(cacheDir, imageFile) {
 		return nil, false
 	}
 	meta["url"] = h.buildImageURL(source, today)
@@ -431,11 +471,18 @@ func (h *WallpaperHandler) readDailyCache(cacheDir, source, today string) (map[s
 
 // readLatestCache 读取同一源最近一次可用缓存（昨天/前天的图）
 func (h *WallpaperHandler) readLatestCache(cacheDir, source string) (map[string]any, bool) {
+	if !safePathComponent(source) {
+		return nil, false
+	}
 	base := h.findLatestCache(cacheDir, source)
 	if base == "" {
 		return nil, false
 	}
-	data, err := os.ReadFile(base + ".json")
+	jsonPath := filepath.Clean(base + ".json")
+	if !strings.HasPrefix(jsonPath, filepath.Clean(cacheDir)) {
+		return nil, false
+	}
+	data, err := os.ReadFile(jsonPath)
 	if err != nil {
 		return nil, false
 	}
@@ -458,7 +505,11 @@ func (h *WallpaperHandler) readAnyLatestCache(cacheDir string) (map[string]any, 
 	if base == "" {
 		return nil, false
 	}
-	data, err := os.ReadFile(base + ".json")
+	jsonPath := filepath.Clean(base + ".json")
+	if !strings.HasPrefix(jsonPath, filepath.Clean(cacheDir)) {
+		return nil, false
+	}
+	data, err := os.ReadFile(jsonPath)
 	if err != nil {
 		return nil, false
 	}
@@ -496,7 +547,7 @@ func (h *WallpaperHandler) fetchBing(client *http.Client, mkt, source string) (m
 		return nil, fmt.Errorf("Bing 无图片")
 	}
 	src := "https://cn.bing.com" + img.URLBase + "_1920x1080.jpg"
-	bin, err := h.downloadImage(client, src)
+	bin, err := h.downloadImage(client, src, nil)
 	if err != nil {
 		return nil, fmt.Errorf("Bing 图片下载失败: %w", err)
 	}
@@ -505,15 +556,44 @@ func (h *WallpaperHandler) fetchBing(client *http.Client, mkt, source string) (m
 
 func (h *WallpaperHandler) fetchPicsum(client *http.Client, date string) (map[string]any, error) {
 	src := fmt.Sprintf("https://picsum.photos/seed/sp-%s/1920/1080", date)
-	bin, err := h.downloadImage(client, src)
+	bin, err := h.downloadImage(client, src, nil)
 	if err != nil {
 		return nil, fmt.Errorf("Picsum 图片下载失败: %w", err)
 	}
 	return map[string]any{"title": fmt.Sprintf("Lorem Picsum · %s", date), "copyright": "loremflickr.com / picsum.photos", "_image": bin}, nil
 }
 
-func (h *WallpaperHandler) downloadImage(client *http.Client, url string) ([]byte, error) {
-	resp, err := client.Get(url)
+var allowedPinHosts = map[string]bool{
+	"bing.com":       true,
+	"picsum.photos":  true,
+}
+
+// isAllowedPinHost 检查 host 是否在允许的壁纸源列表中
+func isAllowedPinHost(host string) bool {
+	host = strings.ToLower(host)
+	if allowedPinHosts[host] {
+		return true
+	}
+	for allowed := range allowedPinHosts {
+		if strings.HasSuffix(host, "."+allowed) {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *WallpaperHandler) downloadImage(client *http.Client, rawURL string, hostAllowlist map[string]bool) ([]byte, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid url")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("unsupported scheme: %s", u.Scheme)
+	}
+	if hostAllowlist != nil && !isAllowedPinHost(u.Hostname()) {
+		return nil, fmt.Errorf("host not allowed: %s", u.Hostname())
+	}
+	resp, err := client.Get(u.String())
 	if err != nil {
 		return nil, err
 	}
@@ -533,14 +613,17 @@ func (h *WallpaperHandler) downloadImage(client *http.Client, url string) ([]byt
 }
 
 func (h *WallpaperHandler) findLatestCache(cacheDir, source string) string {
-	entries, _ := filepath.Glob(filepath.Join(cacheDir, fmt.Sprintf("%s_*.json", source)))
+	if !safePathComponent(source) {
+		return ""
+	}
+	entries, _ := filepath.Glob(filepath.Join(cacheDir, source+"_*.json"))
 	if len(entries) == 0 {
 		return ""
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(entries)))
 	for _, e := range entries {
 		imgPath := e[:len(e)-5] + ".jpg"
-		if isUsableWallpaperFile(imgPath) {
+		if isUsableWallpaperFile(cacheDir, imgPath) {
 			return e[:len(e)-5]
 		}
 	}
@@ -555,7 +638,7 @@ func (h *WallpaperHandler) findAnyLatestCache(cacheDir string) string {
 	sort.Sort(sort.Reverse(sort.StringSlice(entries)))
 	for _, e := range entries {
 		imgPath := e[:len(e)-5] + ".jpg"
-		if isUsableWallpaperFile(imgPath) {
+		if isUsableWallpaperFile(cacheDir, imgPath) {
 			return e[:len(e)-5]
 		}
 	}
@@ -574,12 +657,18 @@ func isUsableWallpaper(bin []byte) bool {
 	return cfg.Width >= 1280 && cfg.Height >= 720 && cfg.Width > cfg.Height
 }
 
-func isUsableWallpaperFile(path string) bool {
-	st, err := os.Stat(path)
+// isUsableWallpaperFile 过滤占位图/图标/竖图：体积、分辨率、横竖比三重校验
+// baseDir 用于确保 path 不逃逸预期目录（防御 path traversal）
+func isUsableWallpaperFile(baseDir, path string) bool {
+	cleaned := filepath.Clean(path)
+	if !strings.HasPrefix(cleaned, filepath.Clean(baseDir)) {
+		return false
+	}
+	st, err := os.Stat(cleaned)
 	if err != nil || st.Size() < 60<<10 {
 		return false
 	}
-	f, err := os.Open(path)
+	f, err := os.Open(cleaned)
 	if err != nil {
 		return false
 	}
@@ -610,13 +699,55 @@ func (h *WallpaperHandler) buildImageURL(source, date string) string {
 	return fmt.Sprintf("/frontend/uploads/daily_wallpaper/%s_%s.jpg", source, date)
 }
 
+// normalizeWallpaperSource 强制壁纸源为安全白名单值
 func normalizeWallpaperSource(raw string) string {
 	switch raw {
 	case "", "bing", "bing_en", "bing_jp":
 		return "bing_cn"
-	case "bing_cn", "picsum":
-		return raw
+	case "bing_cn":
+		return "bing_cn"
+	case "picsum":
+		return "picsum"
 	default:
 		return "bing_cn"
 	}
+}
+
+// safePathComponent 校验单个路径组件不含分隔符、.. 或空值
+// 仅适合作为安全文件名/子目录名的 allowlist 校验
+func safePathComponent(name string) bool {
+	if name == "" || name == "." || name == ".." {
+		return false
+	}
+	if strings.ContainsAny(name, `/\`) {
+		return false
+	}
+	if strings.Contains(name, "..") {
+		return false
+	}
+	return true
+}
+
+// safeJoin 在 baseDir 内拼接文件名，并验证结果未逃逸 baseDir
+func safeJoin(baseDir string, components ...string) (string, error) {
+	for _, c := range components {
+		if !safePathComponent(c) {
+			return "", fmt.Errorf("unsafe path component: %s", c)
+		}
+	}
+	joined := filepath.Join(append([]string{baseDir}, components...)...)
+	cleaned := filepath.Clean(joined)
+	absBase, err := filepath.Abs(baseDir)
+	if err != nil {
+		return "", err
+	}
+	absJoined, err := filepath.Abs(cleaned)
+	if err != nil {
+		return "", err
+	}
+	absBase = strings.TrimRight(absBase, `\/`)
+	if !strings.HasPrefix(absJoined, absBase+string(filepath.Separator)) && absJoined != absBase {
+		return "", fmt.Errorf("path escapes base directory")
+	}
+	return cleaned, nil
 }

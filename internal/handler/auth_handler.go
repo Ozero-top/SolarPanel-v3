@@ -161,7 +161,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if u.TOTPSecret != "" && u.Role == "admin" && body.Code == "" {
 		if verifyTrustedDevice(uint(u.ID), r) {
 			sid, csrf := h.Store.CreateSession(uint(u.ID), u.Role)
-			auth.SetCookies(w, sid, csrf, sessionCookieName, csrfCookieName)
+			auth.SetCookies(w, sid, csrf, sessionCookieName, csrfCookieName, r.TLS != nil)
 			auth.AuditLog(w, r, "auth.login", u.Username, "success", u.Username, u.Role, "trusted_device_bypass")
 			OK(w, map[string]any{"id": u.ID, "username": u.Username, "name": u.Name, "role": u.Role})
 			return
@@ -178,7 +178,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sid, csrf := h.Store.CreateSession(uint(u.ID), u.Role)
-	auth.SetCookies(w, sid, csrf, sessionCookieName, csrfCookieName)
+	auth.SetCookies(w, sid, csrf, sessionCookieName, csrfCookieName, r.TLS != nil)
 	auth.AuditLog(w, r, "auth.login", u.Username, "success", u.Username, u.Role, "登录成功")
 	OK(w, map[string]any{"id": u.ID, "username": u.Username, "name": u.Name, "role": u.Role})
 }
@@ -216,7 +216,7 @@ func (h *AuthHandler) LoginWith2FA(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sid, csrf := h.Store.CreateSession(uint(u.ID), u.Role)
-	auth.SetCookies(w, sid, csrf, sessionCookieName, csrfCookieName)
+	auth.SetCookies(w, sid, csrf, sessionCookieName, csrfCookieName, r.TLS != nil)
 
 	if body.TrustDevice == 1 {
 		if err := saveTrustedDevice(uint(u.ID), r, w); err != nil {
@@ -262,7 +262,7 @@ func (h *AuthHandler) GuestLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sid, csrf := h.Store.CreateSession(0, "guest")
-	auth.SetCookies(w, sid, csrf, sessionCookieName, csrfCookieName)
+	auth.SetCookies(w, sid, csrf, sessionCookieName, csrfCookieName, r.TLS != nil)
 	auth.AuditLog(w, r, "guest.login", "访客", "success", "访客", "guest", "访客密码通过")
 	OK(w, map[string]any{"role": "guest", "msg": "访客密码通过"})
 }
@@ -274,7 +274,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if sid != "" {
 		h.Store.DestroySession(sid)
 	}
-	auth.ClearCookies(w, sessionCookieName, csrfCookieName)
+	auth.ClearCookies(w, sessionCookieName, csrfCookieName, r.TLS != nil)
 	OK(w, nil)
 }
 
@@ -387,7 +387,7 @@ func (h *AuthHandler) TwoFADisable(w http.ResponseWriter, r *http.Request) {
 	db.DB.Exec("UPDATE users SET totp_secret='' WHERE id=?", sess.UID)
 	auth.AuditLog(w, r, "2fa.disable", usernameByUID(sess.UID), "success", usernameByUID(sess.UID), sess.Role, "关闭两步验证")
 	db.DB.Exec("DELETE FROM trusted_devices WHERE user_id=?", sess.UID)
-	clearTrustedDeviceCookie(w)
+	clearTrustedDeviceCookie(w, r.TLS != nil)
 	OK(w, map[string]string{"msg": "2FA 已关闭"})
 }
 
@@ -399,8 +399,12 @@ func randomToken(n int) string {
 	return hex.EncodeToString(b)
 }
 
-func clearTrustedDeviceCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{Name: trustedDeviceCookie, Value: "", Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+func clearTrustedDeviceCookie(w http.ResponseWriter, secure bool) {
+	http.SetCookie(w, &http.Cookie{
+		Name: trustedDeviceCookie, Value: "", Path: "/",
+		HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1,
+		Secure: secure,
+	})
 }
 
 func verifyTrustedDevice(uid uint, r *http.Request) bool {
@@ -598,7 +602,7 @@ func (h *AuthHandler) DeleteTrustedDevice(w http.ResponseWriter, r *http.Request
 
 	db.DB.Exec("DELETE FROM trusted_devices WHERE id=? AND user_id=?", body.ID, sess.UID)
 	if currentHash != "" && currentHash == tokenHash {
-		clearTrustedDeviceCookie(w)
+		clearTrustedDeviceCookie(w, r.TLS != nil)
 	}
 	auth.AuditLog(w, r, "trusted_device.delete", usernameByUID(sess.UID), "success", usernameByUID(sess.UID), sess.Role, strconv.FormatUint(uint64(body.ID), 10))
 	OK(w, nil)
@@ -615,7 +619,7 @@ func (h *AuthHandler) RevokeAllTrustedDevices(w http.ResponseWriter, r *http.Req
 		return
 	}
 	db.DB.Exec("DELETE FROM trusted_devices WHERE user_id=?", sess.UID)
-	clearTrustedDeviceCookie(w)
+	clearTrustedDeviceCookie(w, r.TLS != nil)
 	auth.AuditLog(w, r, "trusted_device.revoke_all", usernameByUID(sess.UID), "success", usernameByUID(sess.UID), sess.Role, "")
 	OK(w, nil)
 }

@@ -136,7 +136,7 @@ func (h *GalleryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimPrefix(body.URL, prefix)
 	name = filepath.Base(strings.ReplaceAll(name, "\\", "/"))
-	if name == "" || name == "." || name == ".." || strings.Contains(name, "/") {
+	if !safePathComponent(name) {
 		Fail(w, "非法的壁纸地址")
 		return
 	}
@@ -145,10 +145,8 @@ func (h *GalleryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		Fail(w, "非法的壁纸地址")
 		return
 	}
-	target := filepath.Join(h.cfg.UploadDir, sub, name)
-	absTarget, _ := filepath.Abs(target)
-	absDir, _ := filepath.Abs(filepath.Join(h.cfg.UploadDir, sub))
-	if !strings.HasPrefix(absTarget, absDir) {
+	target, err := safeJoin(filepath.Join(h.cfg.UploadDir, sub), name)
+	if err != nil {
 		Fail(w, "非法路径")
 		return
 	}
