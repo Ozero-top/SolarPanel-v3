@@ -2,7 +2,7 @@
 <img src="https://updates.ozero.top/SolarPanel.ico" width="64" height="64"> 
 </div>
 
-<h1 align=center>SolarPanel V3 - 轻量自托管导航面板</h1>
+<h1 align=center>SolarPanel V3 - 轻量自托管导航页面板</h1>
 
 [![Version](https://img.shields.io/badge/Version-v3.3.0-5B8DEF?logo=semanticrelease)](#)
 [![Go](https://img.shields.io/badge/Go-1.23-00ADD8?logo=go)](https://go.dev)
@@ -16,12 +16,6 @@
 - GitHub：<https://github.com/Ozero-top/SolarPanel-v3>
 - Docker Hub：<https://hub.docker.com/r/ovitor/solarpanel-v3>
 - DEMO：<https://demo.ozero.top>
-
-注意事项：
-
-- 导入为**整体替换**：V3 现有的分组、卡片与设置会被备份内容覆盖
-- 备份中的上传文件（图标 / Logo / 壁纸）随备份一起导入，无需单独拷贝 `uploads`
-- 升级后立即修改默认管理员密码；旧版浏览器缓存建议强制刷新一次
 
 ## ✨ 特性
 
@@ -427,6 +421,11 @@ V3 不自动迁移 V2.1 的数据库，请按「先导出、后导入」的顺�
 2. 部署 V3（建议使用新的数据目录），首次启动为空库，使用 `admin` / `admin123` 登录
 3. 在 **V3 后台 → 系统备份 → 导入配置**，选择第 1 步的备份文件完成恢复
 
+注意事项：
+
+- 导入为**整体替换**：V3 现有的分组、卡片与设置会被备份内容覆盖
+- 备份中的上传文件（图标 / Logo / 壁纸）随备份一起导入，无需单独拷贝 `uploads`
+- 升级后立即修改默认管理员密码；旧版浏览器缓存建议强制刷新一次
 ### v3.3.0（2026-10-24）
 
 - **NAS 运行状态面板**：主机名 / 内网 IP / CPU / 内存 / 存储池 / 网络 / 温度 / 容器
