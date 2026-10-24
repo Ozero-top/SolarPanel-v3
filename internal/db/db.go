@@ -32,6 +32,95 @@ func buildDSN(path string) string {
 
 var DB *sql.DB
 
+// expectedColumns 各表必须具备的列（列名 → 列定义）。
+// 兼容旧版（V2.x / 早期版本）数据库：CREATE TABLE IF NOT EXISTS 对已存在的表不生效，
+// 旧表缺失的列不会被补上，查询就会报 "no such column: xxx"（例如 items.is_hidden）。
+// 启动时按 PRAGMA table_info 检测并 ALTER TABLE 补齐，既保留旧数据又能正常读写。
+var expectedColumns = map[string][]struct{ Name, Def string }{
+	"items": {
+		{"lan_url", "TEXT NOT NULL DEFAULT ''"},
+		{"description", "TEXT NOT NULL DEFAULT ''"},
+		{"icon_type", "TEXT NOT NULL DEFAULT 'image'"},
+		{"icon_value", "TEXT NOT NULL DEFAULT ''"},
+		{"icon_bg", "TEXT NOT NULL DEFAULT ''"},
+		{"open_method", "INTEGER NOT NULL DEFAULT 2"},
+		{"sort", "INTEGER NOT NULL DEFAULT 0"},
+		{"is_hidden", "INTEGER NOT NULL DEFAULT 0"},
+		{"user_id", "INTEGER NOT NULL DEFAULT 1"},
+		{"created_at", "TEXT NOT NULL DEFAULT ''"},
+	},
+	"item_groups": {
+		{"parent_id", "INTEGER NOT NULL DEFAULT 0"},
+		{"icon", "TEXT NOT NULL DEFAULT ''"},
+		{"description", "TEXT NOT NULL DEFAULT ''"},
+		{"sort", "INTEGER NOT NULL DEFAULT 0"},
+		{"is_visible", "INTEGER NOT NULL DEFAULT 1"},
+		{"user_id", "INTEGER NOT NULL DEFAULT 1"},
+		{"created_at", "TEXT NOT NULL DEFAULT ''"},
+	},
+	"users": {
+		{"name", "TEXT NOT NULL DEFAULT ''"},
+		{"status", "INTEGER NOT NULL DEFAULT 1"},
+		{"role", "TEXT NOT NULL DEFAULT 'admin'"},
+		{"totp_secret", "TEXT NOT NULL DEFAULT ''"},
+		{"created_at", "TEXT NOT NULL DEFAULT ''"},
+	},
+	"settings": {
+		{"config_value", "TEXT"},
+		{"updated_at", "TEXT NOT NULL DEFAULT ''"},
+	},
+	"audit_logs": {
+		{"target", "TEXT NOT NULL DEFAULT ''"},
+		{"result", "TEXT NOT NULL DEFAULT 'success'"},
+		{"actor", "TEXT NOT NULL DEFAULT ''"},
+		{"actor_role", "TEXT NOT NULL DEFAULT ''"},
+		{"ip", "TEXT NOT NULL DEFAULT ''"},
+		{"region", "TEXT NOT NULL DEFAULT ''"},
+		{"user_agent", "TEXT NOT NULL DEFAULT ''"},
+		{"detail", "TEXT NOT NULL DEFAULT ''"},
+		{"created_at", "TEXT NOT NULL DEFAULT ''"},
+	},
+	"custom_feeds": {
+		{"sort", "INTEGER NOT NULL DEFAULT 0"},
+		{"enabled", "INTEGER NOT NULL DEFAULT 1"},
+		{"created_at", "TEXT NOT NULL DEFAULT ''"},
+	},
+}
+
+// ensureColumns 为旧库补齐缺失列（幂等，表不存在时跳过）
+func ensureColumns() {
+	for table, cols := range expectedColumns {
+		existing := map[string]bool{}
+		rows, err := DB.Query("PRAGMA table_info(" + table + ")")
+		if err != nil {
+			log.Printf("[db] 读取表结构失败 %s: %v", table, err)
+			continue
+		}
+		for rows.Next() {
+			var cid, notnull, pk int
+			var name, ctype string
+			var dflt any
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err == nil {
+				existing[name] = true
+			}
+		}
+		rows.Close()
+		if len(existing) == 0 {
+			continue // 表尚未创建，由 DDL 负责
+		}
+		for _, c := range cols {
+			if existing[c.Name] {
+				continue
+			}
+			if _, err := DB.Exec("ALTER TABLE " + table + " ADD COLUMN " + c.Name + " " + c.Def); err != nil {
+				log.Printf("[db] 补列失败 %s.%s: %v", table, c.Name, err)
+			} else {
+				log.Printf("[db] 旧库补列 %s.%s ✅", table, c.Name)
+			}
+		}
+	}
+}
+
 // Init 初始化 SQLite + 建表 + 迁移 + 种子
 func Init(cfg *config.Config) error {
 	var err error
@@ -64,6 +153,9 @@ func Init(cfg *config.Config) error {
 			log.Printf("[db] DDL[%d] OK", i)
 		}
 	}
+
+	log.Println("[db] 校验并补齐旧库缺失的列...")
+	ensureColumns()
 
 	log.Println("[db] 执行迁移...")
 	// 运行有序迁移
