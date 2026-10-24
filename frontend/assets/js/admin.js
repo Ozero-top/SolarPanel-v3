@@ -1785,34 +1785,35 @@ function buildWpItem(w) {
   img.loading = 'lazy';
   div.appendChild(img);
   if (w.preset) {
-    // 内置壁纸：带角标，同样允许删除
+    // 内置壁纸：带角标，不可删除
     const tag = document.createElement('span');
     tag.className = 'wp-tag';
     tag.textContent = '内置';
     div.appendChild(tag);
-  }
-  const del = document.createElement('button');
-  del.className = 'wp-del';
-  del.type = 'button';
-  del.textContent = '×';
-  del.title = '从图库删除';
-  del.onclick = async e => {
-    e.stopPropagation();
-    if (!await uiConfirm('从图库删除壁纸「' + w.name + '」？文件将被移除，已引用它的设置需另行调整。', { danger: true })) return;
-    try {
-      await API.post(API_BASE + 'gallery.php?action=delete', { url: w.url });
-      if (document.getElementById('s_wallpaper').value.trim() === w.url) {
-        document.getElementById('s_wallpaper').value = '';
-        updateSettingPreview('s_wallpaper');
-        syncGalleryActive('');
+  } else {
+    const del = document.createElement('button');
+    del.className = 'wp-del';
+    del.type = 'button';
+    del.textContent = '×';
+    del.title = '从图库删除';
+    del.onclick = async e => {
+      e.stopPropagation();
+      if (!await uiConfirm('从图库删除壁纸「' + w.name + '」？文件将被移除，已引用它的设置需另行调整。', { danger: true })) return;
+      try {
+        await API.post(API_BASE + 'gallery.php?action=delete', { url: w.url });
+        if (document.getElementById('s_wallpaper').value.trim() === w.url) {
+          document.getElementById('s_wallpaper').value = '';
+          updateSettingPreview('s_wallpaper');
+          syncGalleryActive('');
+        }
+        toast('壁纸已删除', 'success');
+        loadWallpaperGallery();
+      } catch (err) {
+        toast(err.message, 'error');
       }
-      toast('壁纸已删除', 'success');
-      loadWallpaperGallery();
-    } catch (err) {
-      toast(err.message, 'error');
-    }
-  };
-  div.appendChild(del);
+    };
+    div.appendChild(del);
+  }
   const name = document.createElement('span');
   name.className = 'wp-name';
   name.textContent = w.name;
