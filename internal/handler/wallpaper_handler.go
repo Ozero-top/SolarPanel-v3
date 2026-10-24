@@ -307,6 +307,10 @@ func (h *WallpaperHandler) Pin(w http.ResponseWriter, r *http.Request) {
 		Fail(w, "不支持的壁纸源")
 		return
 	}
+	if !safePathComponent(req.Source) {
+		Fail(w, "非法参数")
+		return
+	}
 	u, err := url.Parse(req.URL)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") {
 		Fail(w, "壁纸地址无效")
@@ -321,7 +325,7 @@ func (h *WallpaperHandler) Pin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &http.Client{Timeout: 25 * time.Second}
-	bin, err := h.downloadImage(client, req.URL, allowedPinHosts)
+	bin, err := h.downloadImage(client, req.URL)
 	if err != nil {
 		Fail(w, "图片下载失败："+err.Error())
 		return
@@ -348,8 +352,8 @@ func (h *WallpaperHandler) Pin(w http.ResponseWriter, r *http.Request) {
 		"pinned_at": time.Now().Format("2006-01-02 15:04:05"),
 	}
 	if b, err := json.Marshal(meta); err == nil {
-		pinnedJSON, _ := safeJoin(cacheDir, "pinned_"+req.Source+".json")
-		if pinnedJSON != "" {
+		pinnedJSON, jerr := safeJoin(cacheDir, "pinned_"+req.Source+".json")
+		if jerr == nil {
 			os.WriteFile(pinnedJSON, b, 0644)
 		}
 	}
@@ -375,13 +379,17 @@ func (h *WallpaperHandler) Unpin(w http.ResponseWriter, r *http.Request) {
 		Fail(w, "参数错误")
 		return
 	}
+	if !safePathComponent(req.Source) {
+		Fail(w, "非法参数")
+		return
+	}
 	cacheDir := filepath.Join(h.cfg.UploadDir, "daily_wallpaper")
-	pinnedJPG, _ := safeJoin(cacheDir, "pinned_"+req.Source+".jpg")
-	pinnedJSON, _ := safeJoin(cacheDir, "pinned_"+req.Source+".json")
-	if pinnedJPG != "" {
+	pinnedJPG, jerr1 := safeJoin(cacheDir, "pinned_"+req.Source+".jpg")
+	pinnedJSON, jerr2 := safeJoin(cacheDir, "pinned_"+req.Source+".json")
+	if jerr1 == nil {
 		os.Remove(pinnedJPG)
 	}
-	if pinnedJSON != "" {
+	if jerr2 == nil {
 		os.Remove(pinnedJSON)
 	}
 	OK(w, nil)
@@ -547,7 +555,7 @@ func (h *WallpaperHandler) fetchBing(client *http.Client, mkt, source string) (m
 		return nil, fmt.Errorf("Bing 无图片")
 	}
 	src := "https://cn.bing.com" + img.URLBase + "_1920x1080.jpg"
-	bin, err := h.downloadImage(client, src, nil)
+	bin, err := h.downloadImage(client, src)
 	if err != nil {
 		return nil, fmt.Errorf("Bing 图片下载失败: %w", err)
 	}
@@ -556,7 +564,7 @@ func (h *WallpaperHandler) fetchBing(client *http.Client, mkt, source string) (m
 
 func (h *WallpaperHandler) fetchPicsum(client *http.Client, date string) (map[string]any, error) {
 	src := fmt.Sprintf("https://picsum.photos/seed/sp-%s/1920/1080", date)
-	bin, err := h.downloadImage(client, src, nil)
+	bin, err := h.downloadImage(client, src)
 	if err != nil {
 		return nil, fmt.Errorf("Picsum 图片下载失败: %w", err)
 	}
@@ -582,7 +590,7 @@ func isAllowedPinHost(host string) bool {
 	return false
 }
 
-func (h *WallpaperHandler) downloadImage(client *http.Client, rawURL string, hostAllowlist map[string]bool) ([]byte, error) {
+func (h *WallpaperHandler) downloadImage(client *http.Client, rawURL string) ([]byte, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid url")
@@ -590,7 +598,7 @@ func (h *WallpaperHandler) downloadImage(client *http.Client, rawURL string, hos
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return nil, fmt.Errorf("unsupported scheme: %s", u.Scheme)
 	}
-	if hostAllowlist != nil && !isAllowedPinHost(u.Hostname()) {
+	if !isAllowedPinHost(u.Hostname()) {
 		return nil, fmt.Errorf("host not allowed: %s", u.Hostname())
 	}
 	resp, err := client.Get(u.String())
