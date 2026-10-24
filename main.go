@@ -33,6 +33,12 @@ import (
 //go:embed all:frontend
 var frontendFS embed.FS
 
+// uploadCacheExt 长缓存（7 天）的图片扩展名
+var uploadCacheExt = map[string]bool{
+	".webp": true, ".jpg": true, ".jpeg": true, ".png": true,
+	".gif": true, ".ico": true, ".bmp": true, ".svg": true,
+}
+
 func contentTypeByExt(path string) string {
 	switch filepath.Ext(path) {
 	case ".html":
@@ -75,8 +81,12 @@ func seedPresetWallpapers(uploadDir string) {
 	if err != nil {
 		return
 	}
+	removed := handler.LoadRemovedPresets(uploadDir)
 	for _, e := range entries {
 		if e.IsDir() {
+			continue
+		}
+		if removed[e.Name()] {
 			continue
 		}
 		dst := filepath.Join(presetDir, e.Name())
@@ -335,6 +345,12 @@ func main() {
 	guardUploads := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox")
+			// 壁纸与图标体积大且极少变动，长缓存减少重复下载
+			if uploadCacheExt[strings.ToLower(filepath.Ext(r.URL.Path))] {
+				w.Header().Set("Cache-Control", "public, max-age=604800")
+			} else {
+				w.Header().Set("Cache-Control", "public, max-age=3600")
+			}
 			next.ServeHTTP(w, r)
 		})
 	}

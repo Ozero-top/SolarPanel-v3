@@ -126,12 +126,11 @@ func (h *GalleryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	const presetPrefix = "/frontend/uploads/weather/"
+	const uploadPrefix = "/frontend/uploads/wallpapers/"
+	sub, prefix, preset := "wallpapers", uploadPrefix, false
 	if strings.HasPrefix(body.URL, presetPrefix) {
-		Fail(w, "该壁纸为系统预置，不可删除")
-		return
-	}
-	const prefix = "/frontend/uploads/wallpapers/"
-	if !strings.HasPrefix(body.URL, prefix) {
+		sub, prefix, preset = "weather", presetPrefix, true
+	} else if !strings.HasPrefix(body.URL, uploadPrefix) {
 		Fail(w, "非法的壁纸地址")
 		return
 	}
@@ -146,10 +145,10 @@ func (h *GalleryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		Fail(w, "非法的壁纸地址")
 		return
 	}
-	target := filepath.Join(h.cfg.UploadDir, "wallpapers", name)
+	target := filepath.Join(h.cfg.UploadDir, sub, name)
 	absTarget, _ := filepath.Abs(target)
-	absWallpapers, _ := filepath.Abs(filepath.Join(h.cfg.UploadDir, "wallpapers"))
-	if !strings.HasPrefix(absTarget, absWallpapers) {
+	absDir, _ := filepath.Abs(filepath.Join(h.cfg.UploadDir, sub))
+	if !strings.HasPrefix(absTarget, absDir) {
 		Fail(w, "非法路径")
 		return
 	}
@@ -165,5 +164,39 @@ func (h *GalleryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		Err(w, http.StatusInternalServerError, 1, "删除失败，请检查目录权限")
 		return
 	}
+	if preset {
+		// 记录被删除的内置壁纸，避免下次启动时由 seed 重新释放回数据目录
+		markRemovedPreset(h.cfg.UploadDir, name)
+	}
 	OK(w, map[string]string{"deleted": name})
+}
+
+// removedPresetFile 记录用户主动删除的内置壁纸（每行一个文件名）
+const removedPresetFile = ".removed"
+
+// LoadRemovedPresets 读取已删除的内置壁纸名单
+func LoadRemovedPresets(uploadDir string) map[string]bool {
+	out := make(map[string]bool)
+	data, err := os.ReadFile(filepath.Join(uploadDir, "weather", removedPresetFile))
+	if err != nil {
+		return out
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if name := strings.TrimSpace(line); name != "" {
+			out[name] = true
+		}
+	}
+	return out
+}
+
+func markRemovedPreset(uploadDir, name string) {
+	if LoadRemovedPresets(uploadDir)[name] {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(uploadDir, "weather", removedPresetFile), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	f.WriteString(name + "\n")
 }
