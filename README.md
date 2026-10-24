@@ -25,20 +25,19 @@
 
 ## ✨ 特性
 
-- **零依赖单二进制** — Go + `modernc.org/sqlite`（纯 Go SQLite 实现），无 CGO、无外部数据库、无 PHP
-- **空库启动** — 首次启动只建表 + 写入默认设置 + 管理员账号，**不注入任何预置分组与卡片**，内容完全由用户自建
-- **两级分组导航** — 支持父子嵌套，侧边栏自动展开/折叠，实时搜索过滤
-- **十主题** — `liquid-glass` 液态玻璃（默认 · 磨砂透光 · 流动光斑 · 仅浅色）· `soft` 柔和浮雕 · `blueprint` 工程蓝图 · `clarity` 清透极简 · `soft-utility` 柔和工具 · `aurora` 动态极光 · `iris` 深空 HUD · 铅笔手绘 · `retro-vintage` 复古怀旧（羊皮纸 · 粗棕框 · 衬线大写）· `corporate-clean` 企业简洁（白卡细边 · 蓝主色 · 焦点环）
-- **热点新闻聚合** — 24 个内置源（微博 / 知乎 / B站 / GitHub Trending / IT之家 / V2EX / 少数派 / 掘金 等）+ 自定义 RSS
-- **NAS 运行状态面板** — 主机名 / 内网 IP / CPU / 内存 / 存储池 / 网络 / 温度 / 容器，四种放置方式（右侧 / 左侧 / 双侧悬浮 + 卡片下方状态条），近 10 分钟网络曲线，详情弹窗可查完整指标；兼容群晖 DSM、绿联 UGOS、飞牛 fnOS、威联通 QTS、极空间 ZOS 与 iStoreOS / OpenWrt / ImmortalWrt
-- **天气 + 每日壁纸** — 顶部时钟、天气组件；壁纸源支持 `bing_cn`（默认）/ `picsum`
-- **卡片图标智能获取** — 手输域名自动抓取 favicon，也可上传本地图标
-- **favicon 三级缓存** — 内存 inflight 去重 → 磁盘 MD5 缓存 → 三源并发抓取（主站 `favicon.ico` / Google s2 / DuckDuckGo），响应 `ETag` + `Cache-Control: immutable`，二次访问 304 零 body
-- **安全** — Session + CSRF 双令牌 + 接口限流 + 角色权限 + TOTP 双因子 + 受信设备 + 审计日志
-- **PWA** — Service Worker 离线缓存，可安装为应用
-- **有序幂等迁移** — `schema_versions` 表追踪，新增 schema 变更只需在迁移列表末尾追加
-- **备份迁移** — 一键导出/导入 JSON（含上传文件 base64），分组按 `parent_id` 排序 + 新旧 ID 重映射
-- **浏览器书签导入** — 直接上传 Chrome/Edge 导出的 `bookmarks.html`
+- **零依赖单二进制** — Go + 纯 Go SQLite（`modernc.org/sqlite`），无 CGO、无外部数据库、无 PHP；三架构镜像约 14MB，单文件即可运行
+- **空库启动** — 首次启动仅建表 + 默认设置 + 管理员账号，不注入任何预置内容；「恢复初始状态」同样只清数据，不生成演示项
+- **两级分组导航** — 父分组折叠、子分组缩进；实时搜索按「卡片 → 子分组 → 父分组」三级命中，排序与显隐仅在同级生效
+- **十套主题** — 液态玻璃（默认）/ 柔和浮雕 / 工程蓝图 / 清透极简 / 柔和工具 / 动态极光 / IRIS 深空 / 铅笔手绘 / 复古怀旧 / 企业简洁；明暗模式、卡片样式与圆角留白可独立配置
+- **热点新闻聚合** — 24 个内置源（微博 / 知乎 / B站 / GitHub Trending / IT之家 / V2EX / 少数派 / 掘金 等）+ 自定义 RSS，支持勾选、排序与独立入口
+- **NAS 运行状态面板** — 主机名 / 内网 IP / CPU / 内存 / 存储池 / 网络 / 温度 / 容器；四种放置方式 + 近 10 分钟曲线 + 详情弹窗；兼容群晖 DSM、绿联 UGOS、飞牛 fnOS、威联通 QTS、极空间 ZOS、iStoreOS / OpenWrt / ImmortalWrt
+- **天气与壁纸** — 顶部时钟与天气组件；每日壁纸多源合并、失败重试、图库管理与上传，壁纸源可切换
+- **卡片与图标** — 图标上传、域名自动抓取 favicon、标题与描述自动获取；深色模式自动适配图标轮廓
+- **favicon 三级缓存** — 内存 inflight 去重 → 磁盘 MD5 缓存 → 三源并发抓取（主站 / Google s2 / DuckDuckGo）；`ETag` + `immutable` 协商，二次访问 304
+- **安全** — Session + CSRF 双令牌、接口限流、四级角色权限、TOTP 双因子、受信设备与审计日志
+- **PWA** — Service Worker 离线缓存，可安装为应用；资源变更自动刷新缓存版本
+- **有序幂等迁移** — `schema_versions` 记录已应用版本，新增 schema 只需在迁移列表末尾追加，启动自动补齐
+- **备份与迁移** — JSON 一键导出/导入（含上传文件 base64），分组按 `parent_id` 排序并重建 ID 映射；支持 Chrome / Edge 书签 HTML 导入
 
 ## 🏗 技术栈
 
