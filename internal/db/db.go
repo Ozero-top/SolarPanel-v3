@@ -3,6 +3,8 @@ package db
 import (
 	"database/sql"
 	"log"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"solarpanel/internal/config"
@@ -12,12 +14,28 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// buildDSN 把 PRAGMA 写进 DSN。
+// 关键：database/sql 是连接池，DB.Exec("PRAGMA ...") 只作用于当时借出的那一条连接，
+// 其余连接仍是默认值（busy_timeout=0）。并发时读到正在写的库会立刻返回 SQLITE_BUSY，
+// 表现为接口随机 500。写进 DSN 后每条新连接都会应用。
+func buildDSN(path string) string {
+	pragmas := []string{
+		"_pragma=busy_timeout(15000)",
+		"_pragma=journal_mode(WAL)",
+		"_pragma=synchronous(NORMAL)",
+		"_pragma=foreign_keys(ON)",
+		"_pragma=cache_size(-20000)",
+		"_pragma=temp_store(MEMORY)",
+	}
+	return "file:" + filepath.ToSlash(path) + "?" + strings.Join(pragmas, "&")
+}
+
 var DB *sql.DB
 
 // Init 初始化 SQLite + 建表 + 迁移 + 种子
 func Init(cfg *config.Config) error {
 	var err error
-	DB, err = sql.Open("sqlite", cfg.DBPath)
+	DB, err = sql.Open("sqlite", buildDSN(cfg.DBPath))
 	if err != nil {
 		return err
 	}
@@ -26,13 +44,15 @@ func Init(cfg *config.Config) error {
 	// 连接闲置后关闭释放文件句柄（SQLite 文件锁场景下有用）
 	DB.SetConnMaxIdleTime(5 * time.Minute)
 
-	// WAL 模式（Write-Ahead Logging）：一个写 + 多个读并发，journal_mode=DELETE 会锁死所有读
-	DB.Exec("PRAGMA journal_mode=WAL")
-	DB.Exec("PRAGMA synchronous=NORMAL") // WAL 下 NORMAL 足够安全，性能更好
-	DB.Exec("PRAGMA busy_timeout=15000") // 15s：并发写竞争时给够等待窗口
-	DB.Exec("PRAGMA foreign_keys=ON")
-	DB.Exec("PRAGMA cache_size=-20000") // 20MB page cache（负号表示 KB）
-	DB.Exec("PRAGMA temp_store=MEMORY") // 临时表/索引走内存，减少磁盘 IO
+	// PRAGMA 已随 DSN 下发到每条连接；这里只做一次健康检查并记录实际生效值。
+	// 若 NAS 的数据目录挂在网络盘（SMB/NFS）上，WAL 可能无法启用而退回 delete 模式，
+	// 此时并发读写会更容易撞锁，日志里能直接看出来。
+	var journalMode string
+	if e := DB.QueryRow("PRAGMA journal_mode").Scan(&journalMode); e != nil {
+		log.Printf("[db] 读取 journal_mode 失败: %v", e)
+	} else {
+		log.Printf("[db] journal_mode = %s", journalMode)
+	}
 
 	log.Println("[db] SQLite connected:", cfg.DBPath)
 

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -74,6 +75,7 @@ func (h *PublicHandler) Public(w http.ResponseWriter, r *http.Request) {
 
 	settingsQ, err := db.DB.Query("SELECT config_name, config_value FROM settings")
 	if err != nil {
+		log.Printf("[public] 读取设置失败: %v", err)
 		Err(w, http.StatusInternalServerError, 1, "读取设置失败")
 		return
 	}
@@ -133,6 +135,7 @@ func (h *PublicHandler) Public(w http.ResponseWriter, r *http.Request) {
 	groupQuery += " ORDER BY parent_id ASC, sort ASC, id ASC"
 	groupQ, err := db.DB.Query(groupQuery)
 	if err != nil {
+		log.Printf("[public] 读取分组失败: %v", err)
 		Err(w, http.StatusInternalServerError, 1, "读取分组失败")
 		return
 	}
@@ -146,6 +149,7 @@ func (h *PublicHandler) Public(w http.ResponseWriter, r *http.Request) {
 
 	itemQ, err := db.DB.Query("SELECT id, group_id, title, url, lan_url, description, icon_type, icon_value, icon_bg, open_method, sort, is_hidden, user_id, created_at FROM items ORDER BY sort ASC, id ASC")
 	if err != nil {
+		log.Printf("[public] 读取卡片失败: %v", err)
 		Err(w, http.StatusInternalServerError, 1, "读取卡片失败")
 		return
 	}
