@@ -264,6 +264,8 @@ SolarPanel/
 │   │   └── migrations.go        # schema_versions 有序幂等迁移
 │   ├── handler/                 # 各业务 handler（见「路由一览」）
 │   └── nas/                     # NAS 采集：宿主 /proc、/sys、存储池、Docker API、系统识别
+├── presets/                     # 示例备份数据（仅仓库提供，不参与构建与镜像）
+│   └── nav-cards-backup.json    # 通用导航卡片：10 个分组 / 150 张卡片
 └── data/                        # 运行时数据（自动创建，勿提交）
     ├── solarpanel.db            # SQLite 数据库
     └── uploads/                 # icons / logos / wallpapers / favicon / weather
@@ -391,6 +393,17 @@ SolarPanel/
 3. 分组先按 `parent_id` 升序处理，保证父分组先落库，再建立 `旧 ID → 新 ID` 映射；找不到父分组映射的子分组降级为顶级
 4. 卡片的 `group_id` 经映射重写；所属分组映射不存在的卡片会被**直接跳过**
 5. `files` 写入前校验路径（拒绝 `..`、限制在 `uploads` 内），`.svg` 会先做安全清洗，同名覆盖
+
+## 🧩 示例数据（可选导入）
+
+`presets/nav-cards-backup.json` 是一份**通用导航站配置备份**，包含 **10 个分组 / 150 张卡片**（AI 工具、视频、社交、开发、云盘等常用站点），可用于快速建站或演示：
+
+1. 后台 → **系统备份 → 导入配置**，选择该文件
+2. 导入为整体替换，会覆盖当前分组 / 卡片 / 设置，操作前请先导出自己的备份
+3. 文件不含账号、访客密码与上传图片，导入后用户账号不受影响
+4. 导入后可按需修改分组名称、卡片地址与图标
+
+> `presets/` 仅随仓库提供，已通过 `.dockerignore` 排除，不参与 Docker 构建，也不会打入镜像。
 
 ## 🧪 开发注意事项
 
