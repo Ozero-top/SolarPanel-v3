@@ -315,6 +315,22 @@ a:hover {
   background: #0b0f16;
   color: #e9eef5;
 }
+:root[data-style='retro-vintage'][data-theme='light'] .select option {
+  background: #f5e6d3;
+  color: #5c2e0a;
+}
+:root[data-style='retro-vintage'][data-theme='dark'] .select option {
+  background: #2a2018;
+  color: #ecd9c0;
+}
+:root[data-style='corporate-clean'][data-theme='light'] .select option {
+  background: #ffffff;
+  color: #0f172a;
+}
+:root[data-style='corporate-clean'][data-theme='dark'] .select option {
+  background: #111c30;
+  color: #e8eef8;
+}
 
 .input::placeholder,
 .textarea::placeholder {

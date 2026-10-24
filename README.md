@@ -17,7 +17,7 @@
 - **零依赖单二进制** — Go + `modernc.org/sqlite`（纯 Go SQLite 实现），无 CGO、无外部数据库、无 PHP
 - **空库启动** — 首次启动只建表 + 写入默认设置 + 管理员账号，**不注入任何预置分组与卡片**，内容完全由用户自建
 - **两级分组导航** — 支持父子嵌套，侧边栏自动展开/折叠，实时搜索过滤
-- **六主题** — `soft` 柔和浮雕（默认）· `blueprint` 工程蓝图 · `clarity` 清透极简 · `soft-utility` 柔和工具 · `aurora` 动态极光 · `iris` 深空 HUD（氙蓝/酸绿 · 漂移网格 · 扫描线）
+- **九主题** — `soft` 柔和浮雕（默认）· `blueprint` 工程蓝图 · `clarity` 清透极简 · `soft-utility` 柔和工具 · `aurora` 动态极光 · `iris` 深空 HUD · 铅笔手绘 · `retro-vintage` 复古怀旧（羊皮纸 · 粗棕框 · 衬线大写）· `corporate-clean` 企业简洁（白卡细边 · 蓝主色 · 焦点环）
 - **热点新闻聚合** — 24 个内置源（微博 / 知乎 / B站 / GitHub Trending / IT之家 / V2EX / 少数派 / 掘金 等）+ 自定义 RSS
 - **天气 + 每日壁纸** — 顶部时钟、天气组件；壁纸源支持 `bing_cn`（默认）/ `nasa` / `picsum`
 - **卡片图标智能获取** — 手输域名自动抓取 favicon，也可上传本地图标
@@ -212,7 +212,7 @@ SolarPanel/
 
 ## 🎨 主题定制
 
-主题唯一事实源为 `frontend/themes.json`，当前六套：`soft`（默认）、`blueprint`、`clarity`、`soft-utility`、`aurora` 与 `iris`。
+主题唯一事实源为 `frontend/themes.json`，当前九套：`soft`（默认）、`blueprint`、`clarity`、`soft-utility`、`aurora`、`iris`、`sketch-style`、`retro-vintage` 与 `corporate-clean`。
 
 ```json
 {
@@ -339,8 +339,12 @@ SolarPanel/
 
 ### v3.1.2（2026-10-24）
 
+- **主题扩展**：新增清透极简、柔和工具、动态极光、IRIS 光圈、复古怀旧、企业简洁六套主题，共九套
+- **动态光效**：动态主题支持鼠标跟随背景光晕与卡片悬停聚光
+- **深色图标适配**：深色模式下自动为深色图标添加浅色玻璃底板
 - **修复热点新闻入口显隐**：关闭功能后主页不再残留「热点新闻」按钮
 - **修复热点新闻开启判定**：全选数据源保存后不再被误判为「未开启」
+- **修复天气组件偶发不显示**：刷新多次才出现的问题
 - **数据源批量操作**：后台热点新闻数据源支持「全选 / 反选」
 
 ### v3.1.1（2026-10-24）

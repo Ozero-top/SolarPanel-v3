@@ -6,8 +6,12 @@
 const APP_VERSION = 'v3.1.2';
 const APP_CHANGELOG = [
   { ver: 'v3.1.2', date: '2026-10-24', items: [
+    '🎨 新增 6 套主题：清透极简、柔和工具、动态极光、IRIS 光圈、复古怀旧、企业简洁',
+    '✨ 动态主题支持鼠标跟随光晕与卡片聚光效果',
+    '🌙 深色模式自动为深色图标添加浅色底板，图标更清晰',
     '🐛 修复热点新闻关闭后主页入口仍显示的问题',
     '🐛 修复热点新闻开启后仍提示未开启的问题',
+    '🐛 修复天气组件偶发不显示的问题',
     '✅ 热点新闻数据源新增全选 / 反选操作',
   ]},
   { ver: 'v3.1.1', date: '2026-10-24', items: [
@@ -274,7 +278,7 @@ function buildBgCss(color, alphaPercent) {
 }
 
 /** 可选风格主题（与 themes.css 的 html[data-style] 对应） */
-const SP_STYLES = ['soft', 'aurora', 'blueprint', 'clarity', 'iris', 'sketch-style', 'soft-utility'];
+const SP_STYLES = ['soft', 'aurora', 'blueprint', 'clarity', 'corporate-clean', 'iris', 'retro-vintage', 'sketch-style', 'soft-utility'];
 
 /** 应用深浅模式（light/dark/system），system 实时跟随系统深浅 */
 function setThemeMode(mode) {

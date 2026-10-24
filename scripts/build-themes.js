@@ -31,6 +31,8 @@ const DISPLAY_NAMES = {
   'aurora': 'Aurora 动态极光（柔光渐变 · 缓慢流动 · 光环描边）',
   'iris': 'IRIS 光圈（深空 HUD · 氙蓝酸绿 · 漂移网格）',
   'sketch-style': '铅笔手绘风（纸张纹理 · 虚线铅笔框 · 涂黑反白）',
+  'retro-vintage': 'Retro Vintage 复古怀旧（羊皮纸 · 粗棕框 · 衬线大写 · 角花）',
+  'corporate-clean': 'Corporate Clean 企业简洁（白卡细边 · 蓝主色 · 焦点环 · 轻浮起）',
 };
 
 function displayName(name) {
