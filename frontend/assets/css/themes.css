@@ -1271,10 +1271,6 @@ body.has-wallpaper .style-fx {
 
 [data-style='corporate-clean'] .card:hover .icon { background: var(--accent); color: var(--on-accent); transform: scale(1.08); }
 
-[data-style='corporate-clean'] .card .icon.has-img { background: #ffffff; border: 1px solid var(--edge-weak); }
-
-[data-style='corporate-clean'] .card:hover .icon.has-img { background: #ffffff; }
-
 [data-style='corporate-clean'] .group,
 [data-style='corporate-clean'] .group-parent { background: transparent; border: none; border-radius: 0; box-shadow: none; }
 
@@ -2036,8 +2032,6 @@ body.has-wallpaper .style-fx {
 
 [data-style='liquid-glass'] .card:hover .icon { background: rgba(255, 255, 255, 0.82); transform: scale(1.04); }
 
-[data-style='liquid-glass'] .card .icon.has-img { background: rgba(255, 255, 255, 0.72); }
-
 [data-style='liquid-glass'] .card-bg { display: block; }
 
 [data-style='liquid-glass'] .card-bg::before { opacity: calc(0.3 * var(--card-opacity, 1) * var(--card-opacity, 1)); animation: bg-gradient-shift 8s ease infinite; transition: opacity 240ms var(--ease); }
@@ -2263,8 +2257,6 @@ body.has-wallpaper .style-fx {
 [data-style='retro-vintage'] .card .info .d { font-family: var(--rv-serif); color: var(--text-muted); }
 
 [data-style='retro-vintage'] .card .icon { border-radius: 2px; background: var(--accent); color: var(--on-accent); border: 2px solid var(--edge); box-shadow: none; }
-
-[data-style='retro-vintage'] .card .icon.has-img { background: var(--bg-soft); border: 2px solid var(--edge-weak); }
 
 [data-style='retro-vintage'] .card .icon.has-img img { filter: sepia(0.35) brightness(0.94) contrast(1.02); transition: filter 700ms ease-in-out; }
 
@@ -2502,8 +2494,6 @@ body.has-wallpaper .style-fx {
 [data-style='sketch-style'] .card:active { rotate: 1.1deg; translate: 1px 1px; box-shadow: none; transform: none; }
 
 [data-style='sketch-style'] .card .icon { width: 46px; height: 46px; border-radius: 3px; background: transparent; border: 2px dashed var(--edge-weak); color: var(--text); box-shadow: none; font-family: var(--sk-hand); }
-
-[data-style='sketch-style'] .card .icon.has-img { background: var(--surface-2); border: 2px dashed var(--edge-weak); }
 
 [data-style='sketch-style'] .btn { border-radius: 3px; border: 2px dashed var(--edge); background: transparent; color: var(--text); box-shadow: var(--raised-sm); font-family: var(--sk-hand); font-weight: 600; transition: background-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out, rotate 120ms ease-out; }
 

@@ -1373,8 +1373,6 @@ function showWhenDecoded(img, icon, iconDoneRef) {
     iconDoneRef.done = true;
     icon.style.background = '';
     icon.classList.add('has-img');
-    // 深色模式下黑色/深色 logo 会自动加浅色底板
-    if (typeof spDetectIconTone === 'function') spDetectIconTone(img, icon);
   };
   if (img.decode) img.decode().then(finish).catch(finish);
   else finish();

@@ -6,14 +6,15 @@
 const APP_VERSION = 'v3.2.3';
 const APP_CHANGELOG = [
   { ver: 'v3.2.3', date: '2026-10-24', items: [
-    '🐛 修复部分图片类卡片图标仍显示白色底板的问题（主题的白底规则覆盖了透明底）',
+    '🐛 修复部分浏览器中图片类卡片图标显示白色背景的问题，图标背景统一为透明',
+    '🎨 深色模式下保留轻量轮廓，兼顾深色图标的可见性',
   ]},
   { ver: 'v3.2.2', date: '2026-10-24', items: [
-    '🗑️ 内置壁纸支持删除，删除后重启不会自动恢复',
-    '🗜️ 优化壁纸容量大小和加载性能（体积 -31%，图片资源启用 7 天强缓存）',
+    '🗑️ 内置壁纸支持删除，删除后重启不会恢复',
+    '🗜️ 优化壁纸体积与加载性能',
   ]},
   { ver: 'v3.2.1', date: '2026-10-24', items: [
-    '🖼️ 补入 5 张内置壁纸（二次元 / 天空 / 梦幻 / 写真 / 风光），随镜像内置并自动释放到数据目录',
+    '🖼️ 补入 5 张内置壁纸，随镜像一起提供',
   ]},
   { ver: 'v3.2.0', date: '2026-10-24', items: [
     '🔤 页面字体与时钟字体各新增 12 款免费设计字体，按需加载不拖慢首屏',
@@ -457,38 +458,6 @@ function spCardPointerGlow() {
     card.style.setProperty('--px', (((e.clientX - r.left) / r.width) * 100).toFixed(1) + '%');
     card.style.setProperty('--py', (((e.clientY - r.top) / r.height) * 100).toFixed(1) + '%');
   }, { passive: true });
-}
-
-/**
- * 图片图标色调识别：读取图片平均亮度，在容器上标记 data-icon-tone="dark|light|mid"。
- * 供深色模式给黑色/深色 logo 自动加浅色底板（跨域图片无法读像素时静默跳过，由 CSS 光晕兜底）。
- */
-
-function spDetectIconTone(img, box) {
-  if (!img || !box || box.dataset.iconTone) return;
-  const run = () => {
-    if (box.dataset.iconTone || !img.naturalWidth) return;
-    try {
-      const size = 24;
-      const cv = document.createElement('canvas');
-      cv.width = cv.height = size;
-      const ctx = cv.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(img, 0, 0, size, size);
-      const data = ctx.getImageData(0, 0, size, size).data;
-      let sum = 0;
-      let count = 0;
-      for (let i = 0; i < data.length; i += 4) {
-        if (data[i + 3] < 24) continue; // 跳过透明像素
-        sum += 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
-        count++;
-      }
-      if (!count) return;
-      const lum = sum / count / 255;
-      box.dataset.iconTone = lum < 0.38 ? 'dark' : (lum > 0.86 ? 'light' : 'mid');
-    } catch (e) { /* 跨域图片 canvas 被污染，忽略 */ }
-  };
-  if (img.complete && img.naturalWidth) run();
-  else img.addEventListener('load', run, { once: true });
 }
 
 /** 主题：localStorage 手动锁定 > 后端默认设置；风格主题由 theme_style 决定；返回当前模式 */

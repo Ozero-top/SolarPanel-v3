@@ -842,9 +842,6 @@ function renderItemsTable() {
     // 图标预览：iconFor 统一返回 HTML（img 或 grid span），直接 innerHTML
     const iconCell = tr.querySelector('[data-cell="icon"]');
     iconCell.innerHTML = iconFor(item);
-    if (typeof spDetectIconTone === 'function') {
-      iconCell.querySelectorAll('img').forEach(img => spDetectIconTone(img, iconCell));
-    }
     tr.querySelectorAll('[data-act]').forEach(btn => {
       btn.onclick = () => itemAction(btn.dataset.act, item);
     });
