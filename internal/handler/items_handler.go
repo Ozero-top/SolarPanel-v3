@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/md5"
 	"crypto/tls"
 	"database/sql"
@@ -14,7 +15,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -81,9 +84,15 @@ var (
 	reTwImage2   = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*name\s*=\s*["']twitter:image["'][^>]*>`)
 	reKeywords   = regexp.MustCompile(`(?is)<meta[^>]+name\s*=\s*["']keywords["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
 	reKeywords2  = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*name\s*=\s*["']keywords["'][^>]*>`)
+	reSiteName   = regexp.MustCompile(`(?is)<meta[^>]+(?:property|name)\s*=\s*["'](?:og:site_name|application-name)["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*>`)
+	reSiteName2  = regexp.MustCompile(`(?is)<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]*(?:property|name)\s*=\s*["'](?:og:site_name|application-name)["'][^>]*>`)
+	reParagraph  = regexp.MustCompile(`(?is)<p[^>]*>(.*?)</p>`)
+	reNoContent  = regexp.MustCompile(`(?is)<(nav|header|footer|aside|noscript|form|svg)\b[^>]*>[\s\S]*?</(nav|header|footer|aside|noscript|form|svg)>`)
+	reComment    = regexp.MustCompile(`(?s)<!--.*?-->`)
 	reLinkIcon   = regexp.MustCompile(`(?is)<link\b([^>]*)>`)
 	reLinkRel    = regexp.MustCompile(`(?is)\brel\s*=\s*["']([^"']+)["']`)
 	reLinkHref   = regexp.MustCompile(`(?is)\bhref\s*=\s*["']([^"']+)["']`)
+	reLinkSizes  = regexp.MustCompile(`(?is)\bsizes\s*=\s*["']([^"']+)["']`)
 	reScriptTag  = regexp.MustCompile(`(?is)<script[^>]*>[\s\S]*?</script>`)
 	reStyleTag   = regexp.MustCompile(`(?is)<style[^>]*>[\s\S]*?</style>`)
 	reStripTags  = regexp.MustCompile(`<[^>]+>`)
@@ -155,19 +164,22 @@ func blockPrivateDial(_, address string, _ syscall.RawConn) error {
 	return nil
 }
 
+// 共享 Transport：连接池复用，避免每次抓取都重新建连（TLS 握手是主要耗时）
+var safeHTTPTransport = &http.Transport{
+	Proxy: nil, ForceAttemptHTTP2: false,
+	MaxIdleConns: 32, MaxIdleConnsPerHost: 6,
+	IdleConnTimeout: 30 * time.Second, TLSHandshakeTimeout: 10 * time.Second,
+	ExpectContinueTimeout: 1 * time.Second,
+	DialContext: (&net.Dialer{
+		Timeout:   8 * time.Second,
+		KeepAlive: 30 * time.Second,
+		Control:   blockPrivateDial,
+	}).DialContext,
+	TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+}
+
 func newSafeHTTPClient(timeout time.Duration) *http.Client {
-	transport := &http.Transport{
-		Proxy: nil, ForceAttemptHTTP2: false, MaxIdleConns: 10,
-		IdleConnTimeout: 30 * time.Second, TLSHandshakeTimeout: 10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		DialContext: (&net.Dialer{
-			Timeout:   10 * time.Second,
-			KeepAlive: 30 * time.Second,
-			Control:   blockPrivateDial,
-		}).DialContext,
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Timeout: timeout, Transport: transport}
+	client := &http.Client{Timeout: timeout, Transport: safeHTTPTransport}
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 5 {
 			return fmt.Errorf("too many redirects")
@@ -188,39 +200,33 @@ func md5Hex(s string) string {
 	return hex.EncodeToString(h[:])
 }
 
-func absolutize(href, scheme, host string) string {
+// 以最终页面 URL 为基准解析相对/协议相对地址，兼容重定向后的域名与子路径
+func absolutizeURL(href string, base *url.URL) string {
 	href = strings.TrimSpace(href)
 	if href == "" {
 		return ""
 	}
 	href = htmlDecodeReplacer.Replace(href)
-	if strings.HasPrefix(href, "//") {
-		return scheme + ":" + href
+	u, err := url.Parse(href)
+	if err != nil {
+		return ""
 	}
-	if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {
-		return href
+	abs := base.ResolveReference(u)
+	if abs.Scheme != "http" && abs.Scheme != "https" {
+		return ""
 	}
-	if strings.HasPrefix(href, "/") {
-		return scheme + "://" + host + href
-	}
-	return scheme + "://" + host + "/" + strings.TrimLeft(href, "./")
+	return abs.String()
 }
 
-func extractIconLinks(html, scheme, host string) []string {
-	var results []string
-	seen := make(map[string]bool)
-	add := func(u string) {
-		if u == "" || seen[u] {
-			return
-		}
-		seen[u] = true
-		results = append(results, u)
+// extractIconLinks 按图标质量排序：大尺寸 apple-touch-icon / 声明 sizes 的 icon 优先，
+// 跳过 mask-icon（单色模板）与 preload，最后补 /favicon.ico
+func extractIconLinks(html string, base *url.URL) []string {
+	type cand struct {
+		href  string
+		score int
 	}
-
-	matches := reLinkIcon.FindAllStringSubmatch(html, -1)
-	type cand struct{ rel, href string }
 	var cands []cand
-	for _, m := range matches {
+	for _, m := range reLinkIcon.FindAllStringSubmatch(html, -1) {
 		attrs := m[1]
 		relMatch := reLinkRel.FindStringSubmatch(attrs)
 		hrefMatch := reLinkHref.FindStringSubmatch(attrs)
@@ -228,22 +234,55 @@ func extractIconLinks(html, scheme, host string) []string {
 			continue
 		}
 		rel := strings.ToLower(strings.TrimSpace(relMatch[1]))
-		href := strings.TrimSpace(hrefMatch[1])
-		cands = append(cands, cand{rel: rel, href: href})
-	}
-
-	for _, c := range cands {
-		if strings.Contains(c.rel, "icon") {
-			add(absolutize(c.href, scheme, host))
+		if !strings.Contains(rel, "icon") || strings.Contains(rel, "mask-icon") || strings.Contains(rel, "bookmark") {
+			continue
 		}
-	}
-	for _, c := range cands {
-		if c.rel == "shortcut icon" || c.rel == "shortcut" {
-			add(absolutize(c.href, scheme, host))
+		href := absolutizeURL(hrefMatch[1], base)
+		if href == "" {
+			continue
 		}
+		score := 10
+		if strings.Contains(rel, "apple-touch-icon") {
+			score = 45
+		} else if strings.Contains(rel, "shortcut") {
+			score = 20
+		}
+		if sm := reLinkSizes.FindStringSubmatch(attrs); sm != nil {
+			for _, part := range strings.Split(sm[1], " ") {
+				part = strings.ToLower(strings.TrimSpace(part))
+				if part == "any" {
+					score = 60
+					continue
+				}
+				var w, h int
+				if _, err := fmt.Sscanf(part, "%dx%d", &w, &h); err == nil && w > 0 {
+					if w >= 96 {
+						score += 30
+					} else if w >= 48 {
+						score += 15
+					} else {
+						score += w / 16
+					}
+				}
+			}
+		}
+		cands = append(cands, cand{href: href, score: score})
 	}
-	add(scheme + "://" + host + "/favicon.ico")
-	return results
+	sort.SliceStable(cands, func(i, j int) bool { return cands[i].score > cands[j].score })
+	seen := make(map[string]bool)
+	var out []string
+	for _, c := range cands {
+		if seen[c.href] {
+			continue
+		}
+		seen[c.href] = true
+		out = append(out, c.href)
+	}
+	ico := base.Scheme + "://" + base.Host + "/favicon.ico"
+	if !seen[ico] {
+		out = append(out, ico)
+	}
+	return out
 }
 
 func sanitizeSVG(data []byte) []byte {
@@ -273,47 +312,51 @@ func extFromURL(rawURL string) string {
 	return ext
 }
 
-func fetchPageHTML(rawURL string) (html, scheme, host string, err error) {
+// fetchPageHTML 抓取页面 HTML，返回最终 URL（跟随重定向后）作为相对资源解析基准
+func fetchPageHTML(rawURL string) (string, *url.URL, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return "", "", "", err
+		return "", nil, err
 	}
-	scheme = u.Scheme
-	host = u.Hostname()
-	if scheme != "http" && scheme != "https" {
-		return "", "", "", fmt.Errorf("unsupported scheme")
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", nil, fmt.Errorf("unsupported scheme")
 	}
-	if isPrivateHost(host) {
-		return "", "", "", fmt.Errorf("private host")
+	if isPrivateHost(u.Hostname()) {
+		return "", nil, fmt.Errorf("private host")
 	}
-	client := newSafeHTTPClient(10 * time.Second)
+	client := newSafeHTTPClient(8 * time.Second)
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
-		return "", "", "", err
+		return "", nil, err
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", "", "", err
+		return "", nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		return "", "", "", fmt.Errorf("http status %d", resp.StatusCode)
+		return "", nil, fmt.Errorf("http status %d", resp.StatusCode)
 	}
-	ct := resp.Header.Get("Content-Type")
-	if !strings.Contains(strings.ToLower(ct), "text/html") && !strings.Contains(strings.ToLower(ct), "application/xhtml") {
-		return "", "", "", fmt.Errorf("not html: %s", ct)
+	ct := strings.ToLower(resp.Header.Get("Content-Type"))
+	if !strings.Contains(ct, "text/html") && !strings.Contains(ct, "application/xhtml") {
+		return "", nil, fmt.Errorf("not html: %s", ct)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 5*1024*1024))
+	// meta 信息都在 head，2MB 足够；避免下载整站大页面
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
 	if err != nil {
-		return "", "", "", err
+		return "", nil, err
 	}
-	return string(body), scheme, host, nil
+	final := u
+	if resp.Request != nil && resp.Request.URL != nil {
+		final = resp.Request.URL
+	}
+	return string(body), final, nil
 }
 
-func fetchIconBytes(rawURL string) ([]byte, string, error) {
+func fetchIconBytes(ctx context.Context, rawURL string, timeout time.Duration) ([]byte, string, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, "", err
@@ -324,8 +367,10 @@ func fetchIconBytes(rawURL string) ([]byte, string, error) {
 	if isPrivateHost(u.Hostname()) {
 		return nil, "", fmt.Errorf("private host")
 	}
-	client := newSafeHTTPClient(8 * time.Second)
-	req, err := http.NewRequest("GET", rawURL, nil)
+	reqCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	client := newSafeHTTPClient(timeout)
+	req, err := http.NewRequestWithContext(reqCtx, "GET", rawURL, nil)
 	if err != nil {
 		return nil, "", err
 	}
@@ -467,48 +512,73 @@ func detectImageExt(data []byte) string {
 	return ""
 }
 
+// trySaveIconFromCandidates 并发探测候选图标（最多 8 个），首个成功即落盘并取消其余请求。
+// 串行原实现最坏要等 8s × N，遇到挂掉的公共图标源会非常慢。
 func trySaveIconFromCandidates(cfg *config.Config, host string, candidates []string) string {
-	for _, iconURL := range candidates {
-		if iconURL == "" {
+	seen := make(map[string]bool, len(candidates))
+	list := make([]string, 0, len(candidates))
+	for _, u := range candidates {
+		u = strings.TrimSpace(u)
+		if u == "" || seen[u] || isPrivateHostMustParse(u) {
 			continue
 		}
-		if isPrivateHostMustParse(iconURL) {
+		seen[u] = true
+		list = append(list, u)
+		if len(list) >= 8 {
+			break
+		}
+	}
+	if len(list) == 0 {
+		return ""
+	}
+
+	type iconResult struct {
+		data []byte
+		ct   string
+		url  string
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch := make(chan iconResult, len(list))
+	for _, u := range list {
+		go func(u string) {
+			data, ct, err := fetchIconBytes(ctx, u, 5*time.Second)
+			if err != nil {
+				ch <- iconResult{url: u}
+				return
+			}
+			ch <- iconResult{data: data, ct: ct, url: u}
+		}(u)
+	}
+	for range list {
+		r := <-ch
+		if len(r.data) < 50 {
 			continue
 		}
-		data, ct, err := fetchIconBytes(iconURL)
-		if err != nil {
-			log.Printf("[favicon] host=%s url=%s — %v", host, iconURL, err)
-			continue
-		}
-		if len(data) < 50 {
-			log.Printf("[favicon] host=%s url=%s — too small (%d bytes)", host, iconURL, len(data))
-			continue
-		}
-		ext := detectImageExt(data)
+		ext := detectImageExt(r.data)
 		if ext == "" {
-			ext = extractExtFromCT(ct)
+			ext = extractExtFromCT(r.ct)
 		}
 		if ext == "" {
-			ext = extFromURL(iconURL)
+			ext = extFromURL(r.url)
 		}
-		validExt := false
+		valid := false
 		for _, e := range faviconExts {
 			if e == ext {
-				validExt = true
+				valid = true
 				break
 			}
 		}
-		if !validExt {
-			log.Printf("[favicon] host=%s url=%s — unsupported ext=%s", host, iconURL, ext)
+		if !valid {
 			continue
 		}
-		saved := saveFavicon(cfg, host, ext, data)
-		if saved != "" {
-			log.Printf("[favicon] host=%s — saved via %s (%d bytes)", host, iconURL, len(data))
+		if saved := saveFavicon(cfg, host, ext, r.data); saved != "" {
+			cancel()
+			log.Printf("[favicon] host=%s — saved via %s (%d bytes)", host, r.url, len(r.data))
 			return saved
 		}
 	}
-	log.Printf("[favicon] host=%s — ALL candidates failed, will use fallback service", host)
+	log.Printf("[favicon] host=%s — all %d candidates failed", host, len(list))
 	return ""
 }
 
@@ -517,26 +587,23 @@ func trySaveIcon(cfg *config.Config, rawURL string) string {
 	if err != nil {
 		return ""
 	}
-	scheme := u.Scheme
-	host := u.Hostname()
-	if scheme != "http" && scheme != "https" {
+	if u.Scheme != "http" && u.Scheme != "https" {
 		return ""
 	}
+	host := u.Hostname()
 	if isPrivateHost(host) {
 		return ""
 	}
-	cached := checkFaviconCache(cfg, host)
-	if cached != "" {
+	if cached := checkFaviconCache(cfg, host); cached != "" {
 		return cached
 	}
 	var candidates []string
-	html, s, h, err := fetchPageHTML(rawURL)
-	if err == nil {
-		scheme = s
-		host = h
-		candidates = extractIconLinks(html, scheme, host)
+	html, base, err := fetchPageHTML(rawURL)
+	if err == nil && base != nil {
+		host = base.Hostname()
+		candidates = extractIconLinks(html, base)
 	} else {
-		candidates = append(candidates, scheme+"://"+host+"/favicon.ico")
+		candidates = append(candidates, u.Scheme+"://"+u.Host+"/favicon.ico")
 	}
 	for _, tmpl := range faviconFallbackServices {
 		candidates = append(candidates, fmt.Sprintf(tmpl, host))
@@ -559,69 +626,60 @@ func fallbackFaviconURL(host string) string {
 	return ""
 }
 
-func extractMeta(html string) (title, description, favicon string) {
-	title = ""
-	description = ""
-	if m := reOGTitle.FindStringSubmatch(html); m != nil {
-		title = strings.TrimSpace(htmlDecodeReplacer.Replace(m[1]))
-	} else if m := reOGTitle2.FindStringSubmatch(html); m != nil {
-		title = strings.TrimSpace(htmlDecodeReplacer.Replace(m[1]))
-	} else if m := reTwTitle.FindStringSubmatch(html); m != nil {
-		title = strings.TrimSpace(htmlDecodeReplacer.Replace(m[1]))
-	} else if m := reTwTitle2.FindStringSubmatch(html); m != nil {
-		title = strings.TrimSpace(htmlDecodeReplacer.Replace(m[1]))
+func firstMetaContent(html string, patterns ...*regexp.Regexp) string {
+	for _, re := range patterns {
+		if m := re.FindStringSubmatch(html); m != nil {
+			if v := cleanText(htmlDecodeReplacer.Replace(m[1])); v != "" {
+				return v
+			}
+		}
 	}
+	return ""
+}
+
+// cleanText 去掉零宽字符、压缩空白，避免把缩进/换行带进标题与简介
+func cleanText(s string) string {
+	s = strings.NewReplacer("\u200b", "", "\u200c", "", "\u200d", "", "\ufeff", "", "\u00a0", " ").Replace(s)
+	return strings.TrimSpace(reMultiSpace.ReplaceAllString(s, " "))
+}
+
+// firstParagraphText 从正文首段提取简介；剔除导航/页脚/脚本等噪声，避免整页文字被当成简介
+func firstParagraphText(html string) string {
+	cleaned := reComment.ReplaceAllString(html, " ")
+	cleaned = reScriptTag.ReplaceAllString(cleaned, " ")
+	cleaned = reStyleTag.ReplaceAllString(cleaned, " ")
+	cleaned = reNoContent.ReplaceAllString(cleaned, " ")
+	for _, m := range reParagraph.FindAllStringSubmatch(cleaned, -1) {
+		t := cleanText(reStripTags.ReplaceAllString(m[1], " "))
+		if len([]rune(t)) >= 12 {
+			return t
+		}
+	}
+	return ""
+}
+
+func extractMeta(html string) (title, description string) {
+	title = firstMetaContent(html, reOGTitle, reOGTitle2, reTwTitle, reTwTitle2)
 	if title == "" {
 		if m := reTitle.FindStringSubmatch(html); m != nil {
-			t := reStripTags.ReplaceAllString(m[1], "")
-			title = strings.TrimSpace(htmlDecodeReplacer.Replace(t))
+			title = cleanText(reStripTags.ReplaceAllString(m[1], " "))
 		}
 	}
-	if m := reOGDesc.FindStringSubmatch(html); m != nil {
-		description = strings.TrimSpace(htmlDecodeReplacer.Replace(m[1]))
-	} else if m := reOGDesc2.FindStringSubmatch(html); m != nil {
-		description = strings.TrimSpace(htmlDecodeReplacer.Replace(m[1]))
-	} else if m := reTwDesc.FindStringSubmatch(html); m != nil {
-		description = strings.TrimSpace(htmlDecodeReplacer.Replace(m[1]))
-	} else if m := reTwDesc2.FindStringSubmatch(html); m != nil {
-		description = strings.TrimSpace(htmlDecodeReplacer.Replace(m[1]))
+	if title == "" {
+		title = firstMetaContent(html, reSiteName, reSiteName2)
 	}
+	// 简介优先级：og → twitter → meta description → 正文首段（不再用 keywords 凑数）
+	description = firstMetaContent(html, reOGDesc, reOGDesc2, reTwDesc, reTwDesc2, reMetaDesc, reMetaDesc2)
 	if description == "" {
-		if m := reMetaDesc.FindStringSubmatch(html); m != nil {
-			description = strings.TrimSpace(htmlDecodeReplacer.Replace(m[1]))
-		} else if m := reMetaDesc2.FindStringSubmatch(html); m != nil {
-			description = strings.TrimSpace(htmlDecodeReplacer.Replace(m[1]))
-		}
+		description = firstParagraphText(html)
 	}
-	if description == "" {
-		if m := reKeywords.FindStringSubmatch(html); m != nil {
-			description = strings.TrimSpace(htmlDecodeReplacer.Replace(m[1]))
-		} else if m := reKeywords2.FindStringSubmatch(html); m != nil {
-			description = strings.TrimSpace(htmlDecodeReplacer.Replace(m[1]))
-		}
-	}
-	if description == "" {
-		text := reScriptTag.ReplaceAllString(html, " ")
-		text = reStyleTag.ReplaceAllString(text, " ")
-		text = reStripTags.ReplaceAllString(text, " ")
-		text = reMultiSpace.ReplaceAllString(text, " ")
-		text = strings.TrimSpace(htmlDecodeReplacer.Replace(text))
-		runes := []rune(text)
-		if len(runes) > 80 {
-			description = string(runes[:80])
-		} else {
-			description = text
-		}
-	}
-	title = strings.TrimSpace(reMultiSpace.ReplaceAllString(title, " "))
-	description = strings.TrimSpace(reMultiSpace.ReplaceAllString(description, " "))
 	if runes := []rune(title); len(runes) > 50 {
-		title = string(runes[:50])
+		title = strings.TrimSpace(string(runes[:50]))
 	}
-	if runes := []rune(description); len(runes) > 200 {
-		description = string(runes[:200])
+	if runes := []rune(description); len(runes) > 120 {
+		description = strings.TrimSpace(string(runes[:120])) + "…"
 	}
-	return title, description, favicon
+	return title, description
 }
 
 // ===== Dispatch 与 CRUD =====
@@ -701,6 +759,47 @@ func (h *ItemsHandler) Favicon(w http.ResponseWriter, r *http.Request) {
 	OK(w, map[string]any{"url": fallbackURL, "cached": false, "fallback": true, "diag": "无法抓取目标站点图标，已改用公共图标服务"})
 }
 
+// metaCacheEntry 页面元信息内存缓存：重复点击「自动获取」不再重新抓页面
+type metaCacheEntry struct {
+	title      string
+	desc       string
+	host       string // 跟随重定向后的最终域名（图标按该域名落盘）
+	candidates []string
+	ok         bool
+	at         time.Time
+}
+
+var (
+	metaCache     sync.Map // key -> metaCacheEntry
+	iconFailCache sync.Map // host -> time.Time（图标全部失败的冷却，避免反复请求公共源）
+)
+
+const (
+	metaCacheTTL     = 30 * time.Minute
+	metaCacheFailTTL = 2 * time.Minute
+	iconFailTTL      = 10 * time.Minute
+)
+
+func metaCacheKey(u *url.URL) string {
+	p := u.EscapedPath()
+	if p == "" {
+		p = "/"
+	}
+	return strings.ToLower(u.Scheme + "://" + u.Host + p)
+}
+
+func iconFetchFailedRecently(host string) bool {
+	v, ok := iconFailCache.Load(host)
+	if !ok {
+		return false
+	}
+	if time.Since(v.(time.Time)) < iconFailTTL {
+		return true
+	}
+	iconFailCache.Delete(host)
+	return false
+}
+
 func (h *ItemsHandler) FetchMeta(w http.ResponseWriter, r *http.Request) {
 	// 会触发服务端外网抓取与落盘，仅编辑者及以上可用
 	if s := auth.GetSessionFromRequest(r); s == nil || (s.Role != "admin" && s.Role != "editor") {
@@ -725,72 +824,101 @@ func (h *ItemsHandler) FetchMeta(w http.ResponseWriter, r *http.Request) {
 		Fail(w, "URL 解析失败")
 		return
 	}
-	host := u.Hostname()
+	host := strings.ToLower(u.Hostname())
 	if isPrivateHost(host) {
 		Fail(w, "禁止访问内网地址")
 		return
 	}
+
 	resp := map[string]any{"title": "", "description": "", "icon": "", "fallback_icon": false, "warn": ""}
-	scheme := u.Scheme
-	if scheme != "http" && scheme != "https" {
-		scheme = "https"
-	}
-	cached := checkFaviconCache(h.cfg, host)
-	if cached != "" {
+	if cached := checkFaviconCache(h.cfg, host); cached != "" {
 		resp["icon"] = cached
 	}
+
+	key := metaCacheKey(u)
+	var entry metaCacheEntry
+	hit := false
+	if v, ok := metaCache.Load(key); ok {
+		e := v.(metaCacheEntry)
+		ttl := metaCacheTTL
+		if !e.ok {
+			ttl = metaCacheFailTTL
+		}
+		if time.Since(e.at) < ttl {
+			entry, hit = e, true
+		}
+	}
+
 	var candidates []string
-	html, pageScheme, pageHost, err := fetchPageHTML(rawURL)
-	if err == nil {
-		title, desc, _ := extractMeta(html)
-		resp["title"] = title
-		resp["description"] = desc
-		scheme = pageScheme
-		candidates = extractIconLinks(html, pageScheme, pageHost)
-		addMetaImg := func(patterns ...*regexp.Regexp) {
-			for _, re := range patterns {
-				if m := re.FindStringSubmatch(html); m != nil {
-					abs := absolutize(strings.TrimSpace(htmlDecodeReplacer.Replace(m[1])), scheme, host)
-					if abs != "" {
-						seen := false
-						for _, c := range candidates {
-							if c == abs {
-								seen = true
-								break
-							}
-						}
-						if !seen {
-							candidates = append(candidates, abs)
-						}
-					}
+	if hit {
+		resp["title"] = entry.title
+		resp["description"] = entry.desc
+		resp["cached"] = true
+		candidates = entry.candidates
+		if entry.host != "" {
+			host = entry.host
+			if resp["icon"] == "" {
+				if c := checkFaviconCache(h.cfg, host); c != "" {
+					resp["icon"] = c
 				}
 			}
 		}
-		addMetaImg(reOGImage, reOGImage2, reTwImage, reTwImage2)
+		if !entry.ok {
+			resp["warn"] = "站点暂时无法访问，已使用缓存结果"
+		}
 	} else {
-		resp["warn"] = "无法访问目标站点：" + err.Error()
+		html, base, ferr := fetchPageHTML(rawURL)
+		entry = metaCacheEntry{at: time.Now(), host: host}
+		if ferr != nil {
+			resp["warn"] = "无法访问目标站点：" + ferr.Error()
+		} else {
+			entry.ok = true
+			if base != nil {
+				host = strings.ToLower(base.Hostname())
+				entry.host = host
+				candidates = extractIconLinks(html, base)
+			}
+			entry.title, entry.desc = extractMeta(html)
+			if entry.title == "" {
+				// 连 title 都没有的站点，用域名兜底，保证标题框一定有值
+				entry.title = strings.TrimPrefix(host, "www.")
+			}
+			entry.candidates = candidates
+			resp["title"] = entry.title
+			resp["description"] = entry.desc
+		}
+		metaCache.Store(key, entry)
 	}
+
 	if resp["icon"] == "" {
-		hasFaviconIco := false
-		for _, c := range candidates {
-			if strings.Contains(c, "/favicon.ico") {
-				hasFaviconIco = true
-				break
+		if iconFetchFailedRecently(host) {
+			resp["fallback_icon"] = true
+		} else {
+			cands := append([]string{}, candidates...)
+			ico := "https://" + host + "/favicon.ico"
+			exists := false
+			for _, c := range cands {
+				if strings.Contains(c, "/favicon.ico") {
+					exists = true
+					break
+				}
+			}
+			if !exists {
+				cands = append(cands, ico)
+			}
+			for _, tmpl := range faviconFallbackServices {
+				cands = append(cands, fmt.Sprintf(tmpl, host))
+			}
+			if saved := trySaveIconFromCandidates(h.cfg, host, cands); saved != "" {
+				resp["icon"] = saved
+				iconFailCache.Delete(host)
+			} else {
+				// 不再回退成第三方图片外链：前端保留 favicon 模式，
+				// 由 /api/favicon.php 代理兜底（本地缓存 → 公共源 → 首字母 SVG）
+				iconFailCache.Store(host, time.Now())
+				resp["fallback_icon"] = true
 			}
 		}
-		if !hasFaviconIco {
-			candidates = append(candidates, scheme+"://"+host+"/favicon.ico")
-		}
-		for _, tmpl := range faviconFallbackServices {
-			candidates = append(candidates, fmt.Sprintf(tmpl, host))
-		}
-		if saved := trySaveIconFromCandidates(h.cfg, host, candidates); saved != "" {
-			resp["icon"] = saved
-		}
-	}
-	if resp["icon"] == "" {
-		resp["icon"] = fallbackFaviconURL(host)
-		resp["fallback_icon"] = true
 	}
 	OK(w, resp)
 }
@@ -830,18 +958,18 @@ func (h *ItemsHandler) Edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		ID         uint   `json:"id"`
-		GroupID    uint   `json:"group_id"`
-		Title      string `json:"title"`
-		URL        string `json:"url"`
-		LanURL     string `json:"lan_url"`
+		ID          uint   `json:"id"`
+		GroupID     uint   `json:"group_id"`
+		Title       string `json:"title"`
+		URL         string `json:"url"`
+		LanURL      string `json:"lan_url"`
 		Description string `json:"description"`
-		IconType   string `json:"icon_type"`
-		IconValue  string `json:"icon_value"`
-		IconBG     string `json:"icon_bg"`
-		OpenMethod int    `json:"open_method"`
-		Sort       int    `json:"sort"`
-		IsHidden   int    `json:"is_hidden"`
+		IconType    string `json:"icon_type"`
+		IconValue   string `json:"icon_value"`
+		IconBG      string `json:"icon_bg"`
+		OpenMethod  int    `json:"open_method"`
+		Sort        int    `json:"sort"`
+		IsHidden    int    `json:"is_hidden"`
 	}
 	if err := BindJSON(r, &body); err != nil {
 		Fail(w, "参数错误")

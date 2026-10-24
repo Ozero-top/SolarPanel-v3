@@ -3,8 +3,22 @@
  */
 
 /* ================= 应用版本与更新日志（每次更新只需改这里） ================= */
-const APP_VERSION = 'v3.1.2';
+const APP_VERSION = 'v3.2.0';
 const APP_CHANGELOG = [
+  { ver: 'v3.2.0', date: '2026-10-24', items: [
+    '🔤 页面字体与时钟字体各新增 12 款免费设计字体，按需加载不拖慢首屏',
+    '🗂️ 站点设置重构为 5 个一级分区：站点信息 / 外观与卡片 / 导航与搜索 / 访问控制 / 热点新闻',
+    '🖼️ 每日壁纸获取算法重写：并发合并、失败重试、跨源兜底，壁纸源设置即时生效',
+    '🔍 后台壁纸源预览弹窗：每个源随机 10 张、可刷新重随机、点选后才固定为前端壁纸',
+    '📊 审计日志：每页 20 条、服务端筛选、记录访客 IP 与归属地、保留 30 天',
+    '🗃️ 壁纸图库区分「内置」与「上传」两个目录',
+    '🗜️ 预置壁纸全量转为 WebP，体积下降约 75%',
+    '✨ 卡片图标背景透明，图标底色透明度默认 0',
+    '🧩 Soft 柔和浮雕主题的卡片透明度联动整卡与分组容器',
+    '⚡ 优化添加 / 编辑卡片时自动获取标题、描述与图标的逻辑与效率',
+    '🐛 前后台编辑卡片弹窗结构、分组顺序与按钮布局统一',
+    '🎨 补齐弹窗主题适配，导航栏胶囊按钮改为微 3D 并打磨白色硬边',
+  ]},
   { ver: 'v3.1.2', date: '2026-10-24', items: [
     '🎨 新增 6 套主题：清透极简、柔和工具、动态极光、IRIS 光圈、复古怀旧、企业简洁',
     '✨ 动态主题支持鼠标跟随光晕与卡片聚光效果',
@@ -278,7 +292,102 @@ function buildBgCss(color, alphaPercent) {
 }
 
 /** 可选风格主题（与 themes.css 的 html[data-style] 对应） */
-const SP_STYLES = ['soft', 'aurora', 'blueprint', 'clarity', 'corporate-clean', 'iris', 'retro-vintage', 'sketch-style', 'soft-utility'];
+const SP_STYLES = ['liquid-glass', 'soft', 'aurora', 'blueprint', 'clarity', 'corporate-clean', 'iris', 'retro-vintage', 'sketch-style', 'soft-utility'];
+
+/** 时钟/天气可选字体：12 款免费开源（OFL）设计字体，中文自动回退系统黑体 */
+const SP_CLOCK_FONTS = [
+  { id: 'orbitron',     name: 'Orbitron · 科技未来',        family: 'Orbitron',         google: 'Orbitron:wght@500;700;900' },
+  { id: 'rajdhani',     name: 'Rajdhani · 数码棱角',        family: 'Rajdhani',         google: 'Rajdhani:wght@500;600;700' },
+  { id: 'audiowide',    name: 'Audiowide · 赛博宽体',       family: 'Audiowide',        google: 'Audiowide' },
+  { id: 'michroma',     name: 'Michroma · 几何宽体',        family: 'Michroma',         google: 'Michroma' },
+  { id: 'bebas',        name: 'Bebas Neue · 海报窄体',      family: 'Bebas Neue',       google: 'Bebas+Neue' },
+  { id: 'poppins',      name: 'Poppins · 圆润现代',         family: 'Poppins',          google: 'Poppins:wght@500;600;700' },
+  { id: 'montserrat',   name: 'Montserrat · 几何经典',      family: 'Montserrat',       google: 'Montserrat:wght@500;600;700' },
+  { id: 'playfair',     name: 'Playfair Display · 优雅衬线', family: 'Playfair Display', google: 'Playfair+Display:wght@500;600;700' },
+  { id: 'righteous',    name: 'Righteous · 装饰复古',       family: 'Righteous',        google: 'Righteous' },
+  { id: 'spacegrotesk', name: 'Space Grotesk · 现代几何',   family: 'Space Grotesk',    google: 'Space+Grotesk:wght@500;600;700' },
+  { id: 'jetbrains',    name: 'JetBrains Mono · 等宽极客',  family: 'JetBrains Mono',   google: 'JetBrains+Mono:wght@500;700' },
+  { id: 'rubik',        name: 'Rubik · 友好圆角',           family: 'Rubik',            google: 'Rubik:wght@500;600;700' },
+];
+
+const SP_CJK_FALLBACK = "'PingFang SC','Microsoft YaHei','HarmonyOS Sans SC','MiSans','Noto Sans CJK SC','Source Han Sans SC',sans-serif";
+
+/** 取字体族栈（空 = 跟随系统） */
+function spClockFontStack(id) {
+  const f = SP_CLOCK_FONTS.find(x => x.id === id);
+  return f ? "'" + f.family + "'," + SP_CJK_FALLBACK : '';
+}
+
+/** 按需加载字体 CSS（国内可访问的 Google Fonts 镜像） */
+function spLoadClockFont(id) {
+  const f = SP_CLOCK_FONTS.find(x => x.id === id);
+  if (!f) return;
+  const linkId = 'sp-font-' + f.id;
+  if (document.getElementById(linkId)) return;
+  const link = document.createElement('link');
+  link.id = linkId;
+  link.rel = 'stylesheet';
+  link.href = 'https://fonts.loli.net/css2?family=' + f.google + '&display=swap';
+  document.head.appendChild(link);
+}
+
+/** 应用时钟/天气字体到 --clock-font；空值恢复系统默认 */
+function spApplyClockFont(id) {
+  const stack = spClockFontStack(id);
+  if (!stack) {
+    document.documentElement.style.removeProperty('--clock-font');
+    return;
+  }
+  spLoadClockFont(id);
+  document.documentElement.style.setProperty('--clock-font', stack);
+}
+
+/** 整页可选字体：12 款免费开源（OFL）设计字体（含 8 款中文字体） */
+const SP_PAGE_FONTS = [
+  { id: 'notosans',     name: 'Noto Sans SC · 思源黑体',      family: 'Noto Sans SC',         google: 'Noto+Sans+SC:wght@400;500;700' },
+  { id: 'notoserif',    name: 'Noto Serif SC · 思源宋体',     family: 'Noto Serif SC',        google: 'Noto+Serif+SC:wght@400;600;700' },
+  { id: 'zcoolxiaowei', name: '站酷小薇体 · 清秀宋',          family: 'ZCOOL XiaoWei',        google: 'ZCOOL+XiaoWei' },
+  { id: 'zcoolqingke',  name: '站酷庆科黄油体 · 圆润标题',    family: 'ZCOOL QingKe HuangYou', google: 'ZCOOL+QingKe+HuangYou' },
+  { id: 'zcoolkuaile',  name: '站酷快乐体 · 手写活泼',        family: 'ZCOOL KuaiLe',         google: 'ZCOOL+KuaiLe' },
+  { id: 'mashanzheng',  name: '马善政书法 · 毛笔行楷',        family: 'Ma Shan Zheng',        google: 'Ma+Shan+Zheng' },
+  { id: 'longcang',     name: '龙藏体 · 硬笔手写',            family: 'Long Cang',            google: 'Long+Cang' },
+  { id: 'zhimangxing',  name: '志莽行书 · 飘逸行草',          family: 'Zhi Mang Xing',        google: 'Zhi+Mang+Xing' },
+  { id: 'poppins',      name: 'Poppins · 圆润现代（西文）',   family: 'Poppins',              google: 'Poppins:wght@400;500;700' },
+  { id: 'montserrat',   name: 'Montserrat · 几何经典（西文）', family: 'Montserrat',           google: 'Montserrat:wght@400;500;700' },
+  { id: 'orbitron',     name: 'Orbitron · 科技未来（西文）',  family: 'Orbitron',             google: 'Orbitron:wght@400;500;700' },
+  { id: 'jetbrains',    name: 'JetBrains Mono · 等宽极客',    family: 'JetBrains Mono',       google: 'JetBrains+Mono:wght@400;500;700' },
+];
+
+/** 取整页字体族栈（空 = 跟随系统） */
+function spPageFontStack(id) {
+  const f = SP_PAGE_FONTS.find(x => x.id === id);
+  if (!f) return '';
+  return "'" + f.family + "'," + SP_CJK_FALLBACK;
+}
+
+/** 按需加载整页字体（与时钟字体分开缓存，避免互相覆盖） */
+function spLoadPageFont(id) {
+  const f = SP_PAGE_FONTS.find(x => x.id === id);
+  if (!f) return;
+  const linkId = 'sp-pagefont-' + f.id;
+  if (document.getElementById(linkId)) return;
+  const link = document.createElement('link');
+  link.id = linkId;
+  link.rel = 'stylesheet';
+  link.href = 'https://fonts.loli.net/css2?family=' + f.google + '&display=swap';
+  document.head.appendChild(link);
+}
+
+/** 应用整页字体到 --page-font；空值恢复系统默认 */
+function spApplyPageFont(id) {
+  const stack = spPageFontStack(id);
+  if (!stack) {
+    document.documentElement.style.removeProperty('--page-font');
+    return;
+  }
+  spLoadPageFont(id);
+  document.documentElement.style.setProperty('--page-font', stack);
+}
 
 /** 应用深浅模式（light/dark/system），system 实时跟随系统深浅 */
 function setThemeMode(mode) {
@@ -375,14 +484,14 @@ function spDetectIconTone(img, box) {
 /** 主题：localStorage 手动锁定 > 后端默认设置；风格主题由 theme_style 决定；返回当前模式 */
 function applyTheme(settings) {
   const root = document.documentElement;
-  const style = settings && SP_STYLES.includes(settings.theme_style) ? settings.theme_style : 'soft';
+  const style = settings && SP_STYLES.includes(settings.theme_style) ? settings.theme_style : 'liquid-glass';
   root.dataset.style = style;
   try { localStorage.setItem('sp_style', style); } catch (e) { /* 隐私模式忽略 */ }
 
   const saved = localStorage.getItem('sp_theme');
   const mode = saved === 'light' || saved === 'dark' || saved === 'system'
     ? saved
-    : (settings && ['light', 'dark', 'system'].includes(settings.default_theme) ? settings.default_theme : 'dark');
+    : (settings && ['light', 'dark', 'system'].includes(settings.default_theme) ? settings.default_theme : 'light');
   setThemeMode(mode);
   spIrisField();
   spCardPointerGlow();

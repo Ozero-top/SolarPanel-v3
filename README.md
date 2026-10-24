@@ -4,7 +4,7 @@
 
 <h1 align=center>SolarPanel - 轻量自托管导航面板</h1>
 
-[![Version](https://img.shields.io/badge/Version-v3.1.2-5B8DEF?logo=semanticrelease)](#)
+[![Version](https://img.shields.io/badge/Version-v3.2.0-5B8DEF?logo=semanticrelease)](#)
 [![Go](https://img.shields.io/badge/Go-1.23-00ADD8?logo=go)](https://go.dev)
 [![Architecture](https://img.shields.io/badge/Architecture-chi%2Bsqlite-50C878)](https://github.com/go-chi/chi)
 [![Multi-Arch](https://img.shields.io/badge/Arch-amd64__arm64__armv7-7A51F5)](https://hub.docker.com/r/ovitor/solarpanel-v3)
@@ -15,6 +15,7 @@
 
 - GitHub：<https://github.com/Ozero-top/SolarPanel-v3>
 - Docker Hub：<https://hub.docker.com/r/ovitor/solarpanel-v3>
+- DEMO：<https://demo.ozero.top>
 
 ## ⬆️ 从 V2.1 系列升级到 V3
 
@@ -35,9 +36,9 @@ V3 不自动迁移 V2.1 的数据库，请按「先导出、后导入」的顺�
 - **零依赖单二进制** — Go + `modernc.org/sqlite`（纯 Go SQLite 实现），无 CGO、无外部数据库、无 PHP
 - **空库启动** — 首次启动只建表 + 写入默认设置 + 管理员账号，**不注入任何预置分组与卡片**，内容完全由用户自建
 - **两级分组导航** — 支持父子嵌套，侧边栏自动展开/折叠，实时搜索过滤
-- **九主题** — `soft` 柔和浮雕（默认）· `blueprint` 工程蓝图 · `clarity` 清透极简 · `soft-utility` 柔和工具 · `aurora` 动态极光 · `iris` 深空 HUD · 铅笔手绘 · `retro-vintage` 复古怀旧（羊皮纸 · 粗棕框 · 衬线大写）· `corporate-clean` 企业简洁（白卡细边 · 蓝主色 · 焦点环）
+- **十主题** — `liquid-glass` 液态玻璃（默认 · 磨砂透光 · 流动光斑 · 仅浅色）· `soft` 柔和浮雕 · `blueprint` 工程蓝图 · `clarity` 清透极简 · `soft-utility` 柔和工具 · `aurora` 动态极光 · `iris` 深空 HUD · 铅笔手绘 · `retro-vintage` 复古怀旧（羊皮纸 · 粗棕框 · 衬线大写）· `corporate-clean` 企业简洁（白卡细边 · 蓝主色 · 焦点环）
 - **热点新闻聚合** — 24 个内置源（微博 / 知乎 / B站 / GitHub Trending / IT之家 / V2EX / 少数派 / 掘金 等）+ 自定义 RSS
-- **天气 + 每日壁纸** — 顶部时钟、天气组件；壁纸源支持 `bing_cn`（默认）/ `nasa` / `picsum`
+- **天气 + 每日壁纸** — 顶部时钟、天气组件；壁纸源支持 `bing_cn`（默认）/ `picsum`
 - **卡片图标智能获取** — 手输域名自动抓取 favicon，也可上传本地图标
 - **favicon 三级缓存** — 内存 inflight 去重 → 磁盘 MD5 缓存 → 三源并发抓取（主站 `favicon.ico` / Google s2 / DuckDuckGo），响应 `ETag` + `Cache-Control: immutable`，二次访问 304 零 body
 - **安全** — Session + CSRF 双令牌 + 接口限流 + 角色权限 + TOTP 双因子 + 受信设备 + 审计日志
@@ -230,7 +231,7 @@ SolarPanel/
 
 ## 🎨 主题定制
 
-主题唯一事实源为 `frontend/themes.json`，当前九套：`soft`（默认）、`blueprint`、`clarity`、`soft-utility`、`aurora`、`iris`、`sketch-style`、`retro-vintage` 与 `corporate-clean`。
+主题唯一事实源为 `frontend/themes.json`，当前十套：`liquid-glass`（默认，仅浅色）、`soft`、`blueprint`、`clarity`、`soft-utility`、`aurora`、`iris`、`sketch-style`、`retro-vintage` 与 `corporate-clean`。
 
 ```json
 {
@@ -355,6 +356,20 @@ SolarPanel/
 
 完整变更明细见 [updates.md](./updates.md)。维护约定：每次升版同时更新 `updates.md` 与本节，并与 `frontend/assets/js/api.js` 的 `APP_VERSION` / `APP_CHANGELOG` 保持一致。
 
+### v3.2.0（2026-10-24）
+
+- **字体系统**：页面字体与时钟字体各 12 款免费设计字体，按需加载 Google Fonts 镜像
+- **设置重构**：站点设置归并为 5 个一级分区（站点信息 / 外观与卡片 / 导航与搜索 / 访问控制 / 热点新闻）
+- **每日壁纸重写**：并发合并 + 失败重试 + 跨源兜底，壁纸源设置即时生效
+- **壁纸预览弹窗**：每个源随机 10 张、可刷新重随机，点选后才固定为前端壁纸
+- **审计日志增强**：每页 20 条、服务端筛选、记录访客 IP 与归属地、保留 30 天
+- **壁纸图库分区**：区分「内置」与「上传」两个目录
+- **资源瘦身**：预置壁纸全量转 WebP，体积下降约 75%，分辨率不变
+- **卡片与图标**：图标背景透明、底色透明度默认 0，Soft 主题卡片透明度联动生效
+- **弹窗统一**：前后台编辑卡片弹窗结构、分组顺序与按钮布局对齐
+- **主题打磨**：补齐弹窗主题适配，导航栏胶囊按钮改为微 3D 并打磨白色硬边
+- **取数优化**：添加 / 编辑卡片时自动获取标题、描述与图标的逻辑与效率优化
+
 ### v3.1.2（2026-10-24）
 
 - **主题扩展**：新增清透极简、柔和工具、动态极光、IRIS 光圈、复古怀旧、企业简洁六套主题，共九套
@@ -364,6 +379,7 @@ SolarPanel/
 - **修复热点新闻开启判定**：全选数据源保存后不再被误判为「未开启」
 - **修复天气组件偶发不显示**：刷新多次才出现的问题
 - **数据源批量操作**：后台热点新闻数据源支持「全选 / 反选」
+- **默认主题**：切换为 `liquid-glass` 液态玻璃（仅浅色），默认明暗模式为浅色
 
 ### v3.1.1（2026-10-24）
 

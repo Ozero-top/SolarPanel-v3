@@ -9,17 +9,35 @@ import (
 	"solarpanel/internal/db"
 )
 
-// AuditLog 写一条审计日志（失败静默）
+// AuditLog 写一条审计日志（失败静默）；IP 归属地异步补齐，不阻塞请求
 func AuditLog(w http.ResponseWriter, r *http.Request, action, target, result, actor, actorRole, detail string) {
 	if db.DB == nil {
 		return
 	}
 	ip := ClientIP(r)
 	ua := r.UserAgent()
-	_, err := db.DB.Exec(`INSERT INTO audit_logs (action, target, result, actor, actor_role, ip, user_agent, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`,
+	res, err := db.DB.Exec(`INSERT INTO audit_logs (action, target, result, actor, actor_role, ip, user_agent, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`,
 		action, target, result, actor, actorRole, ip, ua, detail)
 	if err != nil {
 		log.Printf("[audit] write failed: %v", err)
+		return
+	}
+	if id, e := res.LastInsertId(); e == nil && ip != "" {
+		go attachAuditRegion(id, ip)
+	}
+}
+
+// attachAuditRegion 异步查询 IP 归属地并回填到审计记录（国家 + 省 + 市）
+func attachAuditRegion(id int64, ip string) {
+	if db.DB == nil {
+		return
+	}
+	region := RegionForIP(ip)
+	if region == "" {
+		return
+	}
+	if _, err := db.DB.Exec("UPDATE audit_logs SET region=? WHERE id=?", region, id); err != nil {
+		log.Printf("[audit] region update failed: %v", err)
 	}
 }
 
@@ -61,17 +79,17 @@ func ClientIP(r *http.Request) string {
 	return host
 }
 
-// AuditCleanup 清理 7 天前的审计日志（每小时调用一次）
+// AuditCleanup 清理 30 天前的审计日志（每小时调用一次）
 func AuditCleanup() {
 	if db.DB == nil {
 		return
 	}
-	res, err := db.DB.Exec(`DELETE FROM audit_logs WHERE created_at < datetime('now','localtime','-7 days')`)
+	res, err := db.DB.Exec(`DELETE FROM audit_logs WHERE created_at < datetime('now','localtime','-30 days')`)
 	if err != nil {
 		log.Printf("[audit] cleanup failed: %v", err)
 		return
 	}
 	if n, _ := res.RowsAffected(); n > 0 {
-		log.Printf("[audit] cleaned %d logs older than 7 days", n)
+		log.Printf("[audit] cleaned %d logs older than 30 days", n)
 	}
 }

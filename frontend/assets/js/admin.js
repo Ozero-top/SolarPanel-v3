@@ -7,6 +7,8 @@ const state = {
   groups: [],
   items: [],
   currentGroup: 0, // 0 = 全部
+  currentParent: 0, // 一级分组筛选，0 = 全部
+  itemKeyword: '', // 卡片搜索关键字（标题 / 网址）
   itemPage: 1, // 卡片列表当前页码（每页 ITEM_PAGE_SIZE 条）
   editingItem: null,
   groupsOrderDirty: false, // 分组拖拽后有未保存的排序
@@ -15,6 +17,8 @@ const state = {
   pendingTabSwitch: null, // 未保存排序弹窗挂起的切换目标（tab 标签页模块）
   auditPage: 1,     // 审计日志分页状态
   auditTotal: 0,
+  wpList: [],       // 壁纸图库列表（内置 + 上传）
+  wpTab: 'uploaded', // 图库当前分区：uploaded / preset
 };
 
 const ITEM_PAGE_SIZE = 10; // 卡片管理每页条数
@@ -236,21 +240,76 @@ async function loadGroups() {
   renderGroupOptions();
 }
 
+/** 卡片筛选：一级分组 / 二级分组 / 关键字（国人习惯：先选大类，再看小类） */
 function renderGroupFilter() {
-  const sel = document.getElementById('itemGroupFilter');
-  sel.innerHTML = '<option value="0">全部分组</option>';
-  state.groups.forEach(g => {
-    const opt = document.createElement('option');
-    opt.value = String(g.id);
-    opt.textContent = g.title + ' (' + g.item_count + ')';
-    sel.appendChild(opt);
+  const parentSel = document.getElementById('itemParentFilter');
+  const subSel = document.getElementById('itemSubFilter');
+  if (!parentSel || !subSel) return;
+  const groups = state.groups || [];
+  const tops = groups.filter(g => (g.parent_id || 0) === 0);
+
+  parentSel.innerHTML = '';
+  parentSel.appendChild(new Option('全部分组', '0'));
+  tops.forEach(g => {
+    parentSel.appendChild(new Option(g.title + ' (' + (g.item_count || 0) + ')', String(g.id)));
   });
-  sel.value = String(state.currentGroup);
-  sel.onchange = () => {
-    state.currentGroup = Number(sel.value);
-    state.itemPage = 1; // 切换分组后回到第一页
-    loadItems();
+  if (!tops.some(g => g.id === state.currentParent)) state.currentParent = 0;
+  parentSel.value = String(state.currentParent);
+
+  const children = state.currentParent
+    ? groups.filter(g => (g.parent_id || 0) === state.currentParent)
+    : groups.filter(g => (g.parent_id || 0) !== 0);
+  const parentName = {};
+  groups.forEach(g => { parentName[g.id] = g.title; });
+
+  subSel.innerHTML = '';
+  subSel.appendChild(new Option(state.currentParent ? '全部（含子分组）' : '全部二级分组', '0'));
+  children.forEach(g => {
+    const prefix = state.currentParent ? '' : ((parentName[g.parent_id] || '?') + ' › ');
+    subSel.appendChild(new Option(prefix + g.title + ' (' + (g.item_count || 0) + ')', String(g.id)));
+  });
+  if (!children.some(g => g.id === state.currentGroup)) state.currentGroup = 0;
+  subSel.value = String(state.currentGroup);
+
+  parentSel.onchange = () => {
+    state.currentParent = Number(parentSel.value);
+    state.currentGroup = 0;
+    state.itemPage = 1;
+    renderGroupFilter();
+    renderItemsTable();
   };
+  subSel.onchange = () => {
+    state.currentGroup = Number(subSel.value);
+    if (state.currentGroup) {
+      const g = groups.find(x => x.id === state.currentGroup);
+      if (g && (g.parent_id || 0)) state.currentParent = g.parent_id;
+    }
+    state.itemPage = 1;
+    renderGroupFilter();
+    renderItemsTable();
+  };
+
+  const search = document.getElementById('itemSearch');
+  if (search) {
+    search.value = state.itemKeyword || '';
+    search.oninput = () => {
+      state.itemKeyword = search.value.trim().toLowerCase();
+      state.itemPage = 1;
+      renderItemsTable();
+    };
+  }
+  const reset = document.getElementById('itemFilterReset');
+  if (reset) {
+    reset.onclick = () => {
+      state.currentParent = 0;
+      state.currentGroup = 0;
+      state.itemKeyword = '';
+      state.itemPage = 1;
+      if (search) search.value = '';
+      renderGroupFilter();
+      renderItemsTable();
+    };
+  }
 }
 
 function renderGroupOptions() {
@@ -692,9 +751,9 @@ function bindGroupIconPicker() {
 
 /* ================= 卡片 ================= */
 async function loadItems() {
-  const gid = state.currentGroup;
   try {
-    state.items = await API.get(API_BASE + 'items.php?action=list' + (gid ? '&group_id=' + gid : ''));
+    // 一次取全量，前端按分组建树筛选，切换分组/搜索无需重复请求
+    state.items = await API.get(API_BASE + 'items.php?action=list');
   } catch (e) {
     toast('卡片加载失败：' + e.message, 'error');
     state.items = [];
@@ -707,23 +766,62 @@ function groupName(id) {
   return g ? g.title : '#' + id;
 }
 
+/** 应用筛选条件：一级分组（含其子分组）/ 二级分组 / 关键字 */
+function filteredItems() {
+  const keyword = state.itemKeyword;
+  const groups = state.groups || [];
+  const parentOf = (gid) => {
+    const g = groups.find(x => x.id === gid);
+    return g ? (g.parent_id || 0) : 0;
+  };
+  return state.items.filter(it => {
+    if (state.currentGroup && it.group_id !== state.currentGroup) return false;
+    if (!state.currentGroup && state.currentParent) {
+      if (it.group_id !== state.currentParent && parentOf(it.group_id) !== state.currentParent) return false;
+    }
+    if (keyword) {
+      const hay = ((it.title || '') + ' ' + (it.url || '') + ' ' + (it.lan_url || '') + ' ' + (it.description || '')).toLowerCase();
+      if (!hay.includes(keyword)) return false;
+    }
+    return true;
+  });
+}
+
+/** 表格上方筛选摘要：当前维度 + 命中条数，避免用户迷失在筛选中 */
+function updateFilterInfo(count) {
+  const el = document.getElementById('itemsFilterInfo');
+  if (!el) return;
+  const parts = [];
+  if (state.currentParent) {
+    const p = state.groups.find(g => g.id === state.currentParent);
+    parts.push('一级：' + (p ? p.title : '#'));
+  }
+  if (state.currentGroup) {
+    const g = state.groups.find(x => x.id === state.currentGroup);
+    parts.push('二级：' + (g ? g.title : '#'));
+  }
+  if (state.itemKeyword) parts.push('搜索：' + state.itemKeyword);
+  el.textContent = (parts.length ? '筛选 ' + parts.join(' · ') + ' · ' : '') + '共 ' + count + ' 条';
+}
+
 function renderItemsTable() {
   const tbody = document.getElementById('itemsTbody');
   tbody.innerHTML = '';
-  if (!state.items.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">暂无卡片，点击右上角「添加卡片」创建</td></tr>';
+  const list = filteredItems();
+  updateFilterInfo(list.length);
+  if (!list.length) {
+    const hasFilter = !!(state.currentGroup || state.currentParent || state.itemKeyword);
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">' +
+      (hasFilter ? '没有匹配的卡片，试试调整筛选或清空搜索' : '暂无卡片，点击右上角「添加卡片」创建') + '</td></tr>';
     renderItemsPager(0);
     return;
   }
-  // 仅「全部分组」分页浏览；选中具体分组时直接展示该分组全部卡片
-  const total = state.items.length;
-  const paged = state.currentGroup === 0;
-  const totalPages = paged ? Math.max(1, Math.ceil(total / ITEM_PAGE_SIZE)) : 1;
+  const total = list.length;
+  const totalPages = Math.max(1, Math.ceil(total / ITEM_PAGE_SIZE));
   if (state.itemPage > totalPages) state.itemPage = totalPages;
   if (state.itemPage < 1) state.itemPage = 1;
-  const start = paged ? (state.itemPage - 1) * ITEM_PAGE_SIZE : 0;
-  const end = paged ? start + ITEM_PAGE_SIZE : total;
-  const pageItems = state.items.slice(start, end);
+  const start = (state.itemPage - 1) * ITEM_PAGE_SIZE;
+  const pageItems = list.slice(start, start + ITEM_PAGE_SIZE);
   pageItems.forEach(item => {
     const isHidden = !!(item.is_hidden & 1);
     const tr = document.createElement('tr');
@@ -732,7 +830,7 @@ function renderItemsTable() {
       '<td><span class="icon-preview" style="width:34px;height:34px;font-size:14px;border-radius:8px" data-cell="icon"></span></td>' +
       '<td><div>' + esc(item.title) + (isHidden ? ' <span class="vis-badge" style="background:var(--color-warn)">隐藏</span>' : '') + '</div></td>' +
       '<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)">' + esc(item.url || item.lan_url) + '</td>' +
-      '<td style="white-space:nowrap"><span class="item-group-tag">' + esc(groupName(item.group_id)) + '</span></td>' +
+      '<td style="white-space:nowrap"><button type="button" class="item-group-tag" data-gid="' + item.group_id + '" title="只看该分组">' + esc(groupName(item.group_id)) + '</button></td>' +
       '<td>' + (OPEN_TEXT[item.open_method] || '新窗口') + '</td>' +
       '<td><div class="actions">' +
       '<button class="btn btn-sm" data-act="up">上移</button>' +
@@ -750,6 +848,18 @@ function renderItemsTable() {
     tr.querySelectorAll('[data-act]').forEach(btn => {
       btn.onclick = () => itemAction(btn.dataset.act, item);
     });
+    const tag = tr.querySelector('.item-group-tag');
+    if (tag) {
+      tag.onclick = () => {
+        const gid = Number(tag.dataset.gid);
+        const g = (state.groups || []).find(x => x.id === gid);
+        state.currentParent = g ? (g.parent_id || g.id) : 0;
+        state.currentGroup = g && (g.parent_id || 0) ? gid : 0;
+        state.itemPage = 1;
+        renderGroupFilter();
+        renderItemsTable();
+      };
+    }
     tbody.appendChild(tr);
   });
   renderItemsPager(total);
@@ -759,12 +869,6 @@ function renderItemsTable() {
 function renderItemsPager(total) {
   const pager = document.getElementById('itemsPager');
   if (!pager) return;
-  // 仅「全部分组」显示分页控件；具体分组不分页
-  if (state.currentGroup !== 0) {
-    pager.hidden = true;
-    pager.innerHTML = '';
-    return;
-  }
   pager.hidden = false;
   const totalPages = Math.max(1, Math.ceil(total / ITEM_PAGE_SIZE));
   // 只有一页时只显示总数信息，不渲染翻页按钮
@@ -879,7 +983,7 @@ async function itemAction(act, item) {
 function openItemModal(item) {
   document.getElementById('itemModalTitle').textContent = item ? '编辑卡片' : '添加卡片';
   document.getElementById('i_id').value = item ? item.id : '';
-  document.getElementById('i_group').value = String(item ? item.group_id : (state.currentGroup || (state.groups[0] && state.groups[0].id) || 0));
+  document.getElementById('i_group').value = String(item ? item.group_id : (state.currentGroup || state.currentParent || (state.groups[0] && state.groups[0].id) || 0));
   document.getElementById('i_open').value = String(item ? item.open_method : 2);
   document.getElementById('i_hidden').checked = !!(item && item.is_hidden);
   document.getElementById('i_title').value = item ? item.title : '';
@@ -912,9 +1016,9 @@ function openItemModal(item) {
     window.__iconTextManual = false;
   }
 
-  // 颜色面板初始化（解析已有 icon_bg → color + alpha）
+  // 颜色面板初始化（解析已有 icon_bg → color + alpha；新建默认透明度 0）
   const bgInput = item ? (item.icon_bg || '') : '';
-  let cVal = '#0969da', aVal = 100;
+  let cVal = '#0969da', aVal = 0;
   if (bgInput) {
     const m = bgInput.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/i);
     if (m) {
@@ -1117,6 +1221,7 @@ function bindItems() {
 
   // ============ fetchMeta（三态分支 + 自动降级 text）============
   let metaBusy = false;
+  let lastMetaUrl = ''; // 自动模式去重：同一地址只抓一次
   const fetchMeta = async (auto) => {
     if (metaBusy) return;
     const url = document.getElementById('i_url').value.trim();
@@ -1124,15 +1229,17 @@ function bindItems() {
       if (!auto) toast('请先填写以 http:// 或 https:// 开头的地址', 'error');
       return;
     }
+    if (auto && url === lastMetaUrl) return;
     const btn = document.getElementById('i_fetchMeta');
     metaBusy = true;
     btn.disabled = true;
     btn.textContent = '获取中…';
     try {
       const res = await API.get(API_BASE + 'items.php?action=fetch_meta&url=' + encodeURIComponent(url));
+      lastMetaUrl = url;
       const got = [];
-      // ★ 关键：只在当前 favicon 模式下处理图标（尊重用户已选类型）
-      const curType = document.querySelector('#i_itype input:checked').value;
+      const checked = document.querySelector('#i_itype input:checked');
+      const curType = checked ? checked.value : 'favicon';
       const emptyTitle = !document.getElementById('i_title').value.trim();
       const emptyDesc  = !document.getElementById('i_desc').value.trim();
 
@@ -1147,18 +1254,15 @@ function bindItems() {
 
       // 图标处理：三态分支
       if (curType === 'favicon') {
-        if (res.icon) {
-          if (res.fallback_icon) {
-            // 公共图标源 → 切 image + 填 URL
-            document.querySelector('#i_itype input[value="image"]').checked = true;
-            document.getElementById('i_icon').value = res.icon;
-            got.push('图标(浏览器加载)');
-          } else {
-            // 站点有真 favicon → 保持 favicon 类型
-            got.push('图标');
-          }
-        } else {
-          // favicon 拿不到 → 自动降级为文字图标
+        if (res.icon && !res.fallback_icon) {
+          // 站点图标已缓存到本地，favicon 模式直接可用
+          got.push('图标');
+        } else if (res.fallback_icon) {
+          // 服务端抓不到图标时保留 favicon 模式，由 /api/favicon.php 代理兜底，
+          // 不再改成第三方图片外链（外链易失效且可能被浏览器拦截）
+          got.push('图标(站点图标代理)');
+        } else if (!res.icon) {
+          // 确实没有可用图标 → 自动降级为文字图标
           document.querySelector('#i_itype input[value="text"]').checked = true;
           document.getElementById('i_iconText').value = smartIconText(res.title || document.getElementById('i_title').value);
           window.__iconTextManual = false;
@@ -1168,10 +1272,12 @@ function bindItems() {
 
       updateIconPreview();
       const warnTxt = res.warn ? '（' + res.warn + '）' : '';
-      if (got.length) {
-        toast('已自动获取：' + got.join('、') + warnTxt, res.warn ? 'info' : 'success');
-      } else {
-        toast('未获取到可填充的字段' + (warnTxt || '（站点无信息）'), 'info');
+      if (!auto) {
+        if (got.length) {
+          toast('已自动获取：' + got.join('、') + (res.cached ? '（缓存）' : '') + warnTxt, res.warn ? 'info' : 'success');
+        } else {
+          toast('未获取到可填充的字段' + (warnTxt || '（站点无信息）'), 'info');
+        }
       }
     } catch (e) {
       if (!auto) toast(e.message, 'error');
@@ -1182,10 +1288,12 @@ function bindItems() {
     }
   };
   document.getElementById('i_fetchMeta').onclick = () => fetchMeta(false);
-  // 地址输入框失焦后，若标题为空则自动获取
-  document.getElementById('i_url').addEventListener('change', () => {
+  // 地址失焦 / 粘贴完成后，若标题为空则自动获取（同一地址不重复请求）
+  const autoFetchIfEmpty = () => {
     if (!document.getElementById('i_title').value.trim()) fetchMeta(true);
-  });
+  };
+  document.getElementById('i_url').addEventListener('change', autoFetchIfEmpty);
+  document.getElementById('i_url').addEventListener('paste', () => setTimeout(autoFetchIfEmpty, 30));
 
   document.getElementById('i_useFavicon').onclick = async () => {
     const url = document.getElementById('i_url').value.trim();
@@ -1198,14 +1306,17 @@ function bindItems() {
     btn.textContent = '获取中…';
     try {
       const res = await API.get(API_BASE + 'items.php?action=favicon&url=' + encodeURIComponent(url));
+      if (res.fallback) {
+        // 拿不到可缓存的图标 → 保留 favicon 模式，交给站点图标代理兜底
+        document.querySelector('#i_itype input[value="favicon"]').checked = true;
+        updateIconPreview();
+        toast('服务器未能缓存图标，已改用站点图标代理加载', 'info');
+        return;
+      }
       document.querySelector('#i_itype input[value="image"]').checked = true;
       document.getElementById('i_icon').value = res.url;
       updateIconPreview();
-      if (res.fallback) {
-        toast('服务器未能缓存图标' + (res.diag ? '：' + res.diag : '') + '，已改用公共图标源（访客浏览器直接加载）', 'info');
-      } else {
-        toast(res.cached ? '已获取（本地缓存）' : '获取成功', 'success');
-      }
+      toast(res.cached ? '已获取（本地缓存）' : '获取成功', 'success');
     } catch (e) {
       toast(e.message, 'error');
     } finally {
@@ -1330,13 +1441,25 @@ function fillSettingsForm(s) {
   document.getElementById('s_clock_show').value = s.clock_show === '0' ? '0' : '1';
   document.getElementById('s_weather_show').value = s.weather_show === '0' ? '0' : '1';
   document.getElementById('s_weather_city').value = s.weather_city || '';
+  ensurePageFontOptions();
+  document.getElementById('s_page_font').value =
+    SP_PAGE_FONTS.some(f => f.id === s.page_font) ? s.page_font : '';
+  updatePageFontPreview();
+  ensureClockFontOptions();
+  document.getElementById('s_clock_font').value =
+    SP_CLOCK_FONTS.some(f => f.id === s.clock_font) ? s.clock_font : '';
+  updateClockFontPreview();
   document.getElementById('s_news_show').value = s.news_show === '0' ? '0' : '1';
   loadNewsSourceRows(s.news_sources || '', s.news_order || '');
-  document.getElementById('s_default_theme').value = ['light', 'dark', 'system'].includes(s.default_theme) ? s.default_theme : 'dark';
-  document.getElementById('s_theme_style').value = SP_STYLES.includes(s.theme_style) ? s.theme_style : 'soft';
+  document.getElementById('s_default_theme').value = ['light', 'dark', 'system'].includes(s.default_theme) ? s.default_theme : 'light';
+  document.getElementById('s_theme_style').value = SP_STYLES.includes(s.theme_style) ? s.theme_style : 'liquid-glass';
   document.getElementById('s_default_theme_note').textContent =
     s.default_theme === 'system' ? '跟随系统：访客未手动切换主题时，随其系统深浅自动变化' : '';
   document.getElementById('s_card_style').value = ['nav', 'navapp'].includes(s.card_style) ? s.card_style : 'nav';
+  const cv = parseInt(s.card_opacity, 10);
+  const cardOpacity = isNaN(cv) ? 100 : Math.min(Math.max(cv, 40), 100);
+  document.getElementById('s_card_opacity').value = cardOpacity;
+  document.getElementById('v_card_opacity').textContent = String(cardOpacity);
   document.getElementById('s_search_bar_enabled').value = s.search_bar_enabled === '0' ? '0' : '1';
 
   // 内容区域滑条
@@ -1577,34 +1700,62 @@ async function loadWallpaperGallery() {
   const wrap = document.getElementById('wpGallery');
   const empty = document.getElementById('wpGalleryEmpty');
   if (!wrap || !empty) return;
+  wrap.querySelectorAll('.wp-item').forEach(el => el.remove());
+  empty.hidden = false;
+  empty.textContent = '图库加载中…';
   try {
     const list = await API.get(API_BASE + 'gallery.php?action=list');
-    wrap.querySelectorAll('.wp-item').forEach(el => el.remove());
-    empty.hidden = list.length > 0;
-    empty.textContent = '图库为空，上传壁纸后自动加入';
-    list.forEach(w => wrap.appendChild(buildWpItem(w)));
-    syncGalleryActive(document.getElementById('s_wallpaper').value.trim());
+    state.wpList = Array.isArray(list) ? list : [];
+    renderWallpaperGallery();
   } catch (e) {
     empty.hidden = false;
     empty.textContent = '图库加载失败：' + e.message;
   }
 }
 
+/** 按「我的上传 / 内置壁纸」分区渲染图库 */
+function renderWallpaperGallery() {
+  const wrap = document.getElementById('wpGallery');
+  const empty = document.getElementById('wpGalleryEmpty');
+  if (!wrap || !empty) return;
+  wrap.querySelectorAll('.wp-item').forEach(el => el.remove());
+
+  const uploaded = state.wpList.filter(w => !w.preset);
+  const presets = state.wpList.filter(w => w.preset);
+  const cntUploaded = document.getElementById('wpCountUploaded');
+  const cntPreset = document.getElementById('wpCountPreset');
+  if (cntUploaded) cntUploaded.textContent = uploaded.length;
+  if (cntPreset) cntPreset.textContent = presets.length;
+  document.querySelectorAll('#wpGalleryTabs .wp-tab').forEach(t => {
+    const on = t.dataset.wpTab === state.wpTab;
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+
+  const list = state.wpTab === 'preset' ? presets : uploaded;
+  empty.hidden = list.length > 0;
+  empty.textContent = state.wpTab === 'preset'
+    ? '暂无内置壁纸'
+    : '还没有上传壁纸，点击上方「上传壁纸」添加';
+  list.forEach(w => wrap.appendChild(buildWpItem(w)));
+  syncGalleryActive(document.getElementById('s_wallpaper').value.trim());
+}
+
 function buildWpItem(w) {
   const div = document.createElement('div');
   div.className = 'wp-item';
   div.dataset.url = w.url;
-  div.title = w.preset ? w.name + '（预置壁纸，点击选用）' : w.name + '（点击选用）';
+  div.title = w.preset ? w.name + '（内置壁纸，点击选用）' : w.name + '（点击选用）';
   const img = document.createElement('img');
   img.src = assetUrl(w.url);
   img.alt = '';
   img.loading = 'lazy';
   div.appendChild(img);
   if (w.preset) {
-    // 预置壁纸：带角标，不提供删除
+    // 内置壁纸：带角标，不提供删除
     const tag = document.createElement('span');
     tag.className = 'wp-tag';
-    tag.textContent = '预置';
+    tag.textContent = '内置';
     div.appendChild(tag);
   } else {
     const del = document.createElement('button');
@@ -1758,12 +1909,13 @@ function refreshEngineDefaults() {
 }
 
 /* 分区定义：每个分区独立保存，只提交自己的设置项（后端白名单兼容部分提交）
-   原「Logo 与壁纸」分区已并入「外观布局」；原「时钟与天气」分区已并入「基础信息」 */
+   分区顺序与站点设置的二级导航一一对应：站点信息 → 外观与卡片 → 导航与搜索 → 访问控制 → 热点新闻 */
 const SETTING_SECTIONS = {
-  basic:    { label: '基础信息', keys: ['site_title', 'site_url', 'footer', 'default_lan_mode', 'lan_hostnames', 'announcement_show', 'announcement', 'clock_show', 'weather_show', 'weather_city', 'icp_show', 'icp_number', 'icp_link', 'police_show', 'police_number', 'police_link', 'guest_access_enabled', 'guest_password_hash'] },
-  theme:    { label: '外观布局', keys: ['default_theme', 'theme_style', 'content_maxwidth', 'content_pad_lr', 'content_pad_top', 'content_pad_bottom', 'card_style', 'search_bar_enabled', 'topbar_desktop_enabled', 'topbar_mobile_enabled', 'site_logo', 'wallpaper', 'mask_opacity', 'wallpaper_blur', 'wallpaper_source'] },
-  search:   { label: '搜索引擎', keys: ['search_engines', 'search_default', 'search_width'] },
-  news:     { label: '热点新闻', keys: ['news_show', 'news_sources', 'news_order'] },
+  basic:  { label: '站点信息', keys: ['site_title', 'site_url', 'footer', 'site_logo', 'announcement_show', 'announcement', 'icp_show', 'icp_number', 'icp_link', 'police_show', 'police_number', 'police_link', 'default_lan_mode', 'lan_hostnames'] },
+  theme:  { label: '外观与卡片', keys: ['default_theme', 'theme_style', 'card_style', 'card_opacity', 'content_maxwidth', 'content_pad_lr', 'content_pad_top', 'content_pad_bottom', 'page_font', 'clock_font', 'clock_show', 'weather_show', 'weather_city', 'wallpaper', 'mask_opacity', 'wallpaper_blur', 'wallpaper_source'] },
+  search: { label: '导航与搜索', keys: ['search_bar_enabled', 'topbar_desktop_enabled', 'topbar_mobile_enabled', 'search_engines', 'search_default', 'search_width'] },
+  access: { label: '访问控制', keys: ['guest_access_enabled', 'guest_password_hash'] },
+  news:   { label: '热点新闻', keys: ['news_show', 'news_sources', 'news_order'] },
 };
 
 function numSetting(id, def) {
@@ -1791,6 +1943,7 @@ function collectSetting(key) {
   if (key === 'content_pad_top') return numSetting('s_content_pad_top', '0');
   if (key === 'content_pad_bottom') return numSetting('s_content_pad_bottom', '40');
   if (key === 'search_width') return numSetting('s_search_width', '640');
+  if (key === 'card_opacity') return numSetting('s_card_opacity', '100');
   if (key === 'wallpaper_blur') return numSetting('s_wallpaper_blur', '6');
   if (key === 'news_sources') {
     // 始终保存显式 id 列表：全选时也写入全部 id，避免后端把空值判定为“未启用”
@@ -1821,7 +1974,85 @@ function collectSetting(key) {
   return el.value.trim();
 }
 
+/* ================= 时钟 / 天气字体 ================= */
+function ensurePageFontOptions() {
+  const sel = document.getElementById('s_page_font');
+  if (!sel || sel.dataset.ready === '1') return;
+  const opts = ['<option value="">跟随系统（默认）</option>'];
+  SP_PAGE_FONTS.forEach(f => {
+    opts.push('<option value="' + f.id + '">' + esc(f.name) + '</option>');
+  });
+  sel.innerHTML = opts.join('');
+  sel.dataset.ready = '1';
+  sel.addEventListener('change', updatePageFontPreview);
+}
+
+function updatePageFontPreview() {
+  const sel = document.getElementById('s_page_font');
+  const preview = document.getElementById('pageFontPreview');
+  if (!sel || !preview) return;
+  const id = sel.value;
+  const stack = spPageFontStack(id);
+  if (stack) spLoadPageFont(id);
+  preview.style.fontFamily = stack || '';
+}
+
+function ensureClockFontOptions() {
+  const sel = document.getElementById('s_clock_font');
+  if (!sel || sel.dataset.ready === '1') return;
+  const opts = ['<option value="">跟随系统（默认）</option>'];
+  SP_CLOCK_FONTS.forEach(f => {
+    opts.push('<option value="' + f.id + '">' + esc(f.name) + '</option>');
+  });
+  sel.innerHTML = opts.join('');
+  sel.dataset.ready = '1';
+  sel.addEventListener('change', updateClockFontPreview);
+}
+
+function updateClockFontPreview() {
+  const sel = document.getElementById('s_clock_font');
+  const preview = document.getElementById('clockFontPreview');
+  if (!sel || !preview) return;
+  const id = sel.value;
+  const stack = spClockFontStack(id);
+  if (stack) spLoadClockFont(id);
+  preview.style.fontFamily = stack || '';
+}
+
+/* 分区内部二级导航：通用实现（外观 / 导航 / 新闻） */
+function bindPaneNav(navId, formSel, storageKey) {
+  const nav = document.getElementById(navId);
+  if (!nav) return;
+  const panes = Array.from(document.querySelectorAll(formSel + ' .subpane'));
+  const tabs = Array.from(nav.querySelectorAll('.subtab'));
+  if (!panes.length || !tabs.length) return;
+
+  const show = (pane) => {
+    tabs.forEach(t => t.classList.toggle('active', t.dataset.subpane === pane));
+    panes.forEach(p => { p.hidden = p.dataset.pane !== pane; });
+    try { localStorage.setItem(storageKey, pane); } catch (e) { /* 隐私模式忽略 */ }
+  };
+
+  tabs.forEach(t => t.addEventListener('click', () => show(t.dataset.subpane)));
+
+  let saved = null;
+  try { saved = localStorage.getItem(storageKey); } catch (e) { /* 忽略 */ }
+  if (!saved || !tabs.some(t => t.dataset.subpane === saved)) {
+    saved = tabs[0].dataset.subpane;
+  }
+  show(saved);
+}
+
+function bindThemeSubnav() {
+  bindPaneNav('themeSubnav', '#sf-theme', 'sp_theme_pane');
+}
+
 function bindSettings() {
+  // 外观与卡片内部二级导航（主题 / 布局 / 字体 / 时钟 / 壁纸）
+  bindThemeSubnav();
+  // 字体下拉：整页 + 时钟，填充 12 款字体并绑定预览
+  ensurePageFontOptions();
+  ensureClockFontOptions();
   // 内容区域滑条：拖动时同步显示当前数值
   ['maxwidth', 'pad_lr', 'pad_top', 'pad_bottom'].forEach(k => {
     const range = document.getElementById('s_content_' + k);
@@ -1836,8 +2067,8 @@ function bindSettings() {
   const swOut = document.getElementById('v_search_width');
   if (swRange && swOut) swRange.addEventListener('input', () => { swOut.textContent = swRange.value; });
 
-  // 遮罩透明度 / 壁纸模糊滑条联动
-  [['s_mask_opacity', 'v_mask_opacity'], ['s_wallpaper_blur', 'v_wallpaper_blur']].forEach(([rid, oid]) => {
+  // 遮罩透明度 / 壁纸模糊 / 卡片透明度滑条联动
+  [['s_mask_opacity', 'v_mask_opacity'], ['s_wallpaper_blur', 'v_wallpaper_blur'], ['s_card_opacity', 'v_card_opacity']].forEach(([rid, oid]) => {
     const r = document.getElementById(rid);
     const o = document.getElementById(oid);
     if (r && o) r.addEventListener('input', () => { o.textContent = r.value; });
@@ -1849,6 +2080,16 @@ function bindSettings() {
     document.getElementById('wpGalleryModal').classList.add('show');
     loadWallpaperGallery();
   };
+  // 图库分区切换：我的上传 / 内置壁纸
+  const wpTabs = document.getElementById('wpGalleryTabs');
+  if (wpTabs) {
+    wpTabs.addEventListener('click', e => {
+      const btn = e.target.closest('.wp-tab');
+      if (!btn) return;
+      state.wpTab = btn.dataset.wpTab === 'preset' ? 'preset' : 'uploaded';
+      renderWallpaperGallery();
+    });
+  }
 
   // 壁纸清空：地址置空并取消图库选中态
   const clearWpBtn = document.getElementById('clearWallpaperBtn');
@@ -2200,41 +2441,78 @@ function bindAccount() {
 }
 
 /* ================= 审计日志 tab ================= */
+const AUDIT_PAGE_SIZE = 20; // 审计日志每页条数
+
 function bindAudit() {
   if (state.role !== 'admin') return;
   const tbody = document.getElementById('auditTbody');
   if (!tbody) return;
-  const refresh = () => loadAudit();
-  document.getElementById('auditRefreshBtn')?.addEventListener('click', refresh);
-  document.getElementById('auditFilterType')?.addEventListener('change', refresh);
+  document.getElementById('auditRefreshBtn')?.addEventListener('click', () => {
+    state.auditPage = 1;
+    loadAudit();
+  });
+  document.getElementById('auditFilterType')?.addEventListener('change', () => {
+    state.auditPage = 1;
+    loadAudit();
+  });
   document.getElementById('auditClearBtn')?.addEventListener('click', async () => {
-    if (!await uiConfirm('确定清空全部审计日志？此操作不可撤销', { danger: true })) return;
+    const filter = document.getElementById('auditFilterType')?.value || '';
+    const scope = filter ? '当前筛选类型' : '全部';
+    if (!await uiConfirm('确定清空' + scope + '审计日志？此操作不可撤销', { danger: true })) return;
     try {
-      await API.post(API_BASE + 'audit.php?action=clear');
-      toast('已清空全部审计日志', 'success');
+      await API.post(API_BASE + 'audit.php?action=clear' + (filter ? '&filter=' + encodeURIComponent(filter) : ''));
+      toast('已清空' + scope + '审计日志', 'success');
+      state.auditPage = 1;
       loadAudit();
     } catch (e) { toast(e.message, 'error'); }
   });
   // tab 切换到 audit 时自动加载
   document.querySelectorAll('.admin-tabs .tab').forEach(t => {
-    if (t.dataset.tab === 'audit') t.addEventListener('click', () => loadAudit());
+    if (t.dataset.tab === 'audit') t.addEventListener('click', () => {
+      state.auditPage = 1;
+      loadAudit();
+    });
+  });
+  // 分页按钮（事件委托）
+  document.getElementById('auditPager')?.addEventListener('click', e => {
+    const btn = e.target.closest('[data-audit-page]');
+    if (!btn || btn.disabled) return;
+    const pages = Math.max(1, Math.ceil(state.auditTotal / AUDIT_PAGE_SIZE));
+    if (btn.dataset.auditPage === 'prev' && state.auditPage > 1) state.auditPage--;
+    else if (btn.dataset.auditPage === 'next' && state.auditPage < pages) state.auditPage++;
+    else return;
+    loadAudit();
   });
 }
+
 async function loadAudit() {
   const tbody = document.getElementById('auditTbody');
-  const filter = document.getElementById('auditFilterType');
-  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px">加载中…</td></tr>';
+  if (!tbody) return;
+  const filter = document.getElementById('auditFilterType')?.value || '';
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:20px">加载中…</td></tr>';
   try {
-    const data = await API.get(API_BASE + 'audit.php?action=list&page=' + state.auditPage + '&pagesize=50');
-    state.auditTotal = data.total;
-    const ftype = filter?.value || '';
-    const list = (data.list || []).filter(r => !ftype || r.action === ftype);
+    const url = API_BASE + 'audit.php?action=list&page=' + state.auditPage +
+      '&pagesize=' + AUDIT_PAGE_SIZE + (filter ? '&filter=' + encodeURIComponent(filter) : '');
+    const data = await API.get(url);
+    state.auditTotal = data.total || 0;
+    const pages = Math.max(1, Math.ceil(state.auditTotal / AUDIT_PAGE_SIZE));
+    if (state.auditPage > pages) {
+      state.auditPage = pages;
+      return loadAudit();
+    }
+    const list = data.list || [];
     tbody.innerHTML = list.length === 0
-      ? '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:30px">暂无日志</td></tr>'
+      ? '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:30px">暂无日志</td></tr>'
       : list.map(r => {
-          const typeTag = r.action.startsWith('auth') ? '登录' : (r.action.startsWith('item') || r.action.startsWith('group') ? '操作' : (r.action.startsWith('2fa') ? '2FA' : (r.action.startsWith('guest') ? '访客' : '系统')));
-          const typeColor = r.action.startsWith('auth') ? 'var(--blue)' : (r.action === 'audit.clear' ? 'var(--danger)' : 'var(--text-muted)');
-          const resultTag = r.result === 'success' ? '<span style="color:#2fa85a">成功</span>' : '<span style="color:var(--danger)">失败</span>';
+          const typeTag = r.action.startsWith('auth') ? '登录'
+            : (r.action.startsWith('2fa') ? '2FA'
+            : (r.action.startsWith('guest') ? '访客'
+            : (r.action.startsWith('item') || r.action.startsWith('group') ? '操作' : '系统')));
+          const typeColor = r.action.startsWith('auth') ? 'var(--blue)'
+            : (r.action === 'audit.clear' ? 'var(--danger)' : 'var(--text-muted)');
+          const resultTag = r.result === 'success'
+            ? '<span style="color:#2fa85a">成功</span>'
+            : '<span style="color:var(--danger)">失败</span>';
           return `<tr>
             <td style="white-space:nowrap">${(r.created_at || '').replace('T', ' ').slice(0, 19)}</td>
             <td><span style="background:${typeColor}22;color:${typeColor};padding:2px 8px;border-radius:4px;font-size:12px">${typeTag}</span></td>
@@ -2243,17 +2521,21 @@ async function loadAudit() {
             <td>${esc(r.target || '')}</td>
             <td>${resultTag}</td>
             <td style="font-family:monospace;font-size:12px">${esc(r.ip || '')}</td>
+            <td title="${esc(r.region || '')}">${esc(r.region || '—')}</td>
           </tr>`;
         }).join('');
     // 分页
     const pager = document.getElementById('auditPager');
     if (pager) {
-      const pages = Math.max(1, Math.ceil(state.auditTotal / 50));
-      pager.innerHTML = `共 ${state.auditTotal} 条 · ${pages} 页 · 当前 ${state.auditPage}`;
       pager.hidden = false;
+      pager.innerHTML = '<div class="pager-nav">' +
+        '<button class="pager-btn" type="button" data-audit-page="prev"' + (state.auditPage <= 1 ? ' disabled' : '') + '>‹ 上一页</button>' +
+        '<span class="pager-info">第 ' + state.auditPage + ' / ' + pages + ' 页 · 共 ' + state.auditTotal + ' 条</span>' +
+        '<button class="pager-btn" type="button" data-audit-page="next"' + (state.auditPage >= pages ? ' disabled' : '') + '>下一页 ›</button>' +
+        '</div>';
     }
   } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--danger);padding:20px">' + esc(e.message) + '</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--danger);padding:20px">' + esc(e.message) + '</td></tr>';
   }
 }
 
@@ -2500,5 +2782,130 @@ function bindDailyWallpaper() {
       toast('已选择：' + sel.options[sel.selectedIndex].text + '，刷新主页后生效', 'info');
     }
   });
+  const previewBtn = document.getElementById('dailyPreviewBtn');
+  if (previewBtn) previewBtn.onclick = openDailyWpModal;
+  const disableBtn = document.getElementById('dailyWpDisable');
+  if (disableBtn) {
+    disableBtn.onclick = () => {
+      sel.value = '';
+      document.getElementById('dailyWpModal')?.classList.remove('show');
+      toast('已关闭每日壁纸，记得点击分区「保存」生效', 'info');
+    };
+  }
+}
+
+const DAILY_WP_SOURCES = [
+  { id: 'bing_cn', name: '🇨🇳 Bing 中文', desc: '每日必应壁纸（zh-CN）' },
+  { id: 'picsum', name: '📷 Lorem Picsum', desc: '随机精选风景' },
+];
+
+/** 每日壁纸源预览弹窗：每个源随机 10 张缩略图，点选后才下载生效 */
+function openDailyWpModal() {
+  const modal = document.getElementById('dailyWpModal');
+  const wrap = document.getElementById('dailyWpGrid');
+  if (!modal || !wrap) return;
+
+  wrap.innerHTML = DAILY_WP_SOURCES.map(s => (
+    '<section class="dwp-section" id="dwpSec_' + s.id + '" data-source="' + s.id + '">' +
+      '<div class="dwp-head">' +
+        '<b>' + s.name + '</b>' +
+        '<span class="dwp-state" id="dwpState_' + s.id + '" hidden>已固定</span>' +
+        '<span class="dwp-actions">' +
+          '<button class="btn btn-sm" type="button" data-dwp-refresh="' + s.id + '">🔄 换一批</button>' +
+          '<button class="btn btn-sm" type="button" data-dwp-unpin="' + s.id + '" hidden>↩️ 恢复每日自动</button>' +
+        '</span>' +
+      '</div>' +
+      '<div class="dwp-grid" id="dwpGrid_' + s.id + '"><div class="dwp-loading">加载预览…</div></div>' +
+    '</section>'
+  )).join('');
+
+  wrap.querySelectorAll('[data-dwp-refresh]').forEach(btn => {
+    btn.onclick = () => loadDailyPreviews(btn.dataset.dwpRefresh);
+  });
+  wrap.querySelectorAll('[data-dwp-unpin]').forEach(btn => {
+    btn.onclick = () => unpinDailyWallpaper(btn.dataset.dwpUnpin);
+  });
+
+  modal.classList.add('show');
+  DAILY_WP_SOURCES.forEach(s => loadDailyPreviews(s.id));
+}
+
+/** 拉取某源随机 10 张远程缩略图（服务端只取元数据，不下载原图） */
+async function loadDailyPreviews(source) {
+  const grid = document.getElementById('dwpGrid_' + source);
+  if (!grid) return;
+  grid.innerHTML = '<div class="dwp-loading">加载预览…</div>';
+  try {
+    const r = await API.get(API_BASE + 'wallpaper.php?action=preview&source=' + encodeURIComponent(source) +
+      '&n=10&_=' + Date.now());
+    const list = (r && r.list) || [];
+    const stateEl = document.getElementById('dwpState_' + source);
+    const unpinBtn = document.querySelector('[data-dwp-unpin="' + source + '"]');
+    const pinned = !!(r && r.pinned);
+    if (stateEl) { stateEl.hidden = !pinned; }
+    if (unpinBtn) { unpinBtn.hidden = !pinned; }
+
+    if (list.length === 0) {
+      grid.innerHTML = '<div class="dwp-loading">暂无预览</div>';
+      return;
+    }
+    grid.innerHTML = '';
+    list.forEach(it => {
+      const card = document.createElement('div');
+      card.className = 'dwp-thumb';
+      card.title = it.title || '';
+      const img = document.createElement('img');
+      img.src = it.thumb;
+      img.alt = '';
+      img.loading = 'lazy';
+      img.referrerPolicy = 'no-referrer';
+      const tip = document.createElement('span');
+      tip.className = 'dwp-tip';
+      tip.textContent = it.title || '';
+      card.appendChild(img);
+      card.appendChild(tip);
+      card.onclick = () => pinDailyWallpaper(source, it, card);
+      grid.appendChild(card);
+    });
+  } catch (e) {
+    grid.innerHTML = '<div class="dwp-loading">预览失败：' + esc(e.message) + '</div>';
+  }
+}
+
+/** 点选预览图：此时才下载原图并固定为该源壁纸，同时立即保存源设置 */
+async function pinDailyWallpaper(source, item, card) {
+  card.classList.add('loading');
+  try {
+    await API.post(API_BASE + 'wallpaper.php?action=pin', {
+      source,
+      url: item.full,
+      title: item.title || '',
+      copyright: item.copyright || '',
+    });
+    let applied = true;
+    try {
+      await API.post(API_BASE + 'settings.php?action=save', { wallpaper_source: source });
+    } catch (e) {
+      applied = false; // 编辑者账号无权改设置，但固定图已生效
+    }
+    const sel = document.getElementById('s_wallpaper_source');
+    if (sel && applied) sel.value = source;
+    document.getElementById('dailyWpModal')?.classList.remove('show');
+    toast(applied ? '已设为壁纸，刷新主页即可看到' : '图片已固定，但当前账号无权修改壁纸源设置', applied ? 'success' : 'info');
+  } catch (e) {
+    card.classList.remove('loading');
+    toast(e.message, 'error');
+  }
+}
+
+/** 取消固定，恢复每日自动抓取 */
+async function unpinDailyWallpaper(source) {
+  try {
+    await API.post(API_BASE + 'wallpaper.php?action=unpin', { source });
+    toast('已恢复每日自动壁纸', 'success');
+    loadDailyPreviews(source);
+  } catch (e) {
+    toast(e.message, 'error');
+  }
 }
 

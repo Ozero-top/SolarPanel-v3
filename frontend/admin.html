@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="dark" data-style="soft">
+<html lang="zh-CN" data-theme="light" data-style="liquid-glass">
 <head>
 <meta charset="UTF-8">
-<script>(function(){try{var s=localStorage.getItem('sp_theme');var t;if(s==='system'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.mode='system'}else if(s==='light'||s==='dark'){t=s;document.documentElement.dataset.mode=s}else{t='dark';document.documentElement.dataset.mode='dark'}document.documentElement.dataset.theme=t;var st=localStorage.getItem('sp_style');if(st){document.documentElement.dataset.style=st}}catch(e){}})();</script>
+<script>(function(){try{var s=localStorage.getItem('sp_theme');var t;if(s==='system'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.mode='system'}else if(s==='light'||s==='dark'){t=s;document.documentElement.dataset.mode=s}else{t='light';document.documentElement.dataset.mode='light'}document.documentElement.dataset.theme=t;var st=localStorage.getItem('sp_style');if(st){document.documentElement.dataset.style=st}}catch(e){}})();</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>管理后台 - SolarPanel</title>
   <link rel="icon" href="favicon.ico?v=79e864af" type="image/x-icon">
-  <link rel="stylesheet" href="assets/css/common.css?v=3e314508">
-  <link rel="stylesheet" href="assets/css/auth-admin.css?v=50e901cb">
-  <link rel="stylesheet" href="assets/css/themes.css?v=f8736cac">
+  <link rel="stylesheet" href="assets/css/common.css?v=bd8bb362">
+  <link rel="stylesheet" href="assets/css/auth-admin.css?v=60ef7415">
+  <link rel="stylesheet" href="assets/css/themes.css?v=00ee15d5">
 </head>
 <body>
   <div class="style-fx" aria-hidden="true"></div>
@@ -37,11 +37,15 @@
     <section class="admin-panel glass" id="tab-items" hidden>
       <div class="panel-head">
         <h2>卡片管理</h2>
-        <div style="display:flex;gap:8px;align-items:center">
-          <select class="select" id="itemGroupFilter" style="width:auto;min-width:140px"></select>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input class="input" id="itemSearch" type="search" placeholder="搜索标题 / 网址" style="width:170px">
+          <select class="select" id="itemParentFilter" style="width:auto;min-width:130px"></select>
+          <select class="select" id="itemSubFilter" style="width:auto;min-width:150px"></select>
+          <button class="btn btn-sm" id="itemFilterReset" type="button">重置</button>
           <button class="btn btn-primary" id="addItemBtn">＋ 添加卡片</button>
         </div>
       </div>
+      <div class="form-hint" id="itemsFilterInfo" style="margin:4px 0 10px"></div>
       <table class="table">
         <thead>
           <tr>
@@ -89,21 +93,23 @@
     <section class="admin-panel glass" id="tab-settings">
       <div class="panel-head"><h2>站点设置</h2></div>
 
-      <!-- 二级导航：功能分区切换（各分区独立保存） -->
+      <!-- 二级导航：按使用逻辑分组，各分区独立保存 -->
       <nav class="settings-subnav" id="settingsSubnav" aria-label="设置分区">
-        <button type="button" class="subtab" data-panel="basic">🧭 基础信息</button>
-        <button type="button" class="subtab" data-panel="theme">🎨 外观布局</button>
-        <button type="button" class="subtab" data-panel="search">🔍 搜索引擎</button>
+        <button type="button" class="subtab" data-panel="basic">🏠 站点信息</button>
+        <button type="button" class="subtab" data-panel="theme">🎨 外观与卡片</button>
+        <button type="button" class="subtab" data-panel="search">🧭 导航与搜索</button>
+        <button type="button" class="subtab" data-panel="access">🔐 访问控制</button>
         <button type="button" class="subtab" data-panel="news">📰 热点新闻</button>
       </nav>
 
-      <!-- 基础信息 -->
+      <!-- 站点信息（基本信息 / 公告 / 备案） -->
       <div class="settings-section">
         <div class="section-head">
-          <h3>🧭 基础信息</h3>
+          <h3>🏠 站点信息</h3>
           <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-basic">保存</button>
         </div>
         <form id="sf-basic" data-section="basic" autocomplete="off">
+          <h4 class="sub-group-title">🏠 基本信息</h4>
           <div class="form-row">
             <div class="form-item">
               <label>站点标题</label>
@@ -119,28 +125,17 @@
               <label>页脚文字</label>
               <input class="input" id="s_footer" type="text" maxlength="100">
             </div>
-          </div>
-          <div class="form-item">
-            <label>卡片打开地址模式</label>
-            <select class="select" id="s_default_lan_mode">
-              <option value="public">外网地址模式（始终打开卡片公网域名）</option>
-              <option value="lan">内网地址模式（始终打开卡片内网 IP）</option>
-              <option value="auto">🌐 自动识别（按当前访问网络自动切换）</option>
-            </select>
-            <div class="form-hint">
-              每张卡片可单独填「内网地址」（编辑卡片 → 内网地址）。此设置决定点卡片时打开哪一个。
-            </div>
-          </div>
-          <div class="form-item">
-            <label>自动识别补充域名（Split DNS 场景）</label>
-            <input type="text" class="input" id="s_lan_hostnames" placeholder="如 home.local, nas, 192.168.1.10">
-            <div class="form-hint">
-              仅 auto 模式生效。填写你在内网访问面板时用的域名或 IP，多个用英文逗号分隔。<br>
-              支持<strong>精确匹配</strong>（如 <code>test.yourdomain.com</code>）和<strong>后缀通配</strong>（如 <code>.yourdomain.com</code> 匹配所有子域名）。<br>
-              内置已识别 <code>localhost</code>、<code>.local/.lan/.home</code>、私网 IP 段（<code>10.x.x.x</code>、<code>192.168.x.x</code>、<code>172.16-31.x.x</code>），这些不用填。
+            <div class="form-item">
+              <label>站点 Logo</label>
+              <div class="upload-row">
+                <input class="input" id="s_site_logo" type="text" placeholder="图片地址，或点击上传">
+                <button class="btn" type="button" data-upload="s_site_logo">上传图片</button>
+              </div>
+              <img class="setting-preview" id="p_site_logo" alt="">
             </div>
           </div>
 
+          <h4 class="sub-group-title">📢 公告</h4>
           <div class="form-item">
             <label>公告开关（默认关闭）</label>
             <select class="select" id="s_announcement_show">
@@ -151,45 +146,6 @@
           <div class="form-item">
             <label>公告内容（需打开上方公告开关才会显示）</label>
             <textarea class="textarea" id="s_announcement" maxlength="500"></textarea>
-          </div>
-
-          <h4 class="sub-group-title">� 访客访问密码</h4>
-          <div class="form-row">
-            <div class="form-item">
-              <label>访客访问开关（默认关闭）</label>
-              <select class="select" id="s_guest_access_enabled">
-                <option value="0">关闭（访客可直接访问主页）</option>
-                <option value="1">开启（未登录访客需先输入密码）</option>
-              </select>
-              <div class="form-hint">开启后，访客访问主页将先看到密码锁屏；已登录管理员不受影响。密码使用 bcrypt 存储（不在表单中回显）。</div>
-            </div>
-            <div class="form-item">
-              <label>访客密码（留空则保持原密码不变；仅在开启时有效）</label>
-              <input class="input" id="s_guest_password" type="password" placeholder="输入访客密码（留空 = 不改）" autocomplete="off">
-              <div class="form-hint">访客密码将与本站访客密码保持一致（bcrypt(10) 哈希存储）。</div>
-            </div>
-          </div>
-
-          <h4 class="sub-group-title">� 时钟与天气</h4>
-          <div class="form-row">
-            <div class="form-item">
-              <label>显示时钟</label>
-              <select class="select" id="s_clock_show">
-                <option value="1">显示</option>
-                <option value="0">隐藏</option>
-              </select>
-            </div>
-            <div class="form-item">
-              <label>天气显示</label>
-              <select class="select" id="s_weather_show">
-                <option value="1">显示（与时间横向并排）</option>
-                <option value="0">隐藏</option>
-              </select>
-            </div>
-            <div class="form-item">
-              <label>天气城市（留空 = 按访客 IP 自动定位）</label>
-              <input class="input" id="s_weather_city" type="text" placeholder="如：北京 / Shanghai（留空自动定位）">
-            </div>
           </div>
 
           <h4 class="sub-group-title">📋 备案信息</h4>
@@ -227,16 +183,43 @@
               <input class="input" id="s_police_link" type="text" placeholder="如 https://beian.mps.gov.cn/">
             </div>
           </div>
+
+          <h4 class="sub-group-title">🌐 内网 / 外网访问</h4>
+          <div class="form-item">
+            <label>卡片打开地址模式</label>
+            <select class="select" id="s_default_lan_mode">
+              <option value="public">外网地址模式（始终打开卡片公网域名）</option>
+              <option value="lan">内网地址模式（始终打开卡片内网 IP）</option>
+              <option value="auto">🌐 自动识别（按当前访问网络自动切换）</option>
+            </select>
+            <div class="form-hint">每张卡片可单独填「内网地址」（编辑卡片 → 内网地址）。此设置决定点卡片时打开哪一个。</div>
+          </div>
+          <div class="form-item">
+            <label>自动识别补充域名（Split DNS 场景）</label>
+            <input type="text" class="input" id="s_lan_hostnames" placeholder="如 home.local, nas, 192.168.1.10">
+            <div class="form-hint">
+              仅 auto 模式生效。填写你在内网访问面板时用的域名或 IP，多个用英文逗号分隔。<br>
+              支持<strong>精确匹配</strong>（如 <code>test.yourdomain.com</code>）和<strong>后缀通配</strong>（如 <code>.yourdomain.com</code> 匹配所有子域名）。<br>
+              内置已识别 <code>localhost</code>、<code>.local/.lan/.home</code>、私网 IP 段（<code>10.x.x.x</code>、<code>192.168.x.x</code>、<code>172.16-31.x.x</code>），这些不用填。
+            </div>
+          </div>
         </form>
       </div>
 
-      <!-- 外观布局（主题外观 + 布局与卡片 + Logo 与壁纸 合并） -->
+      <!-- 外观与卡片（主题 + 卡片 + 布局 + 时钟天气 + 壁纸） -->
       <div class="settings-section">
         <div class="section-head">
-          <h3>🎨 外观布局</h3>
+          <h3>🎨 外观与卡片</h3>
           <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-theme">保存</button>
         </div>
         <form id="sf-theme" data-section="theme" autocomplete="off">
+          <nav class="settings-subnav theme-subnav" id="themeSubnav" aria-label="外观与卡片分类">
+            <button class="subtab active" type="button" data-subpane="appearance">🎨 外观设置</button>
+            <button class="subtab" type="button" data-subpane="wallpaper">🖼️ 壁纸与每日图</button>
+          </nav>
+
+          <div class="subpane" data-pane="appearance">
+          <h4 class="sub-group-title">🎭 主题与卡片</h4>
           <div class="form-row">
             <div class="form-item">
               <label>默认主题（深浅模式）</label>
@@ -250,7 +233,8 @@
             <div class="form-item">
               <label>风格主题</label>
               <select class="select" id="s_theme_style">
-                <option value="soft">Soft 柔和浮雕（默认）</option>
+                <option value="liquid-glass">Liquid Glass 液态玻璃（默认 · 磨砂透光 · 流动光斑 · 仅浅色）</option>
+                <option value="soft">Soft 柔和浮雕</option>
                 <option value="aurora">Aurora 动态极光（柔光渐变 · 缓慢流动 · 光环描边）</option>
                 <option value="blueprint">Blueprint 工程蓝图（深蓝底 · 白线网格 · 等宽字 · 橙色标注）</option>
                 <option value="clarity">Clarity 清透极简（雾白细线 · 大留白 · 静谧蓝）</option>
@@ -273,28 +257,13 @@
               </select>
             </div>
             <div class="form-item">
-              <label>搜索引擎搜索栏</label>
-              <select class="select" id="s_search_bar_enabled">
-                <option value="1">显示（主页顶部）</option>
-                <option value="0">隐藏</option>
-              </select>
-            </div>
-            <div class="form-item">
-              <label>桌面端顶栏（品牌/按钮）</label>
-              <select class="select" id="s_topbar_desktop_enabled">
-                <option value="1">显示（向下滚动自动收起）</option>
-                <option value="0">隐藏</option>
-              </select>
-            </div>
-            <div class="form-item">
-              <label>移动端顶栏（品牌/按钮）</label>
-              <select class="select" id="s_topbar_mobile_enabled">
-                <option value="1">始终显示</option>
-                <option value="0">默认隐藏（右上角悬浮按钮切换）</option>
-              </select>
+              <label>卡片背景透明度：<span class="range-val" id="v_card_opacity">100</span>%</label>
+              <input type="range" class="range" id="s_card_opacity" min="40" max="100" step="5" value="100">
+              <div class="form-hint">仅调整卡片底色透明度，文字与图标不受影响；40% 最透，100% 为主题默认底色。</div>
             </div>
           </div>
 
+          <h4 class="sub-group-title">📐 布局与内容</h4>
           <div class="form-item">
             <label>内容区域（控制主页卡片区域的宽度与边距，拖动滑块调整，单位 px）</label>
             <div class="form-row">
@@ -320,16 +289,44 @@
             <div class="form-hint">保存后刷新主页生效；若未生效多为浏览器缓存，可强制刷新（Ctrl+F5）。</div>
           </div>
 
-          <h4 class="sub-group-title">🖼️ Logo 与壁纸</h4>
+          <h4 class="sub-group-title">🔤 页面字体</h4>
           <div class="form-item">
-            <label>站点 Logo</label>
-            <div class="upload-row">
-              <input class="input" id="s_site_logo" type="text" placeholder="图片地址，或点击上传">
-              <button class="btn" type="button" data-upload="s_site_logo">上传图片</button>
-            </div>
-            <img class="setting-preview" id="p_site_logo" alt="">
+            <label>整体页面字体（12 款免费设计字体）</label>
+            <select class="select" id="s_page_font"></select>
+            <div class="form-hint">作用于主页正文、卡片标题与描述、顶栏等；中文字体按需加载字形子集，首次切换稍慢；离线时回退系统字体。时钟/天气的专用字体在下方「时钟与天气」设置。</div>
+            <div class="font-preview" id="pageFontPreview">SolarPanel 导航 · 12:30 · 晴 24°C · 今天也要加油呀</div>
           </div>
 
+          <h4 class="sub-group-title">🕒 时钟与天气</h4>
+          <div class="form-row">
+            <div class="form-item">
+              <label>显示时钟</label>
+              <select class="select" id="s_clock_show">
+                <option value="1">显示</option>
+                <option value="0">隐藏</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label>天气显示</label>
+              <select class="select" id="s_weather_show">
+                <option value="1">显示（与时间横向并排）</option>
+                <option value="0">隐藏</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label>天气城市（留空 = 按访客 IP 自动定位）</label>
+              <input class="input" id="s_weather_city" type="text" placeholder="如：北京 / Shanghai（留空自动定位）">
+            </div>
+          </div>
+          <div class="form-item">
+            <label>时钟 / 天气字体（12 款免费设计字体）</label>
+            <select class="select" id="s_clock_font"></select>
+            <div class="form-hint">留空时继承「页面字体」；中文字体按需加载，离线回退系统字体。</div>
+            <div class="font-preview" id="clockFontPreview">12:30 <span>晴 24°C · 10月24日 周六</span></div>
+          </div>
+          </div><!-- /appearance -->
+
+          <div class="subpane" data-pane="wallpaper" hidden>
           <div class="form-item">
             <label>主页壁纸（填写地址或点击「图库」选择，上传的壁纸自动进入图库）</label>
             <div class="upload-row">
@@ -354,25 +351,55 @@
           </div>
 
           <div class="form-item">
-            <label>每日壁纸源（开启后主页顶部上方静态壁纸将被每日自动更新的壁纸覆盖；留空 = 禁用）</label>
-            <select class="select" id="s_wallpaper_source">
-              <option value="">禁用（使用上方静态壁纸）</option>
-              <option value="bing_cn">🇨🇳 Bing 中文（zh-CN，默认）</option>
-              <option value="nasa">🚀 NASA 每日天文图（每日一张太空美景）</option>
-              <option value="picsum">📷 Lorem Picsum（每日一张固定精选风景）</option>
-            </select>
+            <label>每日壁纸源（开启后主页静态壁纸将被每日自动更新的壁纸覆盖；留空 = 禁用）</label>
+            <div class="upload-row">
+              <select class="select" id="s_wallpaper_source">
+                <option value="">禁用（使用上方静态壁纸）</option>
+                <option value="bing_cn">🇨🇳 Bing 中文（zh-CN，默认）</option>
+                <option value="picsum">📷 Lorem Picsum（每日一张固定精选风景）</option>
+              </select>
+              <button class="btn" type="button" id="dailyPreviewBtn">🔍 预览 / 切换</button>
+            </div>
             <div class="form-hint">切换源后下一次访问会重新抓取新源并各自缓存。旧值 bing / bing_en / bing_jp 自动归一化为 bing_cn。</div>
           </div>
+          </div><!-- /wallpaper -->
+
         </form>
       </div>
 
-      <!-- 搜索引擎 -->
+      <!-- 导航与搜索 -->
       <div class="settings-section">
         <div class="section-head">
-          <h3>🔍 搜索引擎</h3>
+          <h3>🧭 导航与搜索</h3>
           <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-search">保存</button>
         </div>
         <form id="sf-search" data-section="search" autocomplete="off">
+          <h4 class="sub-group-title">🧭 顶栏与搜索栏</h4>
+          <div class="form-row">
+            <div class="form-item">
+              <label>搜索引擎搜索栏</label>
+              <select class="select" id="s_search_bar_enabled">
+                <option value="1">显示（主页顶部）</option>
+                <option value="0">隐藏</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label>桌面端顶栏（品牌/按钮）</label>
+              <select class="select" id="s_topbar_desktop_enabled">
+                <option value="1">显示（向下滚动自动收起）</option>
+                <option value="0">隐藏</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label>移动端顶栏（品牌/按钮）</label>
+              <select class="select" id="s_topbar_mobile_enabled">
+                <option value="1">始终显示</option>
+                <option value="0">默认隐藏（右上角悬浮按钮切换）</option>
+              </select>
+            </div>
+          </div>
+
+          <h4 class="sub-group-title">🔍 搜索引擎</h4>
           <div class="form-row">
             <div class="form-item">
               <label>默认搜索引擎</label>
@@ -393,6 +420,31 @@
         </form>
       </div>
 
+      <!-- 访问控制 -->
+      <div class="settings-section">
+        <div class="section-head">
+          <h3>🔐 访问控制</h3>
+          <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-access">保存</button>
+        </div>
+        <form id="sf-access" data-section="access" autocomplete="off">
+          <div class="form-row">
+            <div class="form-item">
+              <label>访客访问开关（默认关闭）</label>
+              <select class="select" id="s_guest_access_enabled">
+                <option value="0">关闭（访客可直接访问主页）</option>
+                <option value="1">开启（未登录访客需先输入密码）</option>
+              </select>
+              <div class="form-hint">开启后，访客访问主页将先看到密码锁屏；已登录管理员不受影响。密码使用 bcrypt 存储（不在表单中回显）。</div>
+            </div>
+            <div class="form-item">
+              <label>访客密码（留空则保持原密码不变；仅在开启时有效）</label>
+              <input class="input" id="s_guest_password" type="password" placeholder="输入访客密码（留空 = 不改）" autocomplete="off">
+              <div class="form-hint">访客密码与本站访客密码保持一致（bcrypt(10) 哈希存储）。</div>
+            </div>
+          </div>
+        </form>
+      </div>
+
       <!-- 热点新闻 -->
       <div class="settings-section">
         <div class="section-head">
@@ -400,6 +452,7 @@
           <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-news">保存</button>
         </div>
         <form id="sf-news" data-section="news" autocomplete="off">
+          <h4 class="sub-group-title">📰 新闻视图</h4>
           <div class="form-item">
             <label>热点新闻</label>
             <select class="select" id="s_news_show">
@@ -408,6 +461,7 @@
             </select>
             <div class="form-hint">关闭后主页「📰 热点新闻」入口和新闻视图均不显示，方便暂时停用热点功能。</div>
           </div>
+          <h4 class="sub-group-title">📊 数据源</h4>
           <div class="form-item">
             <label>数据源（勾选主页新闻视图展示的热榜；未勾选任何数据源时主页入口自动隐藏；拖动行首 ⠿ 或用「上移/下移」调整主页显示顺序，保存后生效）</label>
             <div style="display:flex;gap:8px;margin:4px 0 10px">
@@ -418,27 +472,28 @@
               <div class="form-hint">数据源加载中…</div>
             </div>
           </div>
-          <hr style="border:none;border-top:1px dashed var(--border);margin:18px 0">
-          <h4 class="sub-group-title" style="margin-bottom:8px">📌 自定义 RSS / Atom 源</h4>
-          <div class="form-hint" style="margin-bottom:8px">在下方添加任意 RSS 或 Atom 订阅源，将作为额外的热点卡片在新闻视图展示。URL 必须以 http:// 或 https:// 开头。</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-            <input class="input" id="feedTitle" type="text" placeholder="标题（建议 ≤12 字）" style="max-width:200px">
-            <input class="input" id="feedURL" type="text" placeholder="RSS / Atom 订阅地址，如 https://hnrss.org/newest" style="flex:1;min-width:300px">
-            <button class="btn btn-primary" type="button" id="addFeedBtn">＋ 添加</button>
+          <h4 class="sub-group-title">📌 自定义 RSS / Atom 源</h4>
+          <div class="form-item">
+            <div class="form-hint" style="margin-bottom:8px">在下方添加任意 RSS 或 Atom 订阅源，将作为额外的热点卡片在新闻视图展示。URL 必须以 http:// 或 https:// 开头；此列表新增 / 删除即时生效，无需点击上方保存。</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+              <input class="input" id="feedTitle" type="text" placeholder="标题（建议 ≤12 字）" style="max-width:200px">
+              <input class="input" id="feedURL" type="text" placeholder="RSS / Atom 订阅地址，如 https://hnrss.org/newest" style="flex:1;min-width:300px">
+              <button class="btn btn-primary" type="button" id="addFeedBtn">＋ 添加</button>
+            </div>
+            <table class="table" id="feedsTable">
+              <thead>
+                <tr>
+                  <th style="width:40px">ID</th>
+                  <th>标题</th>
+                  <th>URL</th>
+                  <th style="width:60px">启用</th>
+                  <th style="width:80px">排序</th>
+                  <th style="width:160px">操作</th>
+                </tr>
+              </thead>
+              <tbody id="feedsTbody"></tbody>
+            </table>
           </div>
-          <table class="table" id="feedsTable">
-            <thead>
-              <tr>
-                <th style="width:40px">ID</th>
-                <th>标题</th>
-                <th>URL</th>
-                <th style="width:60px">启用</th>
-                <th style="width:80px">排序</th>
-                <th style="width:160px">操作</th>
-              </tr>
-            </thead>
-            <tbody id="feedsTbody"></tbody>
-          </table>
         </form>
       </div>
 
@@ -571,25 +626,19 @@
         <div style="display:flex;gap:8px;align-items:center">
           <select class="select" id="auditFilterType" style="width:auto;min-width:140px">
             <option value="">全部类型</option>
-            <option value="auth.login">登录</option>
-            <option value="auth.login.2fa">2FA 登录</option>
-            <option value="2fa.enable">2FA 开启</option>
-            <option value="2fa.disable">2FA 关闭</option>
-            <option value="guest.login">访客密码</option>
-            <option value="settings.save">保存设置</option>
-            <option value="item.add">新增卡片</option>
-            <option value="item.edit">编辑卡片</option>
-            <option value="item.delete">删除卡片</option>
-            <option value="group.add">新增分组</option>
-            <option value="group.edit">编辑分组</option>
-            <option value="group.delete">删除分组</option>
-            <option value="audit.clear">清空审计</option>
+            <option value="auth">登录认证</option>
+            <option value="2fa">2FA</option>
+            <option value="guest">访客访问</option>
+            <option value="item">卡片操作</option>
+            <option value="group">分组操作</option>
+            <option value="settings">保存设置</option>
+            <option value="audit">审计管理</option>
           </select>
           <button class="btn" type="button" id="auditRefreshBtn">🔄 刷新</button>
           <button class="btn btn-danger" type="button" id="auditClearBtn">🗑️ 清空当前筛选</button>
         </div>
       </div>
-      <div class="form-hint" style="margin-bottom:10px">记录登录成功/失败与关键写操作（卡片 / 分组 / 设置 / 账号 / 2FA）；仅管理员可见；最近 500 条内分页展示。</div>
+      <div class="form-hint" style="margin-bottom:10px">记录登录、访客访问（IP + 国家省市）与关键写操作（卡片 / 分组 / 设置 / 账号 / 2FA）；仅管理员可见；每页 20 条。</div>
       <table class="table audit-table">
         <thead>
           <tr>
@@ -600,6 +649,7 @@
             <th>对象</th>
             <th style="width:80px">结果</th>
             <th style="width:120px">IP</th>
+            <th style="width:180px">地区</th>
           </tr>
         </thead>
         <tbody id="auditTbody"></tbody>
@@ -738,8 +788,8 @@
             <div class="upload-row" style="gap:8px;flex-wrap:nowrap">
               <input type="color" id="i_color" value="#0969da" style="width:44px;height:34px;padding:2px;border-radius:6px;cursor:pointer">
               <span style="font-size:12px;color:var(--text-muted);white-space:nowrap">透明度</span>
-              <input type="range" id="i_alpha" min="0" max="100" value="100" style="flex:1">
-              <span id="i_alphaLabel" style="font-size:12px;color:var(--text-muted);min-width:32px;text-align:right">100%</span>
+              <input type="range" id="i_alpha" min="0" max="100" value="0" style="flex:1">
+              <span id="i_alphaLabel" style="font-size:12px;color:var(--text-muted);min-width:32px;text-align:right">0%</span>
               <!-- 隐藏字段：JS 用 buildBgCss 合成后写入 -->
               <input type="hidden" id="i_bg" value="">
             </div>
@@ -866,10 +916,30 @@
         <h3>壁纸图库</h3>
         <button class="btn btn-sm" data-close="wpGalleryModal">✕</button>
       </div>
+      <div class="wp-tabs" id="wpGalleryTabs" role="tablist">
+        <button class="wp-tab active" type="button" data-wp-tab="uploaded" role="tab" aria-selected="true">📤 我的上传 <span class="wp-count" id="wpCountUploaded">0</span></button>
+        <button class="wp-tab" type="button" data-wp-tab="preset" role="tab" aria-selected="false">📦 内置壁纸 <span class="wp-count" id="wpCountPreset">0</span></button>
+      </div>
       <div class="wp-gallery wp-gallery-modal" id="wpGallery">
         <div class="wp-gallery-empty" id="wpGalleryEmpty">图库为空，上传壁纸后自动加入</div>
       </div>
-      <div class="form-hint" style="margin-top:10px">点击壁纸即可选用并关闭弹窗；右上角 × 从图库删除；带「预置」角标的壁纸不可删除。</div>
+      <div class="form-hint" style="margin-top:10px">「我的上传」可删除；「内置壁纸」为系统自带，只能选用不可删除。点击壁纸即可选用并关闭弹窗。</div>
+    </div>
+  </div>
+
+  <!-- ============ 每日壁纸源预览弹窗 ============ -->
+  <div class="modal" id="dailyWpModal">
+    <div class="modal-box glass-strong" style="max-width:860px">
+      <div class="modal-head">
+        <h3>每日壁纸源 · 随机预览</h3>
+        <button class="btn btn-sm" data-close="dailyWpModal">✕</button>
+      </div>
+      <div id="dailyWpGrid"></div>
+      <div class="form-hint" style="margin-top:10px">预览只加载远程缩略图，不占用服务器；点「换一批」重新随机 10 张。点击任意图片后才会下载原图并设为壁纸，主页刷新即生效。</div>
+      <div class="modal-foot">
+        <button class="btn btn-danger" type="button" id="dailyWpDisable">禁用每日壁纸</button>
+        <button class="btn" type="button" data-close="dailyWpModal">关闭</button>
+      </div>
     </div>
   </div>
 
@@ -905,7 +975,7 @@
   </div>
 
   <script src="assets/js/qrcode.min.js"></script>
-  <script src="assets/js/api.js?v=06fad3af"></script>
-  <script src="assets/js/admin.js?v=3a774d8b"></script>
+  <script src="assets/js/api.js?v=6a31cfdf"></script>
+  <script src="assets/js/admin.js?v=6efc8df3"></script>
 </body>
 </html>

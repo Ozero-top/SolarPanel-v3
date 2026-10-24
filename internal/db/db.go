@@ -28,11 +28,11 @@ func Init(cfg *config.Config) error {
 
 	// WAL 模式（Write-Ahead Logging）：一个写 + 多个读并发，journal_mode=DELETE 会锁死所有读
 	DB.Exec("PRAGMA journal_mode=WAL")
-	DB.Exec("PRAGMA synchronous=NORMAL")    // WAL 下 NORMAL 足够安全，性能更好
-	DB.Exec("PRAGMA busy_timeout=15000")    // 15s：并发写竞争时给够等待窗口
+	DB.Exec("PRAGMA synchronous=NORMAL") // WAL 下 NORMAL 足够安全，性能更好
+	DB.Exec("PRAGMA busy_timeout=15000") // 15s：并发写竞争时给够等待窗口
 	DB.Exec("PRAGMA foreign_keys=ON")
-	DB.Exec("PRAGMA cache_size=-20000")     // 20MB page cache（负号表示 KB）
-	DB.Exec("PRAGMA temp_store=MEMORY")     // 临时表/索引走内存，减少磁盘 IO
+	DB.Exec("PRAGMA cache_size=-20000") // 20MB page cache（负号表示 KB）
+	DB.Exec("PRAGMA temp_store=MEMORY") // 临时表/索引走内存，减少磁盘 IO
 
 	log.Println("[db] SQLite connected:", cfg.DBPath)
 
@@ -140,6 +140,7 @@ var schemaDDL = []string{
 		actor TEXT NOT NULL DEFAULT '',
 		actor_role TEXT NOT NULL DEFAULT '',
 		ip TEXT NOT NULL DEFAULT '',
+		region TEXT NOT NULL DEFAULT '',
 		user_agent TEXT NOT NULL DEFAULT '',
 		detail TEXT NOT NULL DEFAULT '',
 		created_at TEXT NOT NULL DEFAULT ''

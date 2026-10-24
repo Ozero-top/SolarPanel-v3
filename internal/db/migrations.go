@@ -26,6 +26,11 @@ var migrations = []Migration{
 	{Version: 2, Name: "settings.updated_at + trigger",
 		SQL: `ALTER TABLE settings ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''`,
 		Fn:  backfillV2SettingsUpdatedAt},
+
+	// v3: 审计日志记录 IP 归属地 + 查询索引（分页/筛选性能）
+	{Version: 3, Name: "audit_logs.region + indexes",
+		SQL: `ALTER TABLE audit_logs ADD COLUMN region TEXT NOT NULL DEFAULT ''`,
+		Fn:  backfillV3AuditRegion},
 }
 
 // backfillV2SettingsUpdatedAt v2 迁移专用：
@@ -71,6 +76,37 @@ func backfillV2SettingsUpdatedAt() error {
 		END`)
 
 	log.Println("[migrate] v2: settings.updated_at + trigger 已就绪")
+	return nil
+}
+
+// backfillV3AuditRegion v3 迁移专用：确保 region 列存在，并建立分页/筛选索引
+func backfillV3AuditRegion() error {
+	has := false
+	rows, err := DB.Query("PRAGMA table_info(audit_logs)")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notnull, pk int
+		var cname, ctype string
+		var dflt any
+		if err := rows.Scan(&cid, &cname, &ctype, &notnull, &dflt, &pk); err != nil {
+			continue
+		}
+		if cname == "region" {
+			has = true
+			break
+		}
+	}
+	if !has {
+		if _, err := DB.Exec("ALTER TABLE audit_logs ADD COLUMN region TEXT NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+	}
+	DB.Exec(`CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC)`)
+	DB.Exec(`CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action)`)
+	log.Println("[migrate] v3: audit_logs.region + indexes 已就绪")
 	return nil
 }
 

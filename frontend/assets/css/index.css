@@ -3,6 +3,15 @@
    分组与卡片为柔和凸起，Hover 上浮、Active 按压
    ============================================================ */
 
+/* 分组标题字号/字重统一由变量控制，避免各主题各自覆盖导致层级字号漂移 */
+:root {
+  --group-title-size: 18px;
+  --group-subtitle-size: 16px;
+  --group-desc-size: 13px;
+  --group-title-weight: 600;
+  --group-title-spacing: 0.2px;
+}
+
 /* ---------- 背景（默认柔和渐变；设置壁纸后由 JS 叠加遮罩） ---------- */
 .bg-layer {
   position: fixed;
@@ -283,13 +292,13 @@
     padding: 6px 10px 10px;
   }
   .group-parent-head h3 {
-    font-size: 16px;
-    letter-spacing: 0;
+    font-size: var(--group-subtitle-size);
+    letter-spacing: var(--group-title-spacing);
     min-width: 0;
     flex-shrink: 1;
   }
   .group-parent-head .desc {
-    font-size: 11px;
+    font-size: var(--group-desc-size);
     max-width: 100%;
     flex-basis: 100%;
   }
@@ -353,6 +362,7 @@
   gap: 14px;
   margin: 36px auto 28px;
   user-select: none;
+  font-family: var(--clock-font, var(--page-font, inherit));
 }
 .clock-area.show {
   display: flex;
@@ -374,8 +384,8 @@
 }
 .clock-time {
   font-size: 64px;
-  /* 粗黑体：显式指定具体字体名，浏览器/系统的自定义默认字体设置不会命中（仅具体名都缺失时才退到 sans-serif） */
-  font-family: 'PingFang SC', 'Microsoft YaHei', 'HarmonyOS Sans SC', 'MiSans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'WenQuanYi Micro Hei', sans-serif;
+  /* 默认粗黑体；后台选择设计字体后由 --clock-font 覆盖，未单独设置时继承整页字体 */
+  font-family: var(--clock-font, var(--page-font, 'PingFang SC', 'Microsoft YaHei', 'HarmonyOS Sans SC', 'MiSans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'WenQuanYi Micro Hei', sans-serif));
   font-weight: 800;
   letter-spacing: 4px;
   font-variant-numeric: tabular-nums;
@@ -811,14 +821,14 @@
   display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
 }
 .group-parent-head h3 {
-  font-size: 18px; font-weight: 600; margin: 0;
-  letter-spacing: 0.5px;
+  font-size: var(--group-title-size); font-weight: var(--group-title-weight); margin: 0;
+  letter-spacing: var(--group-title-spacing);
   background: linear-gradient(120deg, var(--accent), var(--accent-2, var(--accent)));
   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 .group-parent-head .desc {
-  font-size: 12px; color: var(--text-muted);
+  font-size: var(--group-desc-size); color: var(--text-muted);
 }
 .group-child {
   padding: 14px 16px 16px;
@@ -828,7 +838,7 @@
   background: linear-gradient(140deg, rgba(255,255,255,0.025), rgba(255,255,255,0.008));
   box-shadow: var(--raised-xs);
 }
-.group-child .group-head h2 { font-size: 15px; letter-spacing: 0.3px; }
+.group-child .group-head h2 { font-size: var(--group-subtitle-size); letter-spacing: var(--group-title-spacing); font-weight: var(--group-title-weight); }
 .group-child .cards { gap: 12px; }
 /* ---------- 分组（柔和浮岛） ---------- */
 .group {
@@ -844,15 +854,16 @@
 }
 .group-head h2 {
   margin: 0;
-  font-size: 18px;
-  font-weight: 700;
+  font-size: var(--group-title-size);
+  font-weight: var(--group-title-weight);
+  letter-spacing: var(--group-title-spacing);
   min-width: 0;                 /* 允许在 flex 行内收缩，避免撑破容器 */
   white-space: nowrap;          /* 标题保持一行，杜绝逐字竖排 */
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .group-head .desc {
-  font-size: 13px;
+  font-size: var(--group-desc-size);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -898,6 +909,56 @@
   overflow: visible !important;
   box-shadow: var(--raised-sm);
   transition: box-shadow var(--tr) var(--ease), transform var(--tr) var(--ease);
+  isolation: isolate;
+}
+
+/* 卡片背景透明度：只降低卡片底色 alpha，文字与图标保持不透明（主题 hover 规则优先） */
+:root body .card {
+  background: color-mix(in srgb, var(--surface) calc(var(--card-opacity, 1) * 100%), transparent);
+}
+
+/* Soft 主题：分组容器与卡片同色，仅降低卡片 alpha 会被容器底色完全遮住；
+   让玻璃面板（分组、父分组头、顶栏、搜索框）一起跟随透明度变量，滑条才真正可见 */
+:root:not([data-style]) .glass,
+:root[data-style='soft'] .glass,
+:root:not([data-style]) .card,
+:root[data-style='soft'] .card {
+  background: color-mix(in srgb, var(--surface) calc(var(--card-opacity, 1) * 100%), transparent);
+}
+
+/* 卡片背景渐变流动层：默认关闭，仅 Liquid Glass 主题启用（见 themes.json） */
+.card-bg {
+  display: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.card-bg::before {
+  content: "";
+  position: absolute;
+  inset: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+  opacity: 0;
+  mix-blend-mode: soft-light;
+  will-change: transform;
+}
+.card > .icon,
+.card > .info,
+.card > .lan-badge,
+.card > .hidden-badge {
+  position: relative;
+  z-index: 1;
+}
+@keyframes bg-gradient-shift {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-25%, -10%); }
+  50% { transform: translate(-10%, -25%); }
+  75% { transform: translate(-25%, 0); }
 }
 
 /* + 快速添加按钮 —— 放在 .group-sort 容器内 flex 排列 */
@@ -940,7 +1001,17 @@
   align-items: center;
   flex-wrap: nowrap;
 }
+.upload-row .input {
+  flex: 1;
+  min-width: 0;
+}
 .upload-row .icon-preview { flex-shrink: 0; }
+.upload-row .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 8px 14px;
+}
+.upload-row input[type='file'] { display: none; }
 .icon-preview {
   width: 46px;
   height: 46px;
@@ -1009,6 +1080,51 @@
   transform: translateY(0) scale(0.98);
   box-shadow: var(--pressed-sm);
 }
+
+/* 卡片入场：缩放淡入（错峰出现，按 DOM 顺序递增延迟） */
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.scale-in {
+  --sk-duration: 400ms;
+  --sk-delay: 0ms;
+  --sk-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
+  animation: scale-in var(--sk-duration) var(--sk-ease) var(--sk-delay) backwards;
+}
+
+.cards > .scale-in:nth-child(1) { --sk-delay: 0ms; }
+.cards > .scale-in:nth-child(2) { --sk-delay: 20ms; }
+.cards > .scale-in:nth-child(3) { --sk-delay: 40ms; }
+.cards > .scale-in:nth-child(4) { --sk-delay: 60ms; }
+.cards > .scale-in:nth-child(5) { --sk-delay: 80ms; }
+.cards > .scale-in:nth-child(6) { --sk-delay: 100ms; }
+.cards > .scale-in:nth-child(7) { --sk-delay: 120ms; }
+.cards > .scale-in:nth-child(8) { --sk-delay: 140ms; }
+.cards > .scale-in:nth-child(9) { --sk-delay: 160ms; }
+.cards > .scale-in:nth-child(10) { --sk-delay: 180ms; }
+.cards > .scale-in:nth-child(11) { --sk-delay: 200ms; }
+.cards > .scale-in:nth-child(n+12) { --sk-delay: 220ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .scale-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .card-bg::before {
+    animation: none !important;
+  }
+}
+
 .card .icon {
   width: 52px;
   height: 52px;
@@ -1029,9 +1145,18 @@
   height: 100%;
   object-fit: cover;
 }
-/* 图片/favicon 图标：背景透明，图标按原比例居中（文字图标仍用主色块） */
-.card .icon.has-img {
+/* 图标背景透明度为 0：文字图标改用主色文字并去掉投影，避免白字透明底看不清
+   （提升特异度 + !important，压过各主题给 .card .icon 设的文字色） */
+:root body .card .icon.icon-bg-clear {
+  color: var(--accent) !important;
+  box-shadow: none;
+}
+/* 图片/favicon 图标：背景完全透明（含边框与投影），图标按原比例居中；
+   文字图标仍用主色块。用 :root body 提升特异度，压过各主题 .card .icon.has-img 的底板，
+   但低于深色模式 data-icon-tone 的浅色托底规则（保留深色 logo 可见性）。 */
+:root body .card .icon.has-img {
   background: transparent;
+  border-color: transparent;
   box-shadow: none;
 }
 .card .icon.has-img img {

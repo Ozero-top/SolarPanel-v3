@@ -255,7 +255,8 @@ func main() {
 		api.With(rateLimitMW("news", 30, 60)).Get("/news/meta", newsHandler.Sources)
 		api.With(rateLimitMW("news", 30, 60)).Get("/news/all", newsHandler.All)
 		api.With(rateLimitMW("news", 30, 60)).Get("/news/source", newsHandler.Source)
-		api.With(rateLimitMW("wallpaper", 10, 60)).Post("/wallpaper.php", wallpaperHandler.Dispatch)
+		api.With(rateLimitMW("wallpaper", 30, 60)).Post("/wallpaper.php", wallpaperHandler.Dispatch)
+		api.With(rateLimitMW("wallpaper", 30, 60)).Get("/wallpaper.php", wallpaperHandler.Dispatch)
 		// auth.php — 全局 session 已注入
 		api.Post("/auth.php", authHandler.Dispatch)
 		api.Get("/auth.php", authHandler.Dispatch)

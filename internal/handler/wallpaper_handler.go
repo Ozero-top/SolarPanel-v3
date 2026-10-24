@@ -1,16 +1,27 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
+	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 
+	"solarpanel/internal/auth"
 	"solarpanel/internal/config"
 )
 
@@ -27,6 +38,7 @@ type bingImageArchive struct {
 		URLBase   string `json:"urlbase"`
 		Title     string `json:"title"`
 		Copyright string `json:"copyright"`
+		StartDate string `json:"startdate"`
 	} `json:"images"`
 }
 
@@ -38,6 +50,12 @@ func (h *WallpaperHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
 	switch action {
 	case "daily", "":
 		h.Daily(w, r)
+	case "preview":
+		h.Preview(w, r)
+	case "pin":
+		h.Pin(w, r)
+	case "unpin":
+		h.Unpin(w, r)
 	default:
 		Err(w, http.StatusBadRequest, 1, "unknown action: "+action)
 	}
@@ -53,71 +71,74 @@ func (h *WallpaperHandler) Daily(w http.ResponseWriter, r *http.Request) {
 	cacheDir := filepath.Join(h.cfg.UploadDir, "daily_wallpaper")
 	os.MkdirAll(cacheDir, 0755)
 
+	// 后台「预览弹窗」里选定的固定壁纸优先，取消固定后恢复每日自动
+	if meta, ok := h.readPinned(cacheDir, source); ok {
+		meta["cache"] = "pinned"
+		OK(w, meta)
+		return
+	}
+
 	today := time.Now().Format("2006-01-02")
 	cacheFile := filepath.Join(cacheDir, fmt.Sprintf("%s_%s.json", source, today))
 	imageFile := filepath.Join(cacheDir, fmt.Sprintf("%s_%s.jpg", source, today))
 
-	if data, err := os.ReadFile(cacheFile); err == nil {
-		var meta map[string]any
-		if json.Unmarshal(data, &meta) == nil {
-			if _, err := os.Stat(imageFile); err == nil {
-				meta["cache"] = "hit"
-				meta["url"] = h.buildImageURL(source, today)
-				OK(w, meta)
-				go h.cleanupOldCache(cacheDir)
-				return
-			}
-		}
+	if meta, ok := h.readDailyCache(cacheDir, source, today); ok {
+		meta["cache"] = "hit"
+		OK(w, meta)
+		go h.cleanupOldCache(cacheDir)
+		return
 	}
+	// 缓存不可用（占位图 / 分辨率过低 / 竖图）→ 清掉重新抓
+	os.Remove(cacheFile)
+	os.Remove(imageFile)
 
-	if fallback := h.findLatestCache(cacheDir, source); fallback != "" {
-		if data, err := os.ReadFile(fallback + ".json"); err == nil {
-			var meta map[string]any
-			if json.Unmarshal(data, &meta) == nil {
-				meta["cache"] = "fallback"
-				re := regexp.MustCompile(fmt.Sprintf(`%s_(\d{4}-\d{2}-\d{2})\.json`, regexp.QuoteMeta(source)))
-				m := re.FindStringSubmatch(fallback)
-				date := today
-				if len(m) > 1 {
-					date = m[1]
-				}
-				meta["url"] = h.buildImageURL(source, date)
-				OK(w, meta)
-				go h.cleanupOldCache(cacheDir)
-				return
-			}
+	client := &http.Client{Timeout: 12 * time.Second}
+
+	// 并发合并：同一源 + 同一天只允许一个请求真正下载，其余等待后直接读缓存，
+	// 避免多人同时打开主页时重复抓取上游图片。
+	slot := &wallpaperSlot{done: make(chan struct{})}
+	inflightKey := source + "_" + today
+	if actual, loaded := wallpaperInflight.LoadOrStore(inflightKey, slot); loaded {
+		<-actual.(*wallpaperSlot).done
+		if meta, ok := h.readDailyCache(cacheDir, source, today); ok {
+			meta["cache"] = "hit"
+			OK(w, meta)
+			return
 		}
+		if meta, ok := h.readAnyLatestCache(cacheDir); ok {
+			OK(w, meta)
+			return
+		}
+		Err(w, http.StatusBadGateway, 1, "每日壁纸获取失败，请稍后重试")
+		return
 	}
+	defer func() {
+		close(slot.done)
+		wallpaperInflight.Delete(inflightKey)
+	}()
 
-	client := &http.Client{Timeout: 15 * time.Second}
-	var (
-		meta map[string]any
-		err  error
-	)
-	switch source {
-	case "nasa":
-		meta, err = h.fetchNasa(client)
-	case "picsum":
-		meta, err = h.fetchPicsum(client, today)
-	default:
-		meta, err = h.fetchBing(client, "zh-CN", source)
+	meta, err := h.fetchDailyWithRetry(client, source, today)
+	if err != nil {
+		// 跨源兜底：Bing 失败换 Picsum，Picsum 失败换 Bing
+		alt := "picsum"
+		if source == "picsum" {
+			alt = "bing_cn"
+		}
+		if m, e2 := h.fetchDailyWithRetry(client, alt, today); e2 == nil {
+			m["fallback_from"] = source
+			m["fallback_reason"] = err.Error()
+			meta, err = m, nil
+		}
 	}
 	if err != nil {
-		if anyCache := h.findAnyLatestCache(cacheDir); anyCache != "" {
-			if data, err := os.ReadFile(anyCache + ".json"); err == nil {
-				var m map[string]any
-				if json.Unmarshal(data, &m) == nil {
-					m["cache"] = "stale"
-					re := regexp.MustCompile(`(\w+)_(\d{4}-\d{2}-\d{2})\.json`)
-					m2 := re.FindStringSubmatch(anyCache)
-					if len(m2) > 2 {
-						m["url"] = h.buildImageURL(m2[1], m2[2])
-					}
-					OK(w, m)
-					go h.cleanupOldCache(cacheDir)
-					return
-				}
-			}
+		// 今日抓取失败：优先用同源历史缓存，其次任意源历史缓存
+		if m, ok := h.readLatestCache(cacheDir, source); ok {
+			OK(w, m)
+			return
+		}
+		if m, ok := h.readAnyLatestCache(cacheDir); ok {
+			OK(w, m)
+			return
 		}
 		Err(w, http.StatusBadGateway, 1, err.Error())
 		return
@@ -137,6 +158,322 @@ func (h *WallpaperHandler) Daily(w http.ResponseWriter, r *http.Request) {
 	os.WriteFile(cacheFile, metaBytes, 0644)
 	go h.cleanupOldCache(cacheDir)
 	OK(w, meta)
+}
+
+// wpPreviewItem 预览候选（缩略图走远程 URL，服务端不落盘）
+type wpPreviewItem struct {
+	ID        string `json:"id"`
+	Thumb     string `json:"thumb"`
+	Full      string `json:"full"`
+	Title     string `json:"title"`
+	Copyright string `json:"copyright"`
+	Date      string `json:"date"`
+}
+
+// Preview 随机返回某壁纸源的候选缩略图，仅请求元数据，不下载原图
+func (h *WallpaperHandler) Preview(w http.ResponseWriter, r *http.Request) {
+	source := normalizeWallpaperSource(r.URL.Query().Get("source"))
+	n := 10
+	if v, err := strconv.Atoi(r.URL.Query().Get("n")); err == nil && v > 0 && v <= 20 {
+		n = v
+	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	items, err := h.fetchPreview(client, source, n)
+	if err != nil {
+		Err(w, http.StatusBadGateway, 1, err.Error())
+		return
+	}
+	cacheDir := filepath.Join(h.cfg.UploadDir, "daily_wallpaper")
+	_, pinned := h.readPinned(cacheDir, source)
+	OK(w, map[string]any{"source": source, "pinned": pinned, "list": items})
+}
+
+func (h *WallpaperHandler) fetchPreview(client *http.Client, source string, n int) ([]wpPreviewItem, error) {
+	if source == "picsum" {
+		return h.previewPicsum(client, n)
+	}
+	return h.previewBing(client, n)
+}
+
+// previewBing 合并最近两段档案（idx=0 / idx=4）得到 12 张候选，去重后随机取 n 张
+func (h *WallpaperHandler) previewBing(client *http.Client, n int) ([]wpPreviewItem, error) {
+	var out []wpPreviewItem
+	seen := make(map[string]bool)
+	for _, idx := range []int{0, 4} {
+		api := fmt.Sprintf("https://cn.bing.com/HPImageArchive.aspx?format=js&idx=%d&n=8&mkt=zh-CN", idx)
+		resp, err := client.Get(api)
+		if err != nil {
+			continue
+		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		resp.Body.Close()
+		if err != nil {
+			continue
+		}
+		var archive bingImageArchive
+		if json.Unmarshal(body, &archive) != nil {
+			continue
+		}
+		for _, img := range archive.Images {
+			if img.URLBase == "" || seen[img.URLBase] {
+				continue
+			}
+			seen[img.URLBase] = true
+			out = append(out, wpPreviewItem{
+				ID:        img.URLBase,
+				Thumb:     "https://cn.bing.com" + img.URLBase + "_400x240.jpg",
+				Full:      "https://cn.bing.com" + img.URLBase + "_1920x1080.jpg",
+				Title:     img.Title,
+				Copyright: img.Copyright,
+				Date:      img.StartDate,
+			})
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("Bing 预览获取失败")
+	}
+	rand.Shuffle(len(out), func(i, j int) { out[i], out[j] = out[j], out[i] })
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out, nil
+}
+
+// previewPicsum 随机页取图，缩略图用 picsum 的按尺寸接口
+func (h *WallpaperHandler) previewPicsum(client *http.Client, n int) ([]wpPreviewItem, error) {
+	page := 1 + rand.Intn(60)
+	api := fmt.Sprintf("https://picsum.photos/v2/list?page=%d&limit=%d", page, n)
+	resp, err := client.Get(api)
+	if err != nil {
+		return nil, fmt.Errorf("Picsum 预览失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("Picsum 响应读取失败")
+	}
+	var list []struct {
+		ID     string `json:"id"`
+		Author string `json:"author"`
+	}
+	if json.Unmarshal(body, &list) != nil || len(list) == 0 {
+		return nil, fmt.Errorf("Picsum 返回格式异常")
+	}
+	rand.Shuffle(len(list), func(i, j int) { list[i], list[j] = list[j], list[i] })
+	out := make([]wpPreviewItem, 0, len(list))
+	for _, it := range list {
+		out = append(out, wpPreviewItem{
+			ID:        it.ID,
+			Thumb:     fmt.Sprintf("https://picsum.photos/id/%s/480/270", it.ID),
+			Full:      fmt.Sprintf("https://picsum.photos/id/%s/1920/1080", it.ID),
+			Title:     fmt.Sprintf("Picsum #%s · %s", it.ID, it.Author),
+			Copyright: it.Author,
+		})
+	}
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out, nil
+}
+
+type pinWallpaperReq struct {
+	Source    string `json:"source"`
+	URL       string `json:"url"`
+	Title     string `json:"title"`
+	Copyright string `json:"copyright"`
+}
+
+// Pin 选中某张预览图：此时才下载原图并固定为该源的壁纸
+func (h *WallpaperHandler) Pin(w http.ResponseWriter, r *http.Request) {
+	sess := auth.GetSessionFromRequest(r)
+	if sess == nil || (sess.Role != "admin" && sess.Role != "editor") {
+		Err(w, http.StatusForbidden, 403, "无操作权限")
+		return
+	}
+	var req pinWallpaperReq
+	if err := BindJSON(r, &req); err != nil {
+		Fail(w, "参数错误")
+		return
+	}
+	if req.Source != "bing_cn" && req.Source != "picsum" {
+		Fail(w, "不支持的壁纸源")
+		return
+	}
+	u, err := url.Parse(req.URL)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") {
+		Fail(w, "壁纸地址无效")
+		return
+	}
+	host := strings.ToLower(u.Hostname())
+	allowed := host == "bing.com" || strings.HasSuffix(host, ".bing.com") ||
+		host == "picsum.photos" || strings.HasSuffix(host, ".picsum.photos")
+	if !allowed {
+		Fail(w, "仅支持来自预览源的图片地址")
+		return
+	}
+
+	client := &http.Client{Timeout: 25 * time.Second}
+	bin, err := h.downloadImage(client, req.URL)
+	if err != nil {
+		Fail(w, "图片下载失败："+err.Error())
+		return
+	}
+	if !isUsableWallpaper(bin) {
+		Fail(w, "该图片分辨率过低或不是横图，无法作为壁纸")
+		return
+	}
+
+	cacheDir := filepath.Join(h.cfg.UploadDir, "daily_wallpaper")
+	os.MkdirAll(cacheDir, 0755)
+	if err := os.WriteFile(filepath.Join(cacheDir, "pinned_"+req.Source+".jpg"), bin, 0644); err != nil {
+		Err(w, http.StatusInternalServerError, 1, "保存壁纸失败")
+		return
+	}
+	meta := map[string]any{
+		"source": req.Source, "title": req.Title, "copyright": req.Copyright,
+		"pinned": true, "full": req.URL,
+		"pinned_at": time.Now().Format("2006-01-02 15:04:05"),
+	}
+	if b, err := json.Marshal(meta); err == nil {
+		os.WriteFile(filepath.Join(cacheDir, "pinned_"+req.Source+".json"), b, 0644)
+	}
+	OK(w, map[string]any{
+		"source": req.Source,
+		"url":    "/frontend/uploads/daily_wallpaper/pinned_" + req.Source + ".jpg",
+	})
+}
+
+type unpinWallpaperReq struct {
+	Source string `json:"source"`
+}
+
+// Unpin 取消固定，恢复每日自动随机
+func (h *WallpaperHandler) Unpin(w http.ResponseWriter, r *http.Request) {
+	sess := auth.GetSessionFromRequest(r)
+	if sess == nil || (sess.Role != "admin" && sess.Role != "editor") {
+		Err(w, http.StatusForbidden, 403, "无操作权限")
+		return
+	}
+	var req unpinWallpaperReq
+	if err := BindJSON(r, &req); err != nil || (req.Source != "bing_cn" && req.Source != "picsum") {
+		Fail(w, "参数错误")
+		return
+	}
+	cacheDir := filepath.Join(h.cfg.UploadDir, "daily_wallpaper")
+	os.Remove(filepath.Join(cacheDir, "pinned_"+req.Source+".jpg"))
+	os.Remove(filepath.Join(cacheDir, "pinned_"+req.Source+".json"))
+	OK(w, nil)
+}
+
+func (h *WallpaperHandler) readPinned(cacheDir, source string) (map[string]any, bool) {
+	jsonPath := filepath.Join(cacheDir, "pinned_"+source+".json")
+	imgPath := filepath.Join(cacheDir, "pinned_"+source+".jpg")
+	data, err := os.ReadFile(jsonPath)
+	if err != nil {
+		return nil, false
+	}
+	var meta map[string]any
+	if json.Unmarshal(data, &meta) != nil || !isUsableWallpaperFile(imgPath) {
+		return nil, false
+	}
+	meta["url"] = "/frontend/uploads/daily_wallpaper/pinned_" + source + ".jpg"
+	return meta, true
+}
+
+// wallpaperSlot 每日壁纸并发合并槽位
+type wallpaperSlot struct {
+	done chan struct{}
+}
+
+var wallpaperInflight sync.Map
+
+// fetchDailyWithRetry 抓取当日壁纸：最多尝试 2 次，并校验分辨率/体积/横竖比
+func (h *WallpaperHandler) fetchDailyWithRetry(client *http.Client, source, today string) (map[string]any, error) {
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		var (
+			meta map[string]any
+			err  error
+		)
+		if source == "picsum" {
+			meta, err = h.fetchPicsum(client, today)
+		} else {
+			meta, err = h.fetchBing(client, "zh-CN", source)
+		}
+		if err == nil {
+			if bin, ok := meta["_image"].([]byte); ok && isUsableWallpaper(bin) {
+				return meta, nil
+			}
+			err = fmt.Errorf("图片不适合作为壁纸（分辨率过低或为占位图）")
+		}
+		lastErr = err
+		if attempt == 0 {
+			time.Sleep(300 * time.Millisecond)
+		}
+	}
+	return nil, lastErr
+}
+
+func (h *WallpaperHandler) readDailyCache(cacheDir, source, today string) (map[string]any, bool) {
+	cacheFile := filepath.Join(cacheDir, fmt.Sprintf("%s_%s.json", source, today))
+	imageFile := filepath.Join(cacheDir, fmt.Sprintf("%s_%s.jpg", source, today))
+	data, err := os.ReadFile(cacheFile)
+	if err != nil {
+		return nil, false
+	}
+	var meta map[string]any
+	if json.Unmarshal(data, &meta) != nil || !isUsableWallpaperFile(imageFile) {
+		return nil, false
+	}
+	meta["url"] = h.buildImageURL(source, today)
+	return meta, true
+}
+
+// readLatestCache 读取同一源最近一次可用缓存（昨天/前天的图）
+func (h *WallpaperHandler) readLatestCache(cacheDir, source string) (map[string]any, bool) {
+	base := h.findLatestCache(cacheDir, source)
+	if base == "" {
+		return nil, false
+	}
+	data, err := os.ReadFile(base + ".json")
+	if err != nil {
+		return nil, false
+	}
+	var meta map[string]any
+	if json.Unmarshal(data, &meta) != nil {
+		return nil, false
+	}
+	date := ""
+	if i := strings.LastIndex(base, "_"); i >= 0 {
+		date = base[i+1:]
+	}
+	meta["cache"] = "fallback"
+	meta["url"] = h.buildImageURL(source, date)
+	return meta, true
+}
+
+// readAnyLatestCache 任意源最近一次可用缓存（跨源兜底）
+func (h *WallpaperHandler) readAnyLatestCache(cacheDir string) (map[string]any, bool) {
+	base := h.findAnyLatestCache(cacheDir)
+	if base == "" {
+		return nil, false
+	}
+	data, err := os.ReadFile(base + ".json")
+	if err != nil {
+		return nil, false
+	}
+	var meta map[string]any
+	if json.Unmarshal(data, &meta) != nil {
+		return nil, false
+	}
+	re := regexp.MustCompile(`([a-z_]+)_(\d{4}-\d{2}-\d{2})$`)
+	m := re.FindStringSubmatch(base)
+	if len(m) < 3 {
+		return nil, false
+	}
+	meta["cache"] = "stale"
+	meta["url"] = h.buildImageURL(m[1], m[2])
+	return meta, true
 }
 
 func (h *WallpaperHandler) fetchBing(client *http.Client, mkt, source string) (map[string]any, error) {
@@ -164,49 +501,6 @@ func (h *WallpaperHandler) fetchBing(client *http.Client, mkt, source string) (m
 		return nil, fmt.Errorf("Bing 图片下载失败: %w", err)
 	}
 	return map[string]any{"title": img.Title, "copyright": img.Copyright, "_image": bin}, nil
-}
-
-func (h *WallpaperHandler) fetchNasa(client *http.Client) (map[string]any, error) {
-	apiKey := os.Getenv("NASA_API_KEY")
-	if apiKey == "" {
-		apiKey = "DEMO_KEY"
-	}
-	api := fmt.Sprintf("https://api.nasa.gov/planetary/apod?api_key=%s&hd=true", apiKey)
-	resp, err := client.Get(api)
-	if err != nil {
-		return nil, fmt.Errorf("NASA API 失败: %w", err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("NASA 响应读取失败: %w", err)
-	}
-	var payload map[string]any
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, fmt.Errorf("NASA 返回格式异常")
-	}
-	url, _ := payload["hdurl"].(string)
-	if url == "" {
-		url, _ = payload["url"].(string)
-	}
-	if url == "" {
-		return nil, fmt.Errorf("NASA 无图片 URL")
-	}
-	mediaType, _ := payload["media_type"].(string)
-	if mediaType == "video" {
-		return nil, fmt.Errorf("NASA 今日是视频，不支持作为壁纸")
-	}
-	bin, err := h.downloadImage(client, url)
-	if err != nil {
-		return nil, fmt.Errorf("NASA 图片下载失败: %w", err)
-	}
-	title, _ := payload["title"].(string)
-	explanation, _ := payload["explanation"].(string)
-	if len(explanation) > 200 {
-		explanation = explanation[:200] + "…"
-	}
-	copyright, _ := payload["copyright"].(string)
-	return map[string]any{"title": title, "copyright": copyright, "explanation": explanation, "media_type": mediaType, "_image": bin}, nil
 }
 
 func (h *WallpaperHandler) fetchPicsum(client *http.Client, date string) (map[string]any, error) {
@@ -246,7 +540,7 @@ func (h *WallpaperHandler) findLatestCache(cacheDir, source string) string {
 	sort.Sort(sort.Reverse(sort.StringSlice(entries)))
 	for _, e := range entries {
 		imgPath := e[:len(e)-5] + ".jpg"
-		if _, err := os.Stat(imgPath); err == nil {
+		if isUsableWallpaperFile(imgPath) {
 			return e[:len(e)-5]
 		}
 	}
@@ -261,11 +555,40 @@ func (h *WallpaperHandler) findAnyLatestCache(cacheDir string) string {
 	sort.Sort(sort.Reverse(sort.StringSlice(entries)))
 	for _, e := range entries {
 		imgPath := e[:len(e)-5] + ".jpg"
-		if _, err := os.Stat(imgPath); err == nil {
+		if isUsableWallpaperFile(imgPath) {
 			return e[:len(e)-5]
 		}
 	}
 	return ""
+}
+
+// isUsableWallpaper 过滤占位图/图标/竖图：体积、分辨率、横竖比三重校验
+func isUsableWallpaper(bin []byte) bool {
+	if len(bin) < 60<<10 { // 小于 60KB 基本是 logo / 占位图
+		return false
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(bin))
+	if err != nil {
+		return false
+	}
+	return cfg.Width >= 1280 && cfg.Height >= 720 && cfg.Width > cfg.Height
+}
+
+func isUsableWallpaperFile(path string) bool {
+	st, err := os.Stat(path)
+	if err != nil || st.Size() < 60<<10 {
+		return false
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	cfg, _, err := image.DecodeConfig(f)
+	if err != nil {
+		return false
+	}
+	return cfg.Width >= 1280 && cfg.Height >= 720 && cfg.Width > cfg.Height
 }
 
 func (h *WallpaperHandler) cleanupOldCache(cacheDir string) {
@@ -284,14 +607,14 @@ func (h *WallpaperHandler) cleanupOldCache(cacheDir string) {
 }
 
 func (h *WallpaperHandler) buildImageURL(source, date string) string {
-	return fmt.Sprintf("/uploads/daily_wallpaper/%s_%s.jpg", source, date)
+	return fmt.Sprintf("/frontend/uploads/daily_wallpaper/%s_%s.jpg", source, date)
 }
 
 func normalizeWallpaperSource(raw string) string {
 	switch raw {
 	case "", "bing", "bing_en", "bing_jp":
 		return "bing_cn"
-	case "bing_cn", "nasa", "picsum":
+	case "bing_cn", "picsum":
 		return raw
 	default:
 		return "bing_cn"

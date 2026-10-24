@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"solarpanel/internal/auth"
 	"solarpanel/internal/db"
@@ -31,16 +32,17 @@ func (h *AuditHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
 
 // AuditLogRow 审计日志行
 type AuditLogRow struct {
-	ID          int    `json:"id"`
-	Action      string `json:"action"`
-	Target      string `json:"target"`
-	Result      string `json:"result"`
-	Actor       string `json:"actor"`
-	ActorRole   string `json:"actor_role"`
-	IP          string `json:"ip"`
-	UserAgent   string `json:"user_agent"`
-	Detail      string `json:"detail"`
-	CreatedAt   string `json:"created_at"`
+	ID        int    `json:"id"`
+	Action    string `json:"action"`
+	Target    string `json:"target"`
+	Result    string `json:"result"`
+	Actor     string `json:"actor"`
+	ActorRole string `json:"actor_role"`
+	IP        string `json:"ip"`
+	Region    string `json:"region"`
+	UserAgent string `json:"user_agent"`
+	Detail    string `json:"detail"`
+	CreatedAt string `json:"created_at"`
 }
 
 // List 分页查询审计日志（仅 admin 可见）
@@ -52,19 +54,32 @@ func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	page, _ := strconv.Atoi(GetQuery(r, "page", "1"))
-	pageSize, _ := strconv.Atoi(GetQuery(r, "pagesize", "50"))
-	if pageSize <= 0 || pageSize > 500 {
-		pageSize = 50
+	pageSize, _ := strconv.Atoi(GetQuery(r, "pagesize", "20"))
+	if pageSize <= 0 || pageSize > 200 {
+		pageSize = 20
 	}
 	if page < 1 {
 		page = 1
 	}
 
+	// 服务端筛选：按动作前缀（auth / 2fa / item / group / settings / guest / audit）
+	filter := strings.ToLower(strings.TrimSpace(GetQuery(r, "filter", "")))
+	where := ""
+	var args []any
+	switch filter {
+	case "auth", "2fa", "item", "group", "settings", "guest", "audit":
+		where = " WHERE action LIKE ?"
+		args = append(args, filter+"%")
+	}
+
 	var total int
-	db.DB.QueryRow("SELECT COUNT(*) FROM audit_logs").Scan(&total)
+	db.DB.QueryRow("SELECT COUNT(*) FROM audit_logs"+where, args...).Scan(&total)
 
 	offset := (page - 1) * pageSize
-	rows, err := db.DB.Query("SELECT id, action, target, result, actor, actor_role, ip, user_agent, detail, created_at FROM audit_logs ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?", pageSize, offset)
+	q := "SELECT id, action, target, result, actor, actor_role, ip, region, user_agent, detail, created_at FROM audit_logs" +
+		where + " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
+	qArgs := append(append([]any{}, args...), pageSize, offset)
+	rows, err := db.DB.Query(q, qArgs...)
 	if err != nil {
 		Err(w, http.StatusInternalServerError, 1, "查询失败")
 		return
@@ -74,7 +89,7 @@ func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
 	var logs []AuditLogRow
 	for rows.Next() {
 		var l AuditLogRow
-		if err := rows.Scan(&l.ID, &l.Action, &l.Target, &l.Result, &l.Actor, &l.ActorRole, &l.IP, &l.UserAgent, &l.Detail, &l.CreatedAt); err != nil {
+		if err := rows.Scan(&l.ID, &l.Action, &l.Target, &l.Result, &l.Actor, &l.ActorRole, &l.IP, &l.Region, &l.UserAgent, &l.Detail, &l.CreatedAt); err != nil {
 			continue
 		}
 		logs = append(logs, l)
@@ -91,7 +106,7 @@ func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Clear 清空审计日志
+// Clear 清空审计日志（可按类型前缀筛选）
 func (h *AuditHandler) Clear(w http.ResponseWriter, r *http.Request) {
 	sess := auth.GetSessionFromRequest(r)
 	if sess == nil || sess.Role != "admin" {
@@ -99,6 +114,17 @@ func (h *AuditHandler) Clear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db.DB.Exec("DELETE FROM audit_logs")
+	filter := strings.ToLower(strings.TrimSpace(GetQuery(r, "filter", "")))
+	where := ""
+	var args []any
+	switch filter {
+	case "auth", "2fa", "item", "group", "settings", "guest", "audit":
+		where = " WHERE action LIKE ?"
+		args = append(args, filter+"%")
+	}
+	if _, err := db.DB.Exec("DELETE FROM audit_logs"+where, args...); err != nil {
+		Err(w, http.StatusInternalServerError, 1, "清空失败")
+		return
+	}
 	OK(w, nil)
 }

@@ -24,7 +24,7 @@ const DRY_RUN = process.argv.includes('--dry-run');
 
 /** 主题名 → 中文显示名（与原始 admin.html option 逐字一致） */
 const DISPLAY_NAMES = {
-  'soft': 'Soft 柔和浮雕（默认）',
+  'soft': 'Soft 柔和浮雕',
   'blueprint': 'Blueprint 工程蓝图（深蓝底 · 白线网格 · 等宽字 · 橙色标注）',
   'clarity': 'Clarity 清透极简（雾白细线 · 大留白 · 静谧蓝）',
   'soft-utility': 'Soft Utility 柔和工具（深青主色 · 薄荷状态 · 清晰边界）',
@@ -33,6 +33,7 @@ const DISPLAY_NAMES = {
   'sketch-style': '铅笔手绘风（纸张纹理 · 虚线铅笔框 · 涂黑反白）',
   'retro-vintage': 'Retro Vintage 复古怀旧（羊皮纸 · 粗棕框 · 衬线大写 · 角花）',
   'corporate-clean': 'Corporate Clean 企业简洁（白卡细边 · 蓝主色 · 焦点环 · 轻浮起）',
+  'liquid-glass': 'Liquid Glass 液态玻璃（默认 · 磨砂透光 · 流动光斑 · 仅浅色）',
 };
 
 function displayName(name) {
@@ -153,8 +154,9 @@ function main() {
   }
   const json = JSON.parse(fs.readFileSync(THEMES_JSON, 'utf8'));
 
-  // 全部主题名（soft + 18 套变量主题）
-  const allStyles = ['soft', ...Object.keys(json).filter(k => k !== '_meta' && k !== 'soft').sort()];
+  // 下拉顺序：Liquid Glass 置顶（默认主题），其次 soft，其余按名称排序
+  const restStyles = Object.keys(json).filter(k => k !== '_meta' && k !== 'soft' && k !== 'liquid-glass').sort();
+  const allStyles = ['liquid-glass', 'soft', ...restStyles];
 
   // 1. 生成 themes.css
   const css = buildThemesCss(json);

@@ -243,6 +243,14 @@ function renderBase() {
   rs.setProperty('--content-px', num(s.content_pad_lr, 20) + 'px');
   rs.setProperty('--content-pt', num(s.content_pad_top, 0) + 'px');
   rs.setProperty('--content-pb', num(s.content_pad_bottom, 40) + 'px');
+  // 卡片透明度（40~100，默认 100 不透明）
+  const co = Math.min(Math.max(num(s.card_opacity, 100), 40), 100);
+  rs.setProperty('--card-opacity', String(co / 100));
+
+  // 时钟 / 天气字体（12 款免费设计字体，空 = 跟随系统）
+  spApplyClockFont(s.clock_font || '');
+  // 整页字体（12 款免费设计字体，空 = 跟随系统）
+  spApplyPageFont(s.page_font || '');
 
   // 公告：后台开关打开且有内容时才显示
   const ann = document.getElementById('annBar');
@@ -1375,7 +1383,7 @@ function showWhenDecoded(img, icon, iconDoneRef) {
 function buildCard(item, styleApp) {
   const a = document.createElement('a');
   const isHidden = item.is_hidden === 1;
-  a.className = 'card' + (styleApp ? ' app-card' : '') + (isHidden ? ' card-hidden' : '');
+  a.className = 'card scale-in' + (styleApp ? ' app-card' : '') + (isHidden ? ' card-hidden' : '');
   a.href = '#';
   a.dataset.id = item.id; // 排序模式拖拽落位后按 data-id 收集顺序
   // 筛选/最近常用依赖的 data-* 属性
@@ -1389,6 +1397,12 @@ function buildCard(item, styleApp) {
     (item.lan_url || '').toLowerCase(),
   ].join(' ') + (item.icon_type === 'favicon' ? ' favicon' : '');
   a.draggable = false; // 默认禁止原生链接拖拽；排序模式下由 mousedown 动态开启
+
+  // 背景渐变流动层（位于图标与文字之下）
+  const bg = document.createElement('span');
+  bg.className = 'card-bg';
+  bg.setAttribute('aria-hidden', 'true');
+  a.appendChild(bg);
 
   // 图标：默认占位底色，图片解码成功后转 has-img；视口外不发起任何网络请求
   const icon = document.createElement('span');
@@ -1412,7 +1426,11 @@ function buildCard(item, styleApp) {
     } else {
       raw = item.title || '?';
     }
-    icon.style.background = item.icon_bg || stringColor(item.title);
+    const bgVal = item.icon_bg || stringColor(item.title);
+    icon.style.background = bgVal;
+    // 背景透明度为 0 时改用主色文字，避免白字消失在透明底上
+    const bgParsed = parseBgColor(bgVal);
+    icon.classList.toggle('icon-bg-clear', !!bgParsed && bgParsed.alpha === 0);
     // 卡片图标盒尺寸固定（普通 52 / app 58），传入宽度免 getComputedStyle 强制布局
     renderTextIcon(icon, smartIconText(raw), 21, styleApp ? 58 : 52);
   };
@@ -1423,7 +1441,7 @@ function buildCard(item, styleApp) {
     img.decoding = 'async';
     img.onerror = useTextIcon;
     img.onload = () => showWhenDecoded(img, icon, iconState);
-    icon.style.background = 'var(--accent-soft)';
+    icon.classList.add('has-img'); // 立即透明底，避免加载前露出色块
     icon.appendChild(img);
     armCardIcon(icon, () => { img.src = assetUrl(item.icon_value); });
   } else if (item.icon_type === 'favicon' && item.url) {
@@ -1437,7 +1455,7 @@ function buildCard(item, styleApp) {
       // 探测阶段已验证源可用（且浏览器已缓存），此处失败仅为极端竞争，直接兜底文字
       img.onerror = useTextIcon;
       img.onload = () => showWhenDecoded(img, icon, iconState);
-      icon.style.background = 'var(--accent-soft)';
+      icon.classList.add('has-img'); // 立即透明底，避免加载前露出色块
       icon.appendChild(img);
       armCardIcon(icon, () => {
         probeFaviconSources(item.url).then(url => {
@@ -2344,14 +2362,15 @@ async function applyDailyWallpaper(source, apply, fallback) {
   const today = new Date().toISOString().slice(0, 10);
   let cached = null;
   try { cached = JSON.parse(sessionStorage.getItem(KEY)) || null; } catch (e) { cached = null; }
-  if (cached && cached.date === today && cached.url) { apply(cached.url); return; }
+  // 缓存必须同时匹配日期与源：切换每日壁纸源后立即生效，而不是继续用当天旧源的图
+  if (cached && cached.date === today && cached.source === source && cached.url) { apply(cached.url); return; }
   // 先用静态壁纸兜底，避免短暂空白
   apply(fallback || '');
   try {
     const r = await API.get(API_BASE + 'wallpaper.php?action=daily&source=' + encodeURIComponent(source));
     if (r && r.url) {
       apply(r.url);
-      try { sessionStorage.setItem(KEY, JSON.stringify({ date: today, url: r.url })); } catch (e) {}
+      try { sessionStorage.setItem(KEY, JSON.stringify({ date: today, source: source, url: r.url })); } catch (e) {}
     }
   } catch (e) { /* 拉取失败保留静态壁纸 */ }
 }
@@ -2445,14 +2464,20 @@ function openQuickAddCard(groupId, item) {
   // 先 reset——必须在填分组选项之前，否则 form.reset() 会清掉动态设置的 selected
   document.getElementById('qaForm').reset();
 
+  // 分组选项：与后台完全一致——先列全部一级，再列全部二级（└─ 一级 › 二级）
   const groupSel = document.getElementById('qa_group');
   groupSel.innerHTML = '';
   const groups = state.groups || [];
+  const parentMap = {};
+  groups.forEach(g => { if ((g.parent_id || 0) === 0) parentMap[g.id] = g.title; });
+  const tops = groups.filter(g => (g.parent_id || 0) === 0);
+  const children = groups.filter(g => (g.parent_id || 0) !== 0);
   let matched = false;
-  groups.forEach(g => {
+  [...tops, ...children].forEach(g => {
     const opt = document.createElement('option');
     opt.value = String(g.id);
-    opt.textContent = (g.icon ? g.icon + ' ' : '') + g.title;
+    const pid = g.parent_id || 0;
+    opt.textContent = pid === 0 ? g.title : '└─ ' + (parentMap[pid] || '?') + ' › ' + g.title;
     const matchGid = isEdit ? item.group_id : groupId;
     if (String(g.id) === String(matchGid)) { opt.selected = true; matched = true; }
     groupSel.appendChild(opt);
@@ -2460,15 +2485,14 @@ function openQuickAddCard(groupId, item) {
   // 兜底：没匹配到当前分组时默认选第一个
   if (!matched && groups.length) groupSel.value = String(groups[0].id);
 
-  // 标题 + 按钮文字
+  // 标题 + 按钮文字（与后台编辑弹窗保持一致）
   const h3 = m.querySelector('.modal-head h3');
   const saveBtn = document.getElementById('qaSaveBtn');
-  h3.textContent = isEdit
-    ? ('编辑卡片「' + item.title + '」')
-    : (('向「' + (state.groups.find(g => g.id === groupId)?.title || '') + '」添加卡片') || '添加卡片');
-  saveBtn.textContent = isEdit ? '保存' : '添加卡片';
+  h3.textContent = isEdit ? '编辑卡片' : '添加卡片';
+  saveBtn.textContent = '保存';
 
   document.getElementById('qa_group_id').value = isEdit ? item.id : 0;
+  document.getElementById('qa_hidden').checked = !!(isEdit && item.is_hidden);
   document.getElementById('qa_title').value = isEdit ? (item.title || '') : '';
   document.getElementById('qa_url').value = isEdit ? (item.url || '') : '';
   document.getElementById('qa_lan').value = isEdit ? (item.lan_url || '') : '';
@@ -2499,10 +2523,10 @@ function openQuickAddCard(groupId, item) {
     document.getElementById('qa_bg').value = item.icon_bg;
     syncQAColorPanel('init');
   } else {
-    document.getElementById('qa_bg').value = buildBgCss('#0969da', 100);
+    document.getElementById('qa_bg').value = buildBgCss('#0969da', 0);
     document.getElementById('qa_color').value = '#0969da';
-    document.getElementById('qa_alpha').value = '100';
-    document.getElementById('qa_alphaLabel').textContent = '100%';
+    document.getElementById('qa_alpha').value = '0';
+    document.getElementById('qa_alphaLabel').textContent = '0%';
   }
 
   window.__qaMetaIcon = '';
@@ -2543,6 +2567,12 @@ function ensureQuickAddModal() {
               <option value="1">当前页打开</option>
               <option value="3">弹层内嵌打开</option>
             </select>
+          </div>
+          <div class="form-item" style="display:flex;align-items:center;margin-top:6px">
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:0;cursor:pointer">
+              <input type="checkbox" id="qa_hidden" value="1">
+              <span>设为隐藏（访客和只读用户不可见）</span>
+            </label>
           </div>
         </div>
         <div class="form-item">
@@ -2588,8 +2618,8 @@ function ensureQuickAddModal() {
             <div class="upload-row" style="gap:8px;flex-wrap:nowrap">
               <input type="color" id="qa_color" value="#0969da" style="width:44px;height:34px;padding:2px;border-radius:6px;cursor:pointer">
               <span style="font-size:12px;color:var(--text-muted);white-space:nowrap">透明度</span>
-              <input type="range" id="qa_alpha" min="0" max="100" value="100" style="flex:1">
-              <span id="qa_alphaLabel" style="font-size:12px;color:var(--text-muted);min-width:32px;text-align:right">100%</span>
+              <input type="range" id="qa_alpha" min="0" max="100" value="0" style="flex:1">
+              <span id="qa_alphaLabel" style="font-size:12px;color:var(--text-muted);min-width:32px;text-align:right">0%</span>
               <input type="hidden" id="qa_bg" value="">
             </div>
           </div>
@@ -2623,7 +2653,10 @@ function ensureQuickAddModal() {
     updateQAIconPreview();
   });
   document.getElementById('qa_icon').addEventListener('input', updateQAIconPreview);
-  document.getElementById('qa_url').addEventListener('input', updateQAIconPreview);
+  document.getElementById('qa_url').addEventListener('input', () => {
+    window.__qaMetaIcon = ''; // 地址变了，之前抓到的图标不再对应
+    updateQAIconPreview();
+  });
 
   // 颜色联动
   document.getElementById('qa_color').addEventListener('input', syncQAColorPanel);
@@ -2631,6 +2664,9 @@ function ensureQuickAddModal() {
 
   // fetch_meta
   document.getElementById('qa_fetchMeta').addEventListener('click', fetchQAMeta);
+  // 地址失焦 / 粘贴完成后，若标题为空则自动获取
+  document.getElementById('qa_url').addEventListener('change', () => fetchQAMeta(true));
+  document.getElementById('qa_url').addEventListener('paste', () => setTimeout(() => fetchQAMeta(true), 30));
 
   // 提交
   document.getElementById('qaForm').addEventListener('submit', async e => {
@@ -2654,6 +2690,7 @@ function ensureQuickAddModal() {
         id,
         group_id: Number(document.getElementById('qa_group').value) || 0,
         open_method: Number(document.getElementById('qa_open').value),
+        is_hidden: document.getElementById('qa_hidden').checked ? 1 : 0,
         title: document.getElementById('qa_title').value.trim(),
         url: document.getElementById('qa_url').value.trim(),
         lan_url: document.getElementById('qa_lan').value.trim(),
@@ -2795,50 +2832,66 @@ function parseBgColor(bg) {
   return null;
 }
 
-/** fetch_meta — 自动填充 title/description；favicon 无 icon 自动降级 text */
-async function fetchQAMeta() {
+/** fetch_meta — 自动填充 title/description；favicon 无图标时交给站点图标代理 */
+let qaLastMetaUrl = ''; // 自动模式去重：同一地址只抓一次
+let qaMetaBusy = false;
+async function fetchQAMeta(auto) {
+  auto = auto === true;
+  if (qaMetaBusy) return;
   const url = document.getElementById('qa_url').value.trim();
-  if (!url || !/^https?:\/\//i.test(url)) { toast('请先填写 http(s):// 开头的地址', 'error'); return; }
+  if (!url || !/^https?:\/\//i.test(url)) {
+    if (!auto) toast('请先填写以 http:// 或 https:// 开头的地址', 'error');
+    return;
+  }
+  // 自动模式：标题已有内容或该地址已抓过 → 跳过，避免失焦/粘贴重复请求
+  if (auto && (!document.getElementById('qa_title').value.trim() || url === qaLastMetaUrl)) return;
+  const btn = document.getElementById('qa_fetchMeta');
+  qaMetaBusy = true;
+  btn.disabled = true; btn.textContent = '获取中…';
   try {
-    const btn = document.getElementById('qa_fetchMeta');
-    btn.disabled = true; btn.textContent = '获取中…';
     const res = await API.get(API_BASE + 'items.php?action=fetch_meta&url=' + encodeURIComponent(url));
+    qaLastMetaUrl = url;
 
     const got = [];
     const emptyTitle = !document.getElementById('qa_title').value.trim();
     const emptyDesc  = !document.getElementById('qa_desc').value.trim();
-    const curType = document.querySelector('#qa_itype input:checked').value;
+    const checked = document.querySelector('#qa_itype input:checked');
+    const curType = checked ? checked.value : 'favicon';
 
     if (res.title && emptyTitle) { document.getElementById('qa_title').value = res.title; got.push('标题'); }
     if (res.description && emptyDesc) { document.getElementById('qa_desc').value = res.description; got.push('描述'); }
 
     // 图标处理：与 admin.js 对齐的三态分支
     if (curType === 'favicon') {
-      if (res.icon) {
-        if (res.fallback_icon) {
-          // 公共图标源 → 切 image + 填 URL
-          document.querySelector('#qa_itype input[value="image"]').checked = true;
-          document.getElementById('qa_icon').value = res.icon;
-          got.push('图标(浏览器加载)');
-          onQAIconTypeChange();
-        } else {
-          got.push('图标');
-        }
-      } else {
-        // favicon 拿不到 → 自动降级为文字图标
+      if (res.icon && !res.fallback_icon) {
+        window.__qaMetaIcon = res.icon; // 本地缓存图标，预览直接使用
+        got.push('图标');
+      } else if (res.fallback_icon) {
+        // 服务端没抓到图标时保留 favicon 模式，由 /api/favicon.php 代理兜底
+        window.__qaMetaIcon = '';
+        got.push('图标(站点图标代理)');
+      } else if (!res.icon) {
+        // 确实没有可用图标 → 自动降级为文字图标
         document.querySelector('#qa_itype input[value="text"]').checked = true;
         document.getElementById('qa_iconText').value = smartIconText(res.title || url);
         onQAIconTypeChange();
-        got.push('图标(文字降级)');
+        got.push('图标(自动降级为文字)');
       }
-    } else {
-      updateQAIconPreview();
     }
+    updateQAIconPreview();
 
-    toast(got.length ? ('已获取：' + got.join(' / ')) : '没获取到新信息', got.length ? 'success' : 'info');
-  } catch (err) { toast('自动获取失败：' + err.message, 'error'); }
-  finally {
-    const btn = document.getElementById('qa_fetchMeta');
+    const warnTxt = res.warn ? '（' + res.warn + '）' : '';
+    if (!auto) {
+      if (got.length) {
+        toast('已自动获取：' + got.join('、') + (res.cached ? '（缓存）' : '') + warnTxt, res.warn ? 'info' : 'success');
+      } else {
+        toast('未获取到可填充的字段' + (warnTxt || '（站点无信息）'), 'info');
+      }
+    }
+  } catch (err) {
+    if (!auto) toast(err.message, 'error');
+  } finally {
+    qaMetaBusy = false;
     btn.disabled = false; btn.textContent = '自动获取信息';
   }
 }
@@ -2851,15 +2904,19 @@ async function fetchQAFavicon() {
   btn.disabled = true; btn.textContent = '获取中…';
   try {
     const res = await API.get(API_BASE + 'items.php?action=favicon&url=' + encodeURIComponent(url));
+    if (res.fallback) {
+      // 服务器拿不到可缓存图标 → 保留 favicon 模式，由站点图标代理兜底
+      document.querySelector('#qa_itype input[value="favicon"]').checked = true;
+      window.__qaMetaIcon = '';
+      onQAIconTypeChange();
+      toast('服务器未能缓存图标，已改用站点图标代理加载', 'info');
+      return;
+    }
     document.querySelector('#qa_itype input[value="image"]').checked = true;
     document.getElementById('qa_icon').value = res.url;
     onQAIconTypeChange();
     updateQAIconPreview();
-    if (res.fallback) {
-      toast('服务器未能缓存图标' + (res.diag ? '：' + res.diag : '') + '，已改用公共图标源', 'info');
-    } else {
-      toast(res.cached ? '已获取（本地缓存）' : '获取成功', 'success');
-    }
+    toast(res.cached ? '已获取（本地缓存）' : '获取成功', 'success');
   } catch (e) {
     toast(e.message, 'error');
   } finally {

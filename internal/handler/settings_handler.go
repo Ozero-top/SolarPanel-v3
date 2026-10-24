@@ -15,8 +15,8 @@ type SettingsHandler struct{}
 var allowedSettingKeys = map[string]struct{}{
 	"site_title": {}, "site_logo": {}, "wallpaper": {}, "mask_opacity": {},
 	"wallpaper_blur": {}, "announcement": {}, "announcement_show": {},
-	"footer": {}, "clock_show": {}, "default_theme": {}, "theme_style": {},
-	"card_style": {}, "default_lan_mode": {}, "lan_hostnames": {},
+	"footer": {}, "clock_show": {}, "clock_font": {}, "page_font": {}, "default_theme": {}, "theme_style": {},
+	"card_style": {}, "card_opacity": {}, "default_lan_mode": {}, "lan_hostnames": {},
 	"search_engines": {}, "search_default": {}, "site_url": {},
 	"content_maxwidth": {}, "content_pad_lr": {}, "content_pad_top": {},
 	"content_pad_bottom": {}, "weather_show": {}, "weather_city": {},
@@ -30,8 +30,22 @@ var allowedSettingKeys = map[string]struct{}{
 
 // settingValueWhitelist 特定键的取值白名单（与 frontend/themes.json / card_style 可选项保持同步）
 var settingValueWhitelist = map[string]map[string]bool{
-	"theme_style": {"soft": true, "blueprint": true, "clarity": true, "soft-utility": true, "aurora": true, "iris": true, "sketch-style": true, "retro-vintage": true, "corporate-clean": true},
+	"theme_style": {"soft": true, "blueprint": true, "clarity": true, "soft-utility": true, "aurora": true, "iris": true, "sketch-style": true, "retro-vintage": true, "corporate-clean": true, "liquid-glass": true},
 	"card_style":  {"nav": true, "navapp": true},
+	// 时钟/天气字体（与 frontend/assets/js/api.js SP_CLOCK_FONTS 保持一致；空 = 跟随系统）
+	"clock_font": {
+		"":         true,
+		"orbitron": true, "rajdhani": true, "audiowide": true, "michroma": true,
+		"bebas": true, "poppins": true, "montserrat": true, "playfair": true,
+		"righteous": true, "spacegrotesk": true, "jetbrains": true, "rubik": true,
+	},
+	// 整页字体（与 frontend/assets/js/api.js SP_PAGE_FONTS 保持一致；空 = 跟随系统）
+	"page_font": {
+		"":         true,
+		"notosans": true, "notoserif": true, "zcoolxiaowei": true, "zcoolqingke": true,
+		"zcoolkuaile": true, "mashanzheng": true, "longcang": true, "zhimangxing": true,
+		"poppins": true, "montserrat": true, "orbitron": true, "jetbrains": true,
+	},
 }
 
 // SettingRow 设置行
