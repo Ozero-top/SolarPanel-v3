@@ -127,9 +127,10 @@ func (h *GalleryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	const presetPrefix = "/frontend/uploads/weather/"
 	const uploadPrefix = "/frontend/uploads/wallpapers/"
-	sub, prefix, preset := "wallpapers", uploadPrefix, false
+	sub, prefix := "wallpapers", uploadPrefix
 	if strings.HasPrefix(body.URL, presetPrefix) {
-		sub, prefix, preset = "weather", presetPrefix, true
+		Fail(w, "内置壁纸不可删除")
+		return
 	} else if !strings.HasPrefix(body.URL, uploadPrefix) {
 		Fail(w, "非法的壁纸地址")
 		return
@@ -161,10 +162,6 @@ func (h *GalleryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := os.Remove(target); err != nil {
 		Err(w, http.StatusInternalServerError, 1, "删除失败，请检查目录权限")
 		return
-	}
-	if preset {
-		// 记录被删除的内置壁纸，避免下次启动时由 seed 重新释放回数据目录
-		markRemovedPreset(h.cfg.UploadDir, name)
 	}
 	OK(w, map[string]string{"deleted": name})
 }

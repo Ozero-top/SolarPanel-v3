@@ -3,7 +3,7 @@
  */
 
 /* ================= 应用版本与更新日志（每次更新只需改这里） ================= */
-const APP_VERSION = 'v3.3.0';
+const APP_VERSION = 'v3.3.1';
 const APP_CHANGELOG = [
   { ver: 'v3.3.0', date: '2026-10-24', items: [
     '🖥️ 新增 NAS 运行状态面板：主机名 / 内网 IP / CPU / 内存 / 存储 / 网络 / 温度 / 容器',
