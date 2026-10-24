@@ -4,7 +4,7 @@
 
 <h1 align=center>SolarPanel V3 - 轻量自托管导航面板</h1>
 
-[![Version](https://img.shields.io/badge/Version-v3.2.0-5B8DEF?logo=semanticrelease)](#)
+[![Version](https://img.shields.io/badge/Version-v3.2.1-5B8DEF?logo=semanticrelease)](#)
 [![Go](https://img.shields.io/badge/Go-1.23-00ADD8?logo=go)](https://go.dev)
 [![Architecture](https://img.shields.io/badge/Architecture-chi%2Bsqlite-50C878)](https://github.com/go-chi/chi)
 [![Multi-Arch](https://img.shields.io/badge/Arch-amd64__arm64__armv7-7A51F5)](https://hub.docker.com/r/ovitor/solarpanel-v3)
@@ -355,6 +355,10 @@ SolarPanel/
 ## 📋 更新日志
 
 完整变更明细见 [updates.md](./updates.md)。维护约定：每次升版同时更新 `updates.md` 与本节，并与 `frontend/assets/js/api.js` 的 `APP_VERSION` / `APP_CHANGELOG` 保持一致。
+
+### v3.2.1（2026-10-24）
+
+- **内置壁纸补齐**：5 张新增壁纸此前只在数据目录，现随镜像打包并在首次启动自动释放到 `data/uploads/weather`
 
 ### v3.2.0（2026-10-24）
 
