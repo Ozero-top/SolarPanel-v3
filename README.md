@@ -4,7 +4,7 @@
 
 <h1 align=center>SolarPanel V3 - 轻量自托管导航页面板</h1>
 
-[![Version](https://img.shields.io/badge/Version-v3.3.0-5B8DEF?logo=semanticrelease)](#)
+[![Version](https://img.shields.io/badge/Version-v3.3.3-5B8DEF?logo=semanticrelease)](#)
 [![Go](https://img.shields.io/badge/Go-1.23-00ADD8?logo=go)](https://go.dev)
 [![Architecture](https://img.shields.io/badge/Architecture-chi%2Bsqlite-50C878)](https://github.com/go-chi/chi)
 [![Multi-Arch](https://img.shields.io/badge/Arch-amd64__arm64__armv7-7A51F5)](https://hub.docker.com/r/ovitor/solarpanel-v3)
@@ -25,12 +25,16 @@
 - **十套主题** — 液态玻璃（默认）/ 柔和浮雕 / 工程蓝图 / 清透极简 / 柔和工具 / 动态极光 / IRIS 深空 / 铅笔手绘 / 复古怀旧 / 企业简洁；明暗模式、卡片样式与圆角留白可独立配置
 - **热点新闻聚合** — 24 个内置源（微博 / 知乎 / B站 / GitHub Trending / IT之家 / V2EX / 少数派 / 掘金 等）+ 自定义 RSS，支持勾选、排序与独立入口
 - **NAS 运行状态面板** — 主机名 / 内网 IP / CPU / 内存 / 存储池 / 网络 / 温度 / 容器；四种放置方式 + 近 10 分钟曲线 + 详情弹窗；兼容群晖 DSM、绿联 UGOS、飞牛 fnOS、威联通 QTS、极空间 ZOS、iStoreOS / OpenWrt / ImmortalWrt
-- **天气与壁纸** — 顶部时钟与天气组件；每日壁纸多源合并、失败重试、图库管理与上传，壁纸源可切换
-- **卡片与图标** — 图标上传、域名自动抓取 favicon、标题与描述自动获取；深色模式自动适配图标轮廓
+- **天气与壁纸** — 顶部时钟与天气组件；每日壁纸多源合并、失败重试、图库管理与上传；后台可按源随机预览 10 张再固定；内置壁纸只读不可删除，删除操作仅作用于自己上传的壁纸
+- **内外网自动切换** — 卡片可同时配置公网与内网地址，页面按访问者网段或后台配置的内网主机名自动选路，顶栏按钮可手动切换
+- **字体系统** — 页面字体与时钟/天气字体各 12 款免费开源设计字体，按需加载、互不干扰，清空即跟随系统
+- **搜索增强** — 多搜索引擎切换、搜索历史与常用搜索（置顶收藏）、快捷键 `/` 或 `Ctrl+K` 聚焦搜索框
+- **卡片与图标** — 图标上传、域名自动抓取 favicon、标题与描述自动获取；深色模式自动适配图标轮廓；右键菜单可新标签页 / 当前页打开、快速编辑或删除
+- **键盘快捷键** — `/`、`Ctrl+K` 聚焦搜索，`t` 切深浅色，`n` 新闻视图，`b`/`h` 导航站视图，`g` 分组目录，`?` 帮助，`Esc` 逐级退出
 - **favicon 三级缓存** — 内存 inflight 去重 → 磁盘 MD5 缓存 → 三源并发抓取（主站 / Google s2 / DuckDuckGo）；`ETag` + `immutable` 协商，二次访问 304
 - **安全** — Session + CSRF 双令牌、接口限流、四级角色权限、TOTP 双因子、受信设备与审计日志
 - **PWA** — Service Worker 离线缓存，可安装为应用；资源变更自动刷新缓存版本
-- **有序幂等迁移** — `schema_versions` 记录已应用版本，新增 schema 只需在迁移列表末尾追加，启动自动补齐
+- **有序幂等迁移 + 旧库兼容** — `schema_versions` 记录已应用版本；启动时另按 `PRAGMA table_info` 检测并补齐旧库缺失字段，避免 `no such column` 直接 500
 - **备份与迁移** — JSON 一键导出/导入（含上传文件 base64），分组按 `parent_id` 排序并重建 ID 映射；支持 Chrome / Edge 书签 HTML 导入
 
 ## 🏗 技术栈
@@ -253,7 +257,7 @@ SolarPanel/
 │   ├── settings/defaults.go     # 设置默认值唯一事实源
 │   ├── auth/                    # Session · CSRF · RateLimit · Audit · TOTP · RequireLogin
 │   ├── db/
-│   │   ├── db.go                # DDL · 连接池 · 默认设置/管理员初始化 · 孤儿分组清理
+│   │   ├── db.go                # DSN/连接池 · DDL · 旧库补列 · 默认设置/管理员初始化 · 孤儿分组清理
 │   │   └── migrations.go        # schema_versions 有序幂等迁移
 │   ├── handler/                 # 各业务 handler（见「路由一览」）
 │   └── nas/                     # NAS 采集：宿主 /proc、/sys、存储池、Docker API、系统识别
@@ -268,8 +272,11 @@ SolarPanel/
 
 - **类型**：SQLite（WAL 模式），`modernc.org/sqlite` 纯 Go driver
 - **连接池**：`SetMaxOpenConns(15)`；`journal_mode=WAL` · `synchronous=NORMAL` · `busy_timeout=15000` · `foreign_keys=ON` · `cache_size=-20000` · `temp_store=MEMORY`
+  - 这些 PRAGMA 通过 DSN 的 `_pragma=` 参数下发，**每条连接独立生效**；若只在启动时 `DB.Exec` 一次，池内其余连接仍是默认值（`busy_timeout=0`），并发下会直接 `SQLITE_BUSY` 导致接口 500
+  - 启动日志会打印实际生效的 `journal_mode`；若显示 `delete` 而非 `wal`，说明数据目录所在文件系统（SMB / NFS 等网络盘）不支持 WAL
 - **表**：`users` · `settings` · `item_groups` · `items` · `custom_feeds` · `audit_logs` · `schema_versions` · `rate_limits` · `trusted_devices`
 - **迁移**：`schema_versions` 记录已应用版本；新增 DDL/DML 追加到 `migrations` 列表末尾，`Version` 必须严格递增且不得修改历史项
+- **旧库补列**：`CREATE TABLE IF NOT EXISTS` 对已存在的表不生效，迁移也只覆盖少数几列。启动时会执行 `ensureColumns()`，按 `PRAGMA table_info` 比对 `items` / `item_groups` / `users` / `settings` / `audit_logs` / `custom_feeds` 的期望列，缺失即 `ALTER TABLE ADD COLUMN` 补齐（幂等、保留原有数据）；补列会打印 `[db] 旧库补列 表.列 ✅`
 - **初始化**：空库只写入 `internal/settings/defaults.go` 的默认设置与 `admin/admin123`
 - **重置**：后台「恢复初始状态」= 恢复默认设置 + 清空分组/卡片 + 清空用户上传（保留 `uploads/weather` 预置壁纸），**不会重新生成任何演示内容**
 - **孤儿分组清理**：启动时若 `parent_id` 指向不存在的分组，自动重置为 `0`（顶级）
@@ -326,7 +333,7 @@ SolarPanel/
 | GET / POST | `/api/groups.php` | `list` `edit` `delete` `sort` `sort_batch` `visible` | 分组 CRUD、排序、显示隐藏 |
 | GET / POST | `/api/items.php` | `list` `edit` `delete` `sort` `sort_batch` `toggle_hidden` `favicon` `fetch_meta` | 卡片 CRUD、排序、隐藏、抓图标、抓标题 |
 | POST | `/api/upload.php` | `type=icon\|logo\|wallpaper` | 图标 5MB / Logo 5MB / 壁纸 10MB |
-| GET / POST | `/api/gallery.php` | GET 列表 · POST `delete` | 壁纸图库（用户 `wallpapers` + 预置 `weather`） |
+| GET / POST | `/api/gallery.php` | GET 列表 · POST `delete` | 壁纸图库（用户 `wallpapers` + 预置 `weather`）；预置项只读，删除仅对用户上传生效 |
 | GET / POST | `/api/backup.php` | `export` / `import` / `reset` | 备份导出、导入、恢复初始状态 |
 | GET / POST | `/api/user.php` | `list` `create` `update` `delete` `change_password` `set_role` `set_password` | 用户管理 |
 | GET / POST | `/api/audit.php` | `list` / `clear` | 审计日志 |
@@ -352,7 +359,7 @@ SolarPanel/
 
 | 模块 | 能力 |
 |---|---|
-| **设置** | 基础（站点标题 / Logo / 公告 / 页脚 / 时钟 / 备案 / 访客访问）、主题（明暗 + 风格 + 卡片样式 + 布局留白）、搜索（宽度 + 搜索引擎清单 + 默认引擎）、新闻（开关 + 24 源勾选排序）、NAS 监控（开关 / 放置方式 / 刷新间隔 / 访客可见 / 自定义存储路径 / 弹窗不透明度） |
+| **设置** | 站点信息（标题 / Logo / 公告 / 备案 / 内外网访问）、外观与卡片（主题 + 明暗 + 卡片样式 + 布局留白 + 页面字体 + 时钟天气字体 + 壁纸）、导航与搜索（顶栏开关 + 搜索栏 + 搜索引擎清单与默认引擎）、访问控制（访客密码）、热点新闻（开关 + 24 源勾选排序 + 自定义 RSS）、NAS 监控（开关 / 放置方式 / 刷新间隔 / 访客可见 / 自定义存储路径 / 弹窗不透明度） |
 | **卡片** | 新增/编辑/删除、拖拽排序、显示隐藏、图标上传或自动抓取、标题自动抓取 |
 | **分组** | 两级分组 CRUD、拖拽排序、显示隐藏、图标与描述 |
 | **账号** | 修改本人密码、TOTP 双因子、受信设备管理；管理员可增删用户与改角色 |
@@ -404,6 +411,9 @@ SolarPanel/
 - **嵌套查询死锁**：SQLite 连接池较小时，`rows.Next()` 遍历期间再发起 `QueryRow` 会阻塞。代码统一先收集结果并 `rows.Close()` 后再查
 - **列与 Scan 必须一一对应**：`scanItemGroup` 有 9 个目标（含 `parent_id`），SELECT 少一列会让 `Scan` 报错并被误读为「记录不存在」
 - **`schema_versions` 是 OTA 关键表**，禁止手动删除；历史迁移条目不可修改
+- **新增列必须同步三处**：`schemaDDL`、`expectedColumns`（旧库补列）与 `migrations` 追加项；只改建表语句对已部署的旧库无效
+- **迁移要校验结果**：`ALTER TABLE ... ADD COLUMN` 遇到「列已存在」会报错，不要把该错误当成成功并打标，否则会出现「日志显示已迁移、实际缺列」的假象
+- **SQLite PRAGMA 走 DSN**：`DB.Exec("PRAGMA ...")` 只影响连接池中的一条连接，新增连接仍用默认值；需要全局生效的参数一律通过 `buildDSN()` 的 `_pragma=` 传入
 - **设置默认值只改 `internal/settings/defaults.go`**，`db.go` 初始化与 `backup_handler.go` 重置必须同源，避免两处漂移
 - **新增主题**只改 `frontend/themes.json` 并跑 `build-themes.js`，不要手改 `themes.css`
 - **前端资源变更**后必须跑 `build-frontend.js`，否则浏览器仍命中旧 SHA1 缓存
@@ -426,6 +436,24 @@ V3 不自动迁移 V2.1 的数据库，请按「先导出、后导入」的顺�
 - 导入为**整体替换**：V3 现有的分组、卡片与设置会被备份内容覆盖
 - 备份中的上传文件（图标 / Logo / 壁纸）随备份一起导入，无需单独拷贝 `uploads`
 - 升级后立即修改默认管理员密码；旧版浏览器缓存建议强制刷新一次
+
+> 直接让 V3 复用旧数据目录时，启动会尝试补齐旧库缺失字段以兼容读取；但旧版字段语义可能不同（例如隐藏标记、图标字段命名），**推荐仍按上面的「导出 → 导入」流程升级**，以保证分组、卡片与设置完整还原。
+
+### v3.3.3（2026-10-25）
+
+- **修复旧库升级后接口 500**：旧版数据库的 `items` 表缺少 `is_hidden` 等列，`SELECT` 直接报 `no such column`，主页拿不到分组与卡片
+- **启动自动补列**：新增 `ensureColumns()`，按 `PRAGMA table_info` 检测并补齐缺失字段，原有数据完整保留，幂等可重复执行
+
+### v3.3.2（2026-10-25）
+
+- **修复并发下偶发 500**：PRAGMA 改为经 DSN 下发到连接池的每一条连接，避免其余连接 `busy_timeout=0` 时直接 `SQLITE_BUSY`
+- **可观测性**：启动打印实际生效的 `journal_mode`；`public.php` 的 SQL 失败会记录真实错误
+
+### v3.3.1（2026-10-25）
+
+- **安全性加固**：多项接口与资源访问链路的校验补强，修复若干潜在风险点
+- **内置壁纸改为只读**：图库删除操作仅作用于用户自己上传的壁纸，预置壁纸不再提供删除入口
+
 ### v3.3.0（2026-10-24）
 
 - **NAS 运行状态面板**：主机名 / 内网 IP / CPU / 内存 / 存储池 / 网络 / 温度 / 容器
@@ -442,7 +470,7 @@ V3 不自动迁移 V2.1 的数据库，请按「先导出、后导入」的顺�
 
 ### v3.2.2（2026-10-24）
 
-- **内置壁纸可删除**：删除后重启不会自动恢复
+- **内置壁纸可删除**（v3.3.1 起已调整为只读）
 - **优化壁纸体积与加载性能**
 
 ### v3.2.1（2026-10-24）
