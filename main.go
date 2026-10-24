@@ -239,6 +239,7 @@ func main() {
 	feedsHandler := handler.NewFeedsHandler()
 	importHandler := handler.NewImportHandler()
 	wallpaperHandler := handler.NewWallpaperHandler(cfg)
+	nasHandler := handler.NewNASHandler(cfg)
 
 	// ===== 限流中间件（chi 适配器）=====
 	rateLimitMW := func(endpoint string, max, windowSec int) func(http.Handler) http.Handler {
@@ -267,6 +268,8 @@ func main() {
 		api.With(rateLimitMW("news", 30, 60)).Get("/news/source", newsHandler.Source)
 		api.With(rateLimitMW("wallpaper", 30, 60)).Post("/wallpaper.php", wallpaperHandler.Dispatch)
 		api.With(rateLimitMW("wallpaper", 30, 60)).Get("/wallpaper.php", wallpaperHandler.Dispatch)
+		// 面板轮询 + 详情弹窗 + 多标签页共享同一出口 IP，限流放宽到 240 次/分
+		api.With(rateLimitMW("nas", 240, 60)).Get("/nas.php", nasHandler.Get)
 		// auth.php — 全局 session 已注入
 		api.Post("/auth.php", authHandler.Dispatch)
 		api.Get("/auth.php", authHandler.Dispatch)

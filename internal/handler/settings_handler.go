@@ -21,6 +21,7 @@ var allowedSettingKeys = map[string]struct{}{
 	"content_maxwidth": {}, "content_pad_lr": {}, "content_pad_top": {},
 	"content_pad_bottom": {}, "weather_show": {}, "weather_city": {},
 	"search_width": {}, "news_show": {}, "news_sources": {}, "news_order": {},
+	"nas_show": {}, "nas_layout": {}, "nas_refresh": {}, "nas_guest": {}, "nas_disk_paths": {}, "nas_modal_alpha": {},
 	"icp_show": {}, "icp_number": {}, "icp_link": {}, "police_show": {},
 	"police_number": {}, "police_link": {}, "wallpaper_source": {},
 	"guest_access_enabled": {}, "guest_password_hash": {},
@@ -32,6 +33,9 @@ var allowedSettingKeys = map[string]struct{}{
 var settingValueWhitelist = map[string]map[string]bool{
 	"theme_style": {"soft": true, "blueprint": true, "clarity": true, "soft-utility": true, "aurora": true, "iris": true, "sketch-style": true, "retro-vintage": true, "corporate-clean": true, "liquid-glass": true},
 	"card_style":  {"nav": true, "navapp": true},
+	"nas_show":    {"0": true, "1": true},
+	"nas_guest":   {"0": true, "1": true},
+	"nas_layout":  {"right": true, "left": true, "both": true, "banner": true},
 	// 时钟/天气字体（与 frontend/assets/js/api.js SP_CLOCK_FONTS 保持一致；空 = 跟随系统）
 	"clock_font": {
 		"":         true,
@@ -120,6 +124,18 @@ func (h *SettingsHandler) Save(w http.ResponseWriter, r *http.Request) {
 		// 值白名单校验：不在允许值内的直接跳过（防写入已废弃主题/样式）
 		if vals, ok := settingValueWhitelist[k]; ok && !vals[v] {
 			continue
+		}
+		if k == "nas_modal_alpha" {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				continue
+			}
+			if n < 40 {
+				n = 40
+			} else if n > 100 {
+				n = 100
+			}
+			v = strconv.Itoa(n)
 		}
 		if k == "guest_password_hash" {
 			if v == "" {

@@ -2185,3 +2185,237 @@ kbd {
   font-size: 15px;
   line-height: 1;
 }
+
+/* ================= NAS 运行状态面板（右侧 / 左侧悬浮，可折叠） ================= */
+.nas-panel {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 45;
+  width: 246px;
+  max-height: 78vh;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 13px 13px 11px;
+  border-radius: 20px;
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  box-shadow: var(--raised);
+  transition: width 260ms var(--ease), padding 260ms var(--ease);
+}
+.nas-panel[hidden] { display: none; }
+/* 紧贴内容区（卡片分组）左右边缘：内容区外仍留白时贴边，留白不足时退回视口边缘 */
+.nas-panel.right { right: max(14px, calc((100vw - var(--content-max, 1200px)) / 2 - 258px)); }
+.nas-panel.left { left: max(14px, calc((100vw - var(--content-max, 1200px)) / 2 - 258px)); }
+.nas-panel.collapsed { width: 46px; padding: 12px 6px; height: 190px; }
+
+.np-head { display: flex; align-items: center; gap: 8px; flex: none; }
+.np-title { font-size: 12.5px; font-weight: 600; letter-spacing: .2px; }
+.np-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex: none;
+  background: var(--success); box-shadow: 0 0 0 3px rgba(63, 169, 129, .16);
+}
+.np-dot.bad { background: var(--danger); box-shadow: 0 0 0 3px rgba(224, 93, 93, .16); }
+.np-fold {
+  margin-left: auto; width: 24px; height: 24px; flex: none;
+  border: 0; border-radius: 8px; background: transparent; color: var(--text-muted);
+  cursor: pointer; font-size: 14px; line-height: 1; display: grid; place-items: center;
+  transition: background var(--tr) var(--ease), color var(--tr) var(--ease), transform var(--tr) var(--ease);
+}
+.np-fold:hover { background: var(--hover-bg); color: var(--accent); }
+.nas-panel.left .np-fold { transform: rotate(180deg); }
+
+.np-rail { display: none; flex-direction: column; align-items: center; gap: 9px; flex: 1; padding-top: 4px; }
+.np-rail .pct { writing-mode: vertical-rl; font-size: 11px; font-weight: 600; color: var(--accent); }
+.np-rail .txt { writing-mode: vertical-rl; font-size: 10.5px; letter-spacing: 2px; color: var(--text-muted); }
+.np-rail .bar {
+  width: 4px; flex: 1; border-radius: 3px; overflow: hidden;
+  background: var(--surface-2); box-shadow: var(--inset);
+  display: flex; align-items: flex-end;
+}
+.np-rail .bar i {
+  display: block; width: 100%; border-radius: 3px;
+  background: linear-gradient(180deg, var(--accent), #9db0ff);
+  transition: height 500ms var(--ease);
+}
+
+.np-body { display: flex; flex-direction: column; gap: 9px; overflow-y: auto; min-height: 0; }
+.np-body::-webkit-scrollbar { width: 4px; }
+.np-body::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 3px; }
+.np-hn { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-os { font-size: 10.5px; color: var(--text-muted); line-height: 1.5; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-ip { font-size: 10.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; letter-spacing: .3px; margin-top: 1px; }
+
+.np-metric .np-row { display: flex; align-items: baseline; justify-content: space-between; font-size: 11.5px; color: var(--text-muted); }
+.np-metric .np-row b { font-size: 12.5px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.np-metric .bar {
+  height: 4px; border-radius: 3px; margin-top: 5px; overflow: hidden;
+  background: var(--surface-2); box-shadow: var(--inset);
+}
+.np-metric .bar i {
+  display: block; height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent), #9db0ff);
+  transition: width 500ms var(--ease);
+}
+.np-metric .bar i.warn { background: linear-gradient(90deg, #d9963f, #f0c178); }
+.np-metric .bar i.danger { background: linear-gradient(90deg, #e05d5d, #f09a9a); }
+
+/* 网络数值较长（↓104.6 KB/s ↑109 B/s），单独缩小字号避免撑满面板宽度 */
+.np-net .np-row b { font-size: 11.5px; letter-spacing: -0.2px; }
+
+.np-net svg { width: 100%; height: 34px; display: block; margin: 3px 0 1px; flex: none; }
+.np-legend { display: flex; gap: 10px; font-size: 10px; color: var(--text-muted); }
+
+.np-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.np-meta div { padding: 6px 8px; border-radius: 10px; background: var(--surface-2); box-shadow: var(--inset); }
+.np-meta span { display: block; font-size: 10px; color: var(--text-muted); }
+.np-meta b { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.np-ct-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  font-size: 11.5px; font-weight: 600; margin-top: 2px;
+}
+.np-ct-head span { font-size: 10.5px; font-weight: 400; color: var(--text-muted); }
+.np-ct-list { display: flex; flex-direction: column; gap: 5px; }
+.np-ct {
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 8px;
+  padding: 6px 8px; border-radius: 10px; background: var(--surface-2);
+}
+.np-ct .n {
+  font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: flex; align-items: center; gap: 6px;
+}
+.np-ct .n i { width: 6px; height: 6px; border-radius: 50%; background: var(--success); flex: none; }
+.np-ct .n i.stop { background: var(--text-muted); opacity: .5; }
+.np-ct .c { font-size: 11px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+.np-ct .m { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text-muted); }
+.np-ct .m .mb { flex: 1; height: 3px; border-radius: 2px; overflow: hidden; background: var(--surface); box-shadow: var(--inset); }
+.np-ct .m .mb i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+
+.np-foot { font-size: 10px; color: var(--text-muted); text-align: center; letter-spacing: .2px; }
+.np-empty { font-size: 11px; color: var(--text-muted); padding: 8px 0; text-align: center; }
+
+.nas-panel.collapsed .np-title,
+.nas-panel.collapsed .np-dot,
+.nas-panel.collapsed .np-body { display: none; }
+.nas-panel.collapsed .np-head { flex-direction: column; gap: 8px; }
+.nas-panel.collapsed .np-fold { margin: 0; transform: rotate(180deg); }
+.nas-panel.left.collapsed .np-fold { transform: none; }
+.nas-panel.collapsed .np-rail { display: flex; }
+
+/* 宽屏时面板紧贴内容区边缘，不再给 body 加内边距（避免内容与面板双重偏移） */
+/* 左侧面板与分组目录互斥（目录固定在同一侧） */
+body.nas-left .group-nav,
+body.nas-left .gn-toggle,
+body.nas-both .group-nav,
+body.nas-both .gn-toggle { display: none !important; }
+/* 手机端不展示面板，避免遮挡卡片 */
+@media (max-width: 768px) {
+  .nas-panel { display: none !important; }
+}
+
+/* ---- 面板「详情」按钮与存储汇总 ---- */
+.np-detail {
+  margin-left: auto; flex: none; border: 0; cursor: pointer;
+  padding: 3px 8px; border-radius: 8px; font: inherit; font-size: 10.5px;
+  background: var(--accent-soft); color: var(--accent);
+  transition: background var(--tr) var(--ease), color var(--tr) var(--ease);
+}
+.np-detail:hover { background: var(--accent); color: #fff; }
+.np-head .np-detail + .np-fold { margin-left: 2px; }
+.nas-panel.collapsed .np-detail { display: none; }
+.np-stor { font-size: 10.5px; color: var(--text-muted); line-height: 1.55; }
+.np-stor b { color: var(--text); font-weight: 600; }
+
+/* ================= NAS 详细信息弹窗 ================= */
+.nas-detail-box {
+  /* 宽度约为原版 1.3 倍，缓解容器表拥挤 */
+  width: min(1220px, 94vw); max-width: 1220px; max-height: 88vh;
+  display: flex; flex-direction: column; padding: 18px 22px 16px; overflow: hidden;
+}
+/* 用 ID 提升优先级，覆盖各主题对 .modal-box 的背景定义；--nas-alpha 由后台滑块控制 */
+#nasDetailModal .nas-detail-box {
+  background: color-mix(in srgb, var(--surface) var(--nas-alpha, 100%), transparent);
+  backdrop-filter: blur(20px) saturate(1.15);
+  -webkit-backdrop-filter: blur(20px) saturate(1.15);
+}
+.nas-detail-box .modal-head { flex: none; }
+.nas-detail-body { overflow: auto; margin-top: 10px; padding-right: 4px; min-height: 0; }
+.nas-detail-body::-webkit-scrollbar { width: 6px; }
+.nas-detail-body::-webkit-scrollbar-thumb { background: var(--scroll-thumb, var(--edge)); border-radius: 3px; }
+
+.nas-d-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.nas-d-host h4 { margin: 0; font-size: 15px; font-weight: 600; }
+.nas-d-host p { margin: 2px 0 0; font-size: 11.5px; color: var(--text-muted); }
+.nas-d-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.nas-d-kpi { padding: 12px 13px; border-radius: 14px; background: var(--surface-2); box-shadow: var(--raised-sm); min-width: 0; }
+.nas-d-kpi .k { font-size: 11px; color: var(--text-muted); }
+.nas-d-kpi .v { font-size: 21px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.nas-d-kpi .v small { font-size: 11px; font-weight: 400; color: var(--text-muted); margin-left: 3px; }
+.nas-d-kpi .s { font-size: 10.5px; color: var(--text-muted); margin-top: 2px; }
+
+.nas-d-grid { display: grid; grid-template-columns: 1.35fr 1fr; gap: 10px; margin-top: 10px; }
+.nas-d-panel { padding: 12px 13px; border-radius: 14px; background: var(--surface-2); box-shadow: var(--raised-sm); min-width: 0; }
+.nas-d-panel h5 { margin: 0 0 8px; font-size: 12px; font-weight: 600; }
+.nas-d-net { width: 100%; height: 110px; display: block; }
+.nas-d-legend { display: flex; gap: 14px; font-size: 11px; color: var(--text-muted); margin-top: 4px; flex-wrap: wrap; }
+.nas-d-legend i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+
+.nas-d-disk { padding: 6px 0; border-bottom: 1px dashed var(--edge); }
+.nas-d-disk:last-child { border-bottom: 0; }
+.nas-d-disk .r { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; }
+.nas-d-disk .r span:last-child { color: var(--text-muted); white-space: nowrap; }
+
+.nas-d-table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-top: 10px; }
+.nas-d-table th {
+  text-align: left; font-weight: 500; font-size: 10.5px; color: var(--text-muted);
+  padding: 0 8px 6px; border-bottom: 1px solid var(--edge); white-space: nowrap;
+}
+.nas-d-table td { padding: 7px 8px; border-bottom: 1px solid var(--edge); }
+.nas-d-table tr:last-child td { border-bottom: 0; }
+.nas-d-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nas-d-table .nm { display: flex; align-items: center; gap: 6px; }
+.nas-d-table .nm i { width: 6px; height: 6px; border-radius: 50%; background: var(--success); flex: none; }
+.nas-d-table .nm i.stop { background: var(--text-muted); opacity: .5; }
+.nas-d-foot { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 11px; color: var(--text-muted); }
+.nas-d-foot b { color: var(--text); font-weight: 600; }
+
+@media (max-width: 820px) {
+  .nas-d-kpis { grid-template-columns: repeat(2, 1fr); }
+  .nas-d-grid { grid-template-columns: 1fr; }
+}
+
+/* 网络上下行配色：下行蓝、上行绿（与曲线颜色一致） */
+.v-down { color: var(--accent); }
+.v-up { color: var(--success); }
+.np-row b .v-down, .np-row b .v-up { font-size: inherit; font-weight: inherit; }
+
+/* ================= NAS 状态条（卡片下方，单行概览） ================= */
+.nas-banner {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  margin-top: 18px; padding: 12px 18px;
+  border-radius: 18px; background: var(--surface);
+  box-shadow: var(--raised-sm); cursor: pointer;
+  transition: box-shadow var(--tr) var(--ease), transform var(--tr) var(--ease);
+}
+.nas-banner[hidden] { display: none; }
+.nas-banner:hover { box-shadow: var(--raised); transform: translateY(-1px); }
+.nb-host { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; min-width: 0; }
+.nb-host b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb-host span { font-size: 10.5px; font-weight: 400; color: var(--text-muted); white-space: nowrap; }
+.nb-item { display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.nb-item b { font-size: 13.5px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.nb-item .m { font-size: 10.5px; color: var(--text-muted); }
+.nb-spark { width: 92px; height: 24px; flex: none; }
+.nb-more {
+  margin-left: auto; border: 0; background: transparent; cursor: pointer; font: inherit;
+  font-size: 12.5px; color: var(--accent); font-weight: 600; white-space: nowrap;
+}
+.nb-more:hover { text-decoration: underline; }
+
+@media (max-width: 900px) {
+  .nas-banner { gap: 10px 14px; padding: 11px 14px; }
+  .nb-item .m, .nb-host span { display: none; }
+  .nb-more { margin-left: 0; }
+}

@@ -16,6 +16,10 @@ type Config struct {
 	SessionTTL        int
 	SessionCookieName string
 	CSRFCookieName    string
+	// NAS 监控：宿主机根目录（容器内一般为 /host，本机运行留空 = /）
+	NASHostRoot string
+	// NAS 监控：Docker 守护进程 socket（各 NAS 均为 /var/run/docker.sock）
+	DockerSocket string
 }
 
 // Load 默认配置
@@ -27,6 +31,11 @@ func Load() *Config {
 	os.MkdirAll(dataDir, 0755)
 	os.MkdirAll(uploadDir, 0755)
 
+	hostRoot := getEnv("NAS_HOST_ROOT", "/host")
+	if _, err := os.Stat(hostRoot); err != nil {
+		hostRoot = "" // 未挂载宿主机根目录时退回容器自身视角
+	}
+
 	return &Config{
 		ServerPort:        getEnv("SERVER_PORT", "10086"),
 		HTTPSPort:         os.Getenv("HTTPS_PORT"),
@@ -37,6 +46,8 @@ func Load() *Config {
 		SessionTTL:        86400,
 		SessionCookieName: "sp_session",
 		CSRFCookieName:    "csrf_token",
+		NASHostRoot:       hostRoot,
+		DockerSocket:      getEnv("DOCKER_SOCKET", "/var/run/docker.sock"),
 	}
 }
 

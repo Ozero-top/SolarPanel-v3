@@ -1496,7 +1496,33 @@ function fillSettingsForm(s) {
   // 访客密码不回填（安全），每次打开清空
   const gpEl = document.getElementById('s_guest_password');
   if (gpEl) gpEl.value = '';
+
+  // —— NAS 监控 ——
+  const nasShowEl = document.getElementById('s_nas_show');
+  if (nasShowEl) {
+    nasShowEl.value = s.nas_show === '1' ? '1' : '0';
+    const layoutEl = document.getElementById('s_nas_layout');
+    layoutEl.value = ['left', 'both', 'banner'].includes(s.nas_layout) ? s.nas_layout : 'right';
+    document.getElementById('s_nas_guest').value = s.nas_guest === '1' ? '1' : '0';
+    const nr = parseInt(s.nas_refresh, 10);
+    document.getElementById('s_nas_refresh').value = isNaN(nr) ? 3 : Math.min(60, Math.max(2, nr));
+    document.getElementById('s_nas_disk_paths').value = s.nas_disk_paths || '';
+    const alphaEl = document.getElementById('s_nas_modal_alpha');
+    const alpha = parseInt(s.nas_modal_alpha, 10);
+    alphaEl.value = isNaN(alpha) ? 100 : Math.min(100, Math.max(40, alpha));
+    document.getElementById('nasAlphaVal').textContent = alphaEl.value + '%';
+  }
 }
+
+// 弹窗不透明度滑块实时回显
+(function bindNasAlpha() {
+  const el = document.getElementById('s_nas_modal_alpha');
+  if (!el) return;
+  el.addEventListener('input', () => {
+    const out = document.getElementById('nasAlphaVal');
+    if (out) out.textContent = el.value + '%';
+  });
+})();
 
 /* ---------- 热点新闻数据源勾选与排序（表格排版，参考分组管理） ---------- */
 async function loadNewsSourceRows(saved, savedOrder) {
@@ -1905,13 +1931,14 @@ function refreshEngineDefaults() {
 }
 
 /* 分区定义：每个分区独立保存，只提交自己的设置项（后端白名单兼容部分提交）
-   分区顺序与站点设置的二级导航一一对应：站点信息 → 外观与卡片 → 导航与搜索 → 访问控制 → 热点新闻 */
+   分区顺序与站点设置的二级导航一一对应：站点信息 → 外观与卡片 → 导航与搜索 → 访问控制 → 热点新闻 → NAS 监控 */
 const SETTING_SECTIONS = {
   basic:  { label: '站点信息', keys: ['site_title', 'site_url', 'footer', 'site_logo', 'announcement_show', 'announcement', 'icp_show', 'icp_number', 'icp_link', 'police_show', 'police_number', 'police_link', 'default_lan_mode', 'lan_hostnames'] },
   theme:  { label: '外观与卡片', keys: ['default_theme', 'theme_style', 'card_style', 'card_opacity', 'content_maxwidth', 'content_pad_lr', 'content_pad_top', 'content_pad_bottom', 'page_font', 'clock_font', 'clock_show', 'weather_show', 'weather_city', 'wallpaper', 'mask_opacity', 'wallpaper_blur', 'wallpaper_source'] },
   search: { label: '导航与搜索', keys: ['search_bar_enabled', 'topbar_desktop_enabled', 'topbar_mobile_enabled', 'search_engines', 'search_default', 'search_width'] },
   access: { label: '访问控制', keys: ['guest_access_enabled', 'guest_password_hash'] },
   news:   { label: '热点新闻', keys: ['news_show', 'news_sources', 'news_order'] },
+  nas:    { label: 'NAS 监控', keys: ['nas_show', 'nas_layout', 'nas_refresh', 'nas_guest', 'nas_disk_paths', 'nas_modal_alpha'] },
 };
 
 function numSetting(id, def) {
@@ -1941,6 +1968,10 @@ function collectSetting(key) {
   if (key === 'search_width') return numSetting('s_search_width', '640');
   if (key === 'card_opacity') return numSetting('s_card_opacity', '100');
   if (key === 'wallpaper_blur') return numSetting('s_wallpaper_blur', '6');
+  if (key === 'nas_refresh') {
+    const n = parseInt(document.getElementById('s_nas_refresh').value, 10);
+    return String(isNaN(n) ? 3 : Math.min(60, Math.max(2, n)));
+  }
   if (key === 'news_sources') {
     // 始终保存显式 id 列表：全选时也写入全部 id，避免后端把空值判定为“未启用”
     // 列表未加载成功则不提交，避免误存空数组关掉全部源

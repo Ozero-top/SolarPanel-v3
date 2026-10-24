@@ -4,7 +4,7 @@
 
 <h1 align=center>SolarPanel V3 - 轻量自托管导航面板</h1>
 
-[![Version](https://img.shields.io/badge/Version-v3.2.3-5B8DEF?logo=semanticrelease)](#)
+[![Version](https://img.shields.io/badge/Version-v3.3.0-5B8DEF?logo=semanticrelease)](#)
 [![Go](https://img.shields.io/badge/Go-1.23-00ADD8?logo=go)](https://go.dev)
 [![Architecture](https://img.shields.io/badge/Architecture-chi%2Bsqlite-50C878)](https://github.com/go-chi/chi)
 [![Multi-Arch](https://img.shields.io/badge/Arch-amd64__arm64__armv7-7A51F5)](https://hub.docker.com/r/ovitor/solarpanel-v3)
@@ -38,6 +38,7 @@ V3 不自动迁移 V2.1 的数据库，请按「先导出、后导入」的顺�
 - **两级分组导航** — 支持父子嵌套，侧边栏自动展开/折叠，实时搜索过滤
 - **十主题** — `liquid-glass` 液态玻璃（默认 · 磨砂透光 · 流动光斑 · 仅浅色）· `soft` 柔和浮雕 · `blueprint` 工程蓝图 · `clarity` 清透极简 · `soft-utility` 柔和工具 · `aurora` 动态极光 · `iris` 深空 HUD · 铅笔手绘 · `retro-vintage` 复古怀旧（羊皮纸 · 粗棕框 · 衬线大写）· `corporate-clean` 企业简洁（白卡细边 · 蓝主色 · 焦点环）
 - **热点新闻聚合** — 24 个内置源（微博 / 知乎 / B站 / GitHub Trending / IT之家 / V2EX / 少数派 / 掘金 等）+ 自定义 RSS
+- **NAS 运行状态面板** — 主机名 / 内网 IP / CPU / 内存 / 存储池 / 网络 / 温度 / 容器，四种放置方式（右侧 / 左侧 / 双侧悬浮 + 卡片下方状态条），近 10 分钟网络曲线，详情弹窗可查完整指标；兼容群晖 DSM、绿联 UGOS、飞牛 fnOS、威联通 QTS、极空间 ZOS 与 iStoreOS / OpenWrt / ImmortalWrt
 - **天气 + 每日壁纸** — 顶部时钟、天气组件；壁纸源支持 `bing_cn`（默认）/ `picsum`
 - **卡片图标智能获取** — 手输域名自动抓取 favicon，也可上传本地图标
 - **favicon 三级缓存** — 内存 inflight 去重 → 磁盘 MD5 缓存 → 三源并发抓取（主站 `favicon.ico` / Google s2 / DuckDuckGo），响应 `ETag` + `Cache-Control: immutable`，二次访问 304 零 body
@@ -78,14 +79,20 @@ docker run -d \
   --restart unless-stopped \
   -p 10086:10086 \
   -v $(pwd)/data:/app/data \
+  -v /:/host:ro \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -e SERVER_PORT=10086 \
+  -e NAS_HOST_ROOT=/host \
+  -e DOCKER_SOCKET=/var/run/docker.sock \
   ovitor/solarpanel-v3:latest
 ```
+
+> 后两个挂载仅用于 **NAS 运行状态面板**（读取宿主 /proc、/sys、存储池与容器数据）。不需要该功能时删掉 `-v /:/host:ro`、`-v /var/run/docker.sock:...` 与两个 `-e` 即可，面板会自动隐藏。
 
 Windows PowerShell：
 
 ```powershell
-docker run -d --name solarpanel-v3 --restart unless-stopped -p 10086:10086 -v ${PWD}/data:/app/data -e SERVER_PORT=10086 ovitor/solarpanel-v3:latest
+docker run -d --name solarpanel-v3 --restart unless-stopped -p 10086:10086 -v ${PWD}/data:/app/data -v /:/host:ro -v /var/run/docker.sock:/var/run/docker.sock -e SERVER_PORT=10086 -e NAS_HOST_ROOT=/host -e DOCKER_SOCKET=/var/run/docker.sock ovitor/solarpanel-v3:latest
 ```
 
 #### 本地构建
@@ -110,10 +117,16 @@ services:
       # - "18443:18443"                  # HTTPS_PORT 非空时启用
     volumes:
       - ./data:/app/data
+      - /:/host:ro                              # NAS 监控：宿主 /proc、/sys、存储池
+      - /var/run/docker.sock:/var/run/docker.sock   # NAS 监控：容器列表与占用
     environment:
       - TZ=Asia/Shanghai
       - SERVER_PORT=10086
+      - NAS_HOST_ROOT=/host
+      - DOCKER_SOCKET=/var/run/docker.sock
       # - HTTPS_PORT=18443               # 启用内置自签名 HTTPS
+    # NAS 监控需要「整机网卡」口径时改用 host 网络（ports 映射会失效，直接访问 10086）：
+    # network_mode: host
 ```
 
 ```bash
@@ -132,6 +145,29 @@ docker compose up -d --build  # 重新构建
 早期版本默认使用 `10080`，但该端口在 Chromium 的**受限端口列表**（`net/base/port_util.cc` 的 `kRestrictedPorts`，10080 属于 Amanda 备份服务）中，浏览器会直接以 `ERR_UNSAFE_PORT` 拦截，页面表现为「打不开」。因此默认端口改为 `10086`。
 
 若需换端口，修改 `SERVER_PORT` 与端口映射即可，但需避开 Chromium 受限端口（完整列表见 Chromium 源码 `net/base/port_util.cc` 中的 `kRestrictedPorts`）。
+
+### 📊 NAS 运行状态面板（可选）
+
+在后台 **站点设置 → 🖥️ NAS 监控** 开启后，主页展示宿主机与容器状态：
+
+| 放置方式 | 说明 |
+|---|---|
+| 右侧悬浮（默认） | 贴内容区右侧，可收起为竖条 |
+| 左侧悬浮 | 贴内容区左侧，与左侧分组目录互斥 |
+| 左右双侧 | 左主机指标 / 右容器列表，两侧同步收起 |
+| 卡片下方状态条 | 单行概览 + CPU 迷你曲线，整条可点开详情 |
+
+移动端（≤768px）统一自动使用状态条；任一形式都可通过「详情」打开完整弹窗（存储池、近 10 分钟网络曲线、容器端口 / CPU / 内存 / 网络 / 运行时长）。
+
+数据来源与限制：
+
+- 主机指标读取挂载的宿主 `/proc`、`/sys`、`/etc`：CPU、内存、负载、运行时长、存储池、温度
+- 容器指标通过 `/var/run/docker.sock` 读取（无 Docker 时只显示主机信息，不影响使用）
+- **系统识别**：群晖 DSM、绿联 UGOS、飞牛 fnOS、威联通 QTS、极空间 ZOS、iStoreOS / OpenWrt / ImmortalWrt，其余归为 Linux
+- **存储自动识别**：`/volume*`、`/vol*`、`/share/CACHEDEV*_DATA`、`/mnt/*`、`/media/*`、`/overlay`；特殊路径可在后台手填
+- **网络口径**：默认 bridge 网络下只能统计容器网卡，面板会标注「容器网卡」；需要整机速率请改用 `network_mode: host`
+- **温度**：物理机正常读取 thermal/hwmon；虚拟机（KVM/ESXi）不暴露传感器，面板显示「虚拟机」
+- 磁盘与温度依赖 `/:/host:ro` 挂载；未挂载时相应字段为空，不影响其他功能
 
 ### 方式二：单二进制
 
@@ -165,6 +201,8 @@ go run .
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `SERVER_PORT` | `10086` | HTTP 监听端口 |
+| `NAS_HOST_ROOT` | `/host`（不存在则留空） | NAS 监控读取的宿主机根目录；容器内由 `-v /:/host:ro` 提供，单二进制运行留空即读本机 |
+| `DOCKER_SOCKET` | `/var/run/docker.sock` | Docker 守护进程 socket，用于容器列表与占用 |
 | `HTTPS_PORT` | （空，不启用） | HTTPS 端口，设置后自动生成自签名证书并同时监听 |
 | `CERT_FILE` | `data/cert.pem` | HTTPS 证书路径 |
 | `KEY_FILE` | `data/key.pem` | HTTPS 私钥路径 |
@@ -213,7 +251,8 @@ SolarPanel/
 │   ├── db/
 │   │   ├── db.go                # DDL · 连接池 · 默认设置/管理员初始化 · 孤儿分组清理
 │   │   └── migrations.go        # schema_versions 有序幂等迁移
-│   └── handler/                 # 各业务 handler（见「路由一览」）
+│   ├── handler/                 # 各业务 handler（见「路由一览」）
+│   └── nas/                     # NAS 采集：宿主 /proc、/sys、存储池、Docker API、系统识别
 └── data/                        # 运行时数据（自动创建，勿提交）
     ├── solarpanel.db            # SQLite 数据库
     └── uploads/                 # icons / logos / wallpapers / favicon / weather
@@ -271,6 +310,7 @@ SolarPanel/
 | POST | `/api/wallpaper.php` | 10/min | 每日壁纸调度 |
 | GET / POST | `/api/auth.php` | — | 登录 / 登出 / 双因子 / 受信设备 / 访客登录 |
 | GET | `/api/favicon.php?host=xxx` | 120/min | 站点图标代理（三源抓取 · 磁盘缓存 · ETag 协商） |
+| GET | `/api/nas.php` | 240/min | NAS 主机与容器状态（需后台开启；访客可见性由设置控制） |
 
 ### 登录后路由（`RequireLogin` + CSRF）
 
@@ -306,7 +346,7 @@ SolarPanel/
 
 | 模块 | 能力 |
 |---|---|
-| **设置** | 基础（站点标题 / Logo / 公告 / 页脚 / 时钟 / 备案 / 访客访问）、主题（明暗 + 风格 + 卡片样式 + 布局留白）、搜索（宽度 + 搜索引擎清单 + 默认引擎）、新闻（开关 + 24 源勾选排序） |
+| **设置** | 基础（站点标题 / Logo / 公告 / 页脚 / 时钟 / 备案 / 访客访问）、主题（明暗 + 风格 + 卡片样式 + 布局留白）、搜索（宽度 + 搜索引擎清单 + 默认引擎）、新闻（开关 + 24 源勾选排序）、NAS 监控（开关 / 放置方式 / 刷新间隔 / 访客可见 / 自定义存储路径 / 弹窗不透明度） |
 | **卡片** | 新增/编辑/删除、拖拽排序、显示隐藏、图标上传或自动抓取、标题自动抓取 |
 | **分组** | 两级分组 CRUD、拖拽排序、显示隐藏、图标与描述 |
 | **账号** | 修改本人密码、TOTP 双因子、受信设备管理；管理员可增删用户与改角色 |
@@ -355,6 +395,15 @@ SolarPanel/
 ## 📋 更新日志
 
 完整变更明细见 [updates.md](./updates.md)。维护约定：每次升版同时更新 `updates.md` 与本节，并与 `frontend/assets/js/api.js` 的 `APP_VERSION` / `APP_CHANGELOG` 保持一致。
+
+### v3.3.0（2026-10-24）
+
+- **NAS 运行状态面板**：主机名 / 内网 IP / CPU / 内存 / 存储池 / 网络 / 温度 / 容器
+- **四种放置方式**：右侧悬浮、左侧悬浮、左右双侧、卡片下方状态条；移动端自动使用状态条
+- **实时曲线**：近 10 分钟网络上下行（对数刻度、上下行分色），后端持续采样，刷新不丢
+- **详情弹窗**：完整主机、存储池明细与容器列表（端口 / CPU / 内存 / 网络 / 运行时长），支持调节不透明度
+- **平台兼容**：群晖 DSM、绿联 UGOS、飞牛 fnOS、威联通 QTS、极空间 ZOS、iStoreOS / OpenWrt / ImmortalWrt
+- **默认值调整**：桌面端 / 移动端顶栏预置为隐藏
 
 ### v3.2.3（2026-10-24）
 

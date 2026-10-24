@@ -102,6 +102,9 @@
     <!-- 热点新闻视图（参考 NewsNow：多数据源卡片聚合） -->
     <section id="newsView" hidden></section>
 
+    <!-- NAS 状态条（面板放置方式=卡片下方状态条时显示） -->
+    <div class="nas-banner" id="nasBanner" hidden></div>
+
     <footer class="footer" id="footer" hidden>
       <span id="footerText"></span>
       <span class="sep" id="footerSep" hidden></span>
@@ -109,6 +112,10 @@
       <div class="footer-beian" id="footerBeian" hidden></div>
     </footer>
   </div>
+
+  <!-- NAS 运行状态面板（后台开启后显示，位置由「面板放置方式」决定，可折叠） -->
+  <aside class="nas-panel left" id="nasPanelLeft" hidden aria-label="NAS 主机状态"></aside>
+  <aside class="nas-panel right" id="nasPanel" hidden aria-label="NAS 容器状态"></aside>
 
   <!-- ============ 访客锁屏层（guest_access_enabled=1 时显示） ============ -->
   <div class="guest-lock" id="guestLock" hidden>
@@ -182,6 +189,17 @@
         <button class="modal-close" id="changelogClose" type="button" aria-label="关闭">✕</button>
       </div>
       <div class="changelog-body" id="changelogBody"></div>
+    </div>
+  </div>
+
+  <!-- NAS 详细信息弹窗（面板「详情」按钮打开） -->
+  <div class="modal" id="nasDetailModal">
+    <div class="modal-box glass-strong nas-detail-box">
+      <div class="modal-head">
+        <h3>🖥️ NAS 详细信息</h3>
+        <button class="modal-close" id="nasDetailClose" type="button" aria-label="关闭">✕</button>
+      </div>
+      <div class="nas-detail-body" id="nasDetailBody"></div>
     </div>
   </div>
 

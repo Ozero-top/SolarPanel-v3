@@ -100,6 +100,7 @@
         <button type="button" class="subtab" data-panel="search">🧭 导航与搜索</button>
         <button type="button" class="subtab" data-panel="access">🔐 访问控制</button>
         <button type="button" class="subtab" data-panel="news">📰 热点新闻</button>
+        <button type="button" class="subtab" data-panel="nas">🖥️ NAS 监控</button>
       </nav>
 
       <!-- 站点信息（基本信息 / 公告 / 备案） -->
@@ -386,15 +387,15 @@
             <div class="form-item">
               <label>桌面端顶栏（品牌/按钮）</label>
               <select class="select" id="s_topbar_desktop_enabled">
-                <option value="1">显示（向下滚动自动收起）</option>
                 <option value="0">隐藏</option>
+                <option value="1">显示（向下滚动自动收起）</option>
               </select>
             </div>
             <div class="form-item">
               <label>移动端顶栏（品牌/按钮）</label>
               <select class="select" id="s_topbar_mobile_enabled">
-                <option value="1">始终显示</option>
                 <option value="0">默认隐藏（右上角悬浮按钮切换）</option>
+                <option value="1">始终显示</option>
               </select>
             </div>
           </div>
@@ -493,6 +494,66 @@
               </thead>
               <tbody id="feedsTbody"></tbody>
             </table>
+          </div>
+        </form>
+      </div>
+
+      <!-- NAS 监控 -->
+      <div class="settings-section">
+        <div class="section-head">
+          <h3>🖥️ NAS 监控</h3>
+          <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-nas">保存</button>
+        </div>
+        <form id="sf-nas" data-section="nas" autocomplete="off">
+          <h4 class="sub-group-title">🖥️ 面板开关与位置</h4>
+          <div class="form-row">
+            <div class="form-item">
+              <label>NAS 信息面板</label>
+              <select class="select" id="s_nas_show">
+                <option value="1">开启（主页展示 NAS 与容器状态）</option>
+                <option value="0">关闭（不展示，也不采集）</option>
+              </select>
+              <div class="form-hint">数据来自宿主机 /proc、/sys 与 Docker API，需按部署说明挂载宿主机根目录与 docker.sock。</div>
+            </div>
+            <div class="form-item">
+              <label>面板放置方式</label>
+              <select class="select" id="s_nas_layout">
+                <option value="right">右侧悬浮（推荐）</option>
+                <option value="left">左侧悬浮（会隐藏左侧分组目录）</option>
+                <option value="both">左右双侧（左主机指标 / 右容器列表）</option>
+                <option value="banner">卡片下方状态条（单行概览 + 迷你曲线）</option>
+              </select>
+              <div class="form-hint">悬浮模式可点击箭头收起为竖条；状态条模式固定在卡片区下方，点击「查看详情」打开完整弹窗。移动端（≤768px）统一自动使用状态条，悬浮模式不生效。</div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-item">
+              <label>刷新间隔（秒）</label>
+              <input class="input" id="s_nas_refresh" type="number" min="2" max="60" step="1">
+              <div class="form-hint">建议 3~5 秒；间隔越短，对 NAS 与 Docker 的采集压力越大。</div>
+            </div>
+            <div class="form-item">
+              <label>访客可见</label>
+              <select class="select" id="s_nas_guest">
+                <option value="0">否（仅登录用户可见）</option>
+                <option value="1">是（访客也能看到）</option>
+              </select>
+              <div class="form-hint">面板含主机名、存储路径等信息，公网部署建议保持关闭。</div>
+            </div>
+          </div>
+          <h4 class="sub-group-title">💾 存储池</h4>
+          <div class="form-item">
+            <label>自定义存储挂载点（可选，逗号分隔）</label>
+            <input class="input" id="s_nas_disk_paths" type="text" placeholder="留空自动识别；如需固定可填 /volume1,/share/CACHEDEV1_DATA">
+            <div class="form-hint">自动识别覆盖群晖 /volume*、绿联 /volume*、飞牛 /vol*、威联通 /share/CACHEDEV*_DATA、极空间 /volume*、OpenWrt 系 /overlay 与 /mnt/* 等常见路径。</div>
+          </div>
+          <h4 class="sub-group-title">🪟 详情弹窗外观</h4>
+          <div class="form-row">
+            <div class="form-item">
+              <label>弹窗不透明度 <span id="nasAlphaVal">100%</span></label>
+              <input class="range" id="s_nas_modal_alpha" type="range" min="40" max="100" step="1" value="100">
+              <div class="form-hint">调低可透出壁纸，调高文字对比更强；建议 80%~100%。</div>
+            </div>
           </div>
         </form>
       </div>

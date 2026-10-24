@@ -99,7 +99,7 @@ function initTopbarBySettings(settings) {
   if (!topbar) return;
 
   const isMobile = window.matchMedia('(max-width: 640px)').matches;
-  const desktopEnabled = (settings.topbar_desktop_enabled ?? '1') === '1';
+  const desktopEnabled = (settings.topbar_desktop_enabled ?? '0') === '1';
   const mobileEnabled  = (settings.topbar_mobile_enabled  ?? '0') === '1';
 
   if (isMobile) {
@@ -181,6 +181,7 @@ async function boot() {
   renderGroups();
   bindGlobal();
   initNewsSwitch();
+  initNASPanel();
 }
 
 /* ---------- 基础元素渲染（标题/logo/公告/页脚/壁纸/内容区） ---------- */
@@ -2449,6 +2450,7 @@ async function reloadPublic() {
     state.cardsIntroDone = true;
     renderGroups();
     updateNewsBtnVisible();       // 后台改 news_show 后按钮显隐同步更新
+    initNASPanel();               // 后台改 NAS 开关 / 放置方式后同步重建面板
   } catch (e) { toast('刷新失败：' + e.message, 'error'); }
 }
 
@@ -2933,6 +2935,585 @@ window.__qaFavFallback = function(imgEl, key, nextIdx) {
     try { delete window[key]; } catch(e) { window[key] = null; }
   }
 };
+
+/* ================= NAS 运行状态面板（右侧 / 左侧 / 双侧悬浮，可折叠） ================= */
+const nasState = { timer: null, inflight: false, refresh: 3, fail: 0, histRx: [], histTx: [], histCpu: [], snap: null, layout: 'right' };
+
+function nasPanels() {
+  return [document.getElementById('nasPanelLeft'), document.getElementById('nasPanel')];
+}
+
+function nasBannerEl() {
+  return document.getElementById('nasBanner');
+}
+
+// 任一展示形态可见即继续轮询（悬浮面板 / 底部状态条）
+function nasAnyVisible() {
+  const banner = nasBannerEl();
+  if (banner && !banner.hidden) return true;
+  return nasPanels().some(p => p && !p.hidden);
+}
+
+function initNASPanel() {
+  const [left, right] = nasPanels();
+  if (!left || !right) return;
+  stopNASPanel();
+
+  const s = state.settings || {};
+  if (s.nas_show !== '1') return;
+
+  // 访客可见性：未登录且未开启访客查看时不发请求（避免无效 403 轮询）
+  const isMember = state.user && state.user.role && state.user.role !== 'guest';
+  if (!isMember && s.nas_guest !== '1') return;
+
+  // 移动端只支持「卡片下方状态条」：悬浮面板会遮挡卡片，统一自动降级
+  const layout = desiredNASLayout(s);
+  nasState.layout = layout;
+  const banner = nasBannerEl();
+
+  if (layout === 'banner') {
+    left.hidden = true;
+    right.hidden = true;
+    if (banner) {
+      banner.hidden = false;
+      banner.onclick = openNASDetail;
+    }
+  } else {
+    if (banner) banner.hidden = true;
+    left.hidden = layout === 'right';
+    right.hidden = layout === 'left';
+    document.body.classList.add('nas-' + layout);
+  }
+
+  // 折叠状态：沿用上次选择；首次访问按视口宽度决定（窄屏先收起，避免遮挡卡片）
+  let stored = null;
+  try { stored = localStorage.getItem('sp_nas_collapsed'); } catch (e) { /* 隐私模式忽略 */ }
+  const threshold = layout === 'both' ? 1900 : 1600;
+  setNASCollapsed(stored === null ? window.innerWidth < threshold : stored === '1', false);
+
+  nasPanels().forEach(p => {
+    if (!p || p.hidden) return;
+    p.onclick = (ev) => {
+      if (ev.target.closest('[data-np-detail]')) { openNASDetail(); return; }
+      if (ev.target.closest('[data-np-fold]') || p.classList.contains('collapsed')) {
+        setNASCollapsed(!p.classList.contains('collapsed'), true);
+      }
+    };
+  });
+
+  nasState.histRx = [];
+  nasState.histTx = [];
+  nasState.histCpu = [];
+  nasState.fail = 0;
+  nasState.snap = null;
+  refreshNAS();
+}
+
+function stopNASPanel() {
+  if (nasState.timer) { clearTimeout(nasState.timer); nasState.timer = null; }
+  nasPanels().forEach(p => {
+    if (!p) return;
+    p.hidden = true;
+    p.innerHTML = '';
+    p.onclick = null;
+  });
+  const banner = nasBannerEl();
+  if (banner) {
+    banner.hidden = true;
+    banner.innerHTML = '';
+    banner.onclick = null;
+  }
+  document.body.classList.remove('nas-left', 'nas-right', 'nas-both');
+}
+
+// 实际生效的布局：≤768px 一律使用状态条，悬浮面板不生效
+function desiredNASLayout(s) {
+  if (window.innerWidth <= 768) return 'banner';
+  return ['left', 'both', 'banner'].includes(s.nas_layout) ? s.nas_layout : 'right';
+}
+
+// 窗口跨断点（如旋转屏幕、拉伸窗口）时重建面板形态
+let nasResizeTimer = null;
+window.addEventListener('resize', () => {
+  const s = state.settings || {};
+  if (s.nas_show !== '1') return;
+  const isMember = state.user && state.user.role && state.user.role !== 'guest';
+  if (!isMember && s.nas_guest !== '1') return;
+  if (desiredNASLayout(s) === nasState.layout) return;
+  clearTimeout(nasResizeTimer);
+  nasResizeTimer = setTimeout(() => initNASPanel(), 300);
+});
+
+function setNASCollapsed(v, persist) {
+  nasPanels().forEach(p => { if (p) p.classList.toggle('collapsed', v); });
+  if (persist) {
+    try { localStorage.setItem('sp_nas_collapsed', v ? '1' : '0'); } catch (e) { /* 忽略 */ }
+  }
+}
+
+// 失败后指数退避（3s → 6s → 12s … 最多 60s），避免限流/离线时持续打接口
+function nasNextDelay() {
+  const backoff = Math.min(5, nasState.fail || 0);
+  return Math.min(60, Math.max(2, nasState.refresh) * Math.pow(2, backoff));
+}
+
+function scheduleNAS(delaySec) {
+  if (nasState.timer) { clearTimeout(nasState.timer); nasState.timer = null; }
+  nasState.timer = setTimeout(() => {
+    nasState.timer = null;
+    if (document.hidden) { scheduleNAS(nasState.refresh); return; }
+    refreshNAS();
+  }, Math.max(2, delaySec) * 1000);
+}
+
+async function refreshNAS() {
+  if (nasState.inflight) return;
+  nasState.inflight = true;
+  try {
+    const data = await API.get(API_BASE + 'nas.php?_t=' + Date.now());
+    if (!data || !data.enabled) { stopNASPanel(); return; }
+    nasState.refresh = Math.min(60, Math.max(2, parseInt(data.refresh, 10) || 3));
+    nasState.snap = data.snapshot || {};
+    nasState.fail = 0;
+    renderNAS();
+    renderNASDetailIfOpen();
+  } catch (e) {
+    const msg = e.message || '采集失败';
+    // 未开启访客可见：直接收起，不做无效轮询
+    if (msg.indexOf('访客') >= 0) { stopNASPanel(); return; }
+    nasState.fail = (nasState.fail || 0) + 1;
+    renderNASError(msg);
+    renderNASDetailIfOpen();
+  } finally {
+    nasState.inflight = false;
+    if (nasAnyVisible()) scheduleNAS(nasNextDelay());
+  }
+}
+
+function nasFmtBytes(b) {
+  b = Number(b) || 0;
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  let i = 0;
+  while (b >= 1024 && i < units.length - 1) { b /= 1024; i++; }
+  return (b >= 100 || i === 0 ? b.toFixed(0) : b.toFixed(1)) + ' ' + units[i];
+}
+
+function nasFmtRate(bps) {
+  const v = Number(bps) || 0;
+  if (v >= 1024 * 1024) return (v / 1024 / 1024).toFixed(1) + ' MB/s';
+  if (v >= 1024) return (v / 1024).toFixed(0) + ' KB/s';
+  return v.toFixed(0) + ' B/s';
+}
+
+function nasFmtUptime(sec) {
+  sec = Number(sec) || 0;
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  if (d > 0) return d + ' 天 ' + h + ' 小时';
+  const m = Math.floor((sec % 3600) / 60);
+  return h > 0 ? h + ' 小时 ' + m + ' 分' : m + ' 分';
+}
+
+// 网络曲线固定对数刻度：1 B/s ~ 10 GB/s，微小流量也能看出上下波动
+const NAS_NET_MIN = 1;
+const NAS_NET_MAX = 10 * 1024 * 1024 * 1024;
+
+function nasSparkPath(arr, w, h, forcedMax, logScale) {
+  if (!arr.length) return '';
+  const linearMax = forcedMax || Math.max.apply(null, arr.concat([1]));
+  const step = arr.length > 1 ? w / (arr.length - 1) : w;
+  const yOf = logScale
+    ? (v => {
+        const t = Math.log10(Math.max(NAS_NET_MIN, Math.min(NAS_NET_MAX, v))) / Math.log10(NAS_NET_MAX);
+        return (h - 1 - t * (h - 2)).toFixed(1);
+      })
+    : (v => (h - 1 - (v / linearMax) * (h - 2)).toFixed(1));
+  // 只有一个采样点时画一条水平线，避免首帧看起来「没有曲线」
+  if (arr.length === 1) {
+    const y = yOf(arr[0]);
+    return `M0,${y} L${w},${y}`;
+  }
+  return arr.map((v, i) => {
+    const x = (i * step).toFixed(1);
+    return (i ? 'L' : 'M') + x + ',' + yOf(v);
+  }).join(' ');
+}
+
+function nasBarClass(pct) {
+  return pct >= 90 ? 'danger' : pct >= 75 ? 'warn' : '';
+}
+
+// 温度：传感器不可用时区分「虚拟机」与「无传感器」，避免只显示 -- 造成误解
+function nasTempText(h) {
+  if (h && h.temp_c > 0) return Math.round(h.temp_c) + '°C';
+  return h && h.virtualized ? '虚拟机' : '--';
+}
+
+// 卡片下方单行状态条：一眼看全关键指标，点任意位置看详情
+function nasBannerHTML(snap) {
+  const h = snap.host || {};
+  const net = snap.net || {};
+  const cts = snap.containers || [];
+  const running = cts.filter(c => c.state === 'running').length;
+  const cpu = Math.round(h.cpu_pct || 0);
+  const memPct = h.mem_total ? Math.round((h.mem_used / h.mem_total) * 100) : 0;
+  const disks = snap.disks || [];
+  const diskTotal = disks.reduce((s, d) => s + d.total, 0);
+  const diskUsed = disks.reduce((s, d) => s + d.used, 0);
+  const diskPct = diskTotal ? Math.round((diskUsed / diskTotal) * 100) : 0;
+  const diskFree = Math.max(0, diskTotal - diskUsed);
+  const cpuLine = nasSparkPath(nasState.histCpu, 92, 24, 100);
+  const cpuArea = cpuLine ? cpuLine + ' L92,24 L0,24 Z' : '';
+
+  return `
+  <div class="nb-host">🖥️ <b>${esc(h.hostname || 'NAS')}</b><span>${esc(h.os_name || 'Linux')} · ${h.cores || 0} 核${h.ip ? ' · ' + esc(h.ip) : ''}</span></div>
+  <div class="nb-item"><span>CPU</span><b>${cpu}%</b></div>
+  <svg class="nb-spark" viewBox="0 0 92 24" preserveAspectRatio="none" aria-hidden="true">
+    <path d="${cpuArea}" fill="var(--accent-soft)" stroke="none"/>
+    <path d="${cpuLine}" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>
+  <div class="nb-item"><span>内存</span><b>${memPct}%</b><span class="m">${nasFmtBytes(h.mem_used)} / ${nasFmtBytes(h.mem_total)}</span></div>
+  <div class="nb-item"><span>磁盘</span><b>${diskPct}%</b><span class="m">${diskFree ? nasFmtBytes(diskFree) + ' 可用' : '--'}</span></div>
+  <div class="nb-item"><span>网络</span><b><span class="v-down">↓${nasFmtRate(net.rx_bps)}</span> <span class="v-up">↑${nasFmtRate(net.tx_bps)}</span></b></div>
+  <div class="nb-item"><span>温度</span><b>${nasTempText(h)}</b></div>
+  <div class="nb-item"><span>容器</span><b>${running}</b><span class="m">/ ${cts.length}</span></div>
+  <button class="nb-more" type="button">查看详情 →</button>`;
+}
+
+// mode: full = 主机 + 容器（单边面板）；host = 仅主机；ctr = 仅容器（双侧模式）
+function nasHTML(snap, mode) {
+  const h = snap.host || {};
+  const net = snap.net || {};
+  const cts = snap.containers || [];
+  const running = cts.filter(c => c.state === 'running');
+  const cpu = Math.round(h.cpu_pct || 0);
+  const memPct = h.mem_total ? Math.round((h.mem_used / h.mem_total) * 100) : 0;
+  const disks = snap.disks || [];
+  const isCtr = mode === 'ctr';
+
+  const diskTotal = disks.reduce((s, d) => s + d.total, 0);
+  const diskUsed = disks.reduce((s, d) => s + d.used, 0);
+  const diskFree = Math.max(0, diskTotal - diskUsed);
+  const rxLine = nasSparkPath(nasState.histRx, 200, 34, 0, true);
+  const txLine = nasSparkPath(nasState.histTx, 200, 34, 0, true);
+  const rxArea = rxLine ? rxLine + ' L200,34 L0,34 Z' : '';
+
+  const diskBlock = disks.length ? `
+    <div class="np-stor">存储 <b>${disks.length}</b> 块盘 · 总 <b>${nasFmtBytes(diskTotal)}</b> · 剩余 <b>${nasFmtBytes(diskFree)}</b></div>
+    ${disks.slice(0, 3).map(d => {
+      const p = Math.round((d.used / d.total) * 100);
+      return `<div class="np-metric">
+        <div class="np-row"><span>${esc(d.mount)}</span><b>${p}%</b></div>
+        <div class="bar"><i class="${nasBarClass(p)}" style="width:${p}%"></i></div>
+      </div>`;
+    }).join('')}` : '<div class="np-stor">未识别到存储池</div>';
+
+  const updated = snap.collected_at
+    ? new Date(snap.collected_at * 1000).toLocaleTimeString('zh-CN', { hour12: false })
+    : '--:--:--';
+
+  const hostBody = `
+    <div>
+      <div class="np-hn">${esc(h.hostname || 'NAS')}</div>
+      ${h.ip ? `<div class="np-ip">${esc(h.ip)}</div>` : ''}
+      <div class="np-os">${esc(h.os_name || 'Linux')}${h.kernel ? ' · ' + esc(h.kernel) : ''}</div>
+      <div class="np-os">${h.cores || 0} 核 · 已运行 ${nasFmtUptime(h.uptime)}</div>
+    </div>
+    <div class="np-metric">
+      <div class="np-row"><span>CPU</span><b>${cpu}%</b></div>
+      <div class="bar"><i class="${nasBarClass(cpu)}" style="width:${cpu}%"></i></div>
+    </div>
+    <div class="np-metric">
+      <div class="np-row"><span>内存 ${nasFmtBytes(h.mem_used)} / ${nasFmtBytes(h.mem_total)}</span><b>${memPct}%</b></div>
+      <div class="bar"><i class="${nasBarClass(memPct)}" style="width:${memPct}%"></i></div>
+    </div>
+    ${diskBlock}
+    <div class="np-net">
+      <div class="np-row"><span>网络</span><b><span class="v-down">↓${nasFmtRate(net.rx_bps)}</span> <span class="v-up">↑${nasFmtRate(net.tx_bps)}</span></b></div>
+      <svg viewBox="0 0 200 34" preserveAspectRatio="none" aria-hidden="true">
+        <path d="${rxArea}" fill="var(--accent-soft)" stroke="none"/>
+        <path d="${rxLine}" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <path d="${txLine}" fill="none" stroke="var(--success)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+      </svg>
+      <div class="np-legend"><span class="v-down">↓ 下行</span><span class="v-up">↑ 上行</span>${net.scope === 'container' ? '<span>容器网卡</span>' : ''}<span>近 10 分钟</span></div>
+    </div>
+    <div class="np-meta">
+      <div><span>处理器温度</span><b title="${h.virtualized && !(h.temp_c > 0) ? '当前系统运行在虚拟机中，虚拟化平台不暴露 CPU 温度传感器' : ''}">${nasTempText(h)}</b></div>
+      <div><span>架构</span><b>${esc(h.arch || '--')}</b></div>
+    </div>`;
+
+  const ctRows = running.slice(0, isCtr ? 12 : 8).map(c => {
+    const mp = c.mem_limit ? Math.min(100, (c.mem_used / c.mem_limit) * 100) : 0;
+    return `<div class="np-ct">
+      <div class="n"><i></i>${esc(c.name)}</div>
+      <div class="c">处理器 ${(c.cpu_pct || 0).toFixed(1)}%</div>
+      <div class="m"><span class="mb"><i style="width:${mp.toFixed(0)}%"></i></span><span>已使用内存 ${nasFmtBytes(c.mem_used)}</span></div>
+    </div>`;
+  }).join('');
+
+  const ctrBody = `
+    <div class="np-ct-head">容器 <span>${running.length} 运行 / ${cts.length} 个</span></div>
+    <div class="np-ct-list">${ctRows || '<div class="np-empty">暂无运行中的容器</div>'}</div>
+    <div class="np-foot">${updated} 更新${snap.docker_ok ? '' : ' · Docker 未连接'}</div>`;
+
+  const rail = isCtr
+    ? `<span class="pct">${running.length}</span><span class="txt">容器</span><span class="bar"><i style="height:${cts.length ? Math.max(6, Math.min(100, (running.length / cts.length) * 100)) : 4}%"></i></span>`
+    : `<span class="pct">${cpu}%</span><span class="txt">NAS</span><span class="bar"><i style="height:${Math.max(4, Math.min(100, cpu))}%"></i></span>`;
+
+  let body;
+  if (isCtr) body = ctrBody;
+  else if (mode === 'host') body = hostBody + `<div class="np-foot">${updated} 更新</div>`;
+  else body = hostBody + ctrBody;
+
+  return `
+  <div class="np-head">
+    <span class="np-title">${isCtr ? '🐳 容器' : '🖥️ NAS'}</span>
+    <span class="np-dot"></span>
+    <button class="np-detail" type="button" data-np-detail title="查看完整 NAS 信息">详情</button>
+    <button class="np-fold" type="button" data-np-fold aria-label="收起 / 展开面板">›</button>
+  </div>
+  <div class="np-rail">${rail}</div>
+  <div class="np-body">${body}</div>`;
+}
+
+function paintNAS(panel, html) {
+  const old = panel.querySelector('.np-body');
+  const top = old ? old.scrollTop : 0;
+  panel.innerHTML = html;
+  const body = panel.querySelector('.np-body');
+  if (body) body.scrollTop = top;
+}
+
+function renderNAS() {
+  const snap = nasState.snap;
+  if (!snap) return;
+
+  const net = snap.net || {};
+  const push = (arr, v) => { arr.push(Number(v) || 0); if (arr.length > 120) arr.shift(); };
+  const hist = snap.history || {};
+  if (Array.isArray(hist.rx) && hist.rx.length >= 2) {
+    // 后端持续采样近 10 分钟历史，刷新页面不丢曲线
+    nasState.histRx = hist.rx.slice();
+    nasState.histTx = (hist.tx || []).slice();
+    nasState.histCpu = (hist.cpu || []).slice();
+  } else {
+    push(nasState.histRx, net.rx_bps);
+    push(nasState.histTx, net.tx_bps);
+    push(nasState.histCpu, (snap.host || {}).cpu_pct);
+  }
+
+  // 状态条模式：只更新底部横条
+  const banner = nasBannerEl();
+  if (nasState.layout === 'banner') {
+    if (banner && !banner.hidden) banner.innerHTML = nasBannerHTML(snap);
+    return;
+  }
+
+  const both = nasState.layout === 'both';
+  const [left, right] = nasPanels();
+  if (left && !left.hidden) paintNAS(left, nasHTML(snap, both ? 'host' : 'full'));
+  if (right && !right.hidden) paintNAS(right, nasHTML(snap, both ? 'ctr' : 'full'));
+}
+
+function renderNASError(msg) {
+  const banner = nasBannerEl();
+  if (nasState.layout === 'banner' && banner && !banner.hidden) {
+    if (!nasState.snap) {
+      banner.innerHTML = `<div class="nb-item" style="color:var(--danger)">采集失败：${esc(msg)}，稍后自动重试</div>`;
+    }
+    return;
+  }
+
+  const panels = nasPanels().filter(p => p && !p.hidden);
+  if (!panels.length) return;
+
+  // 已有数据时保留上次内容，仅提示异常，避免限流/抖动把面板清空
+  if (nasState.snap) {
+    panels.forEach(p => {
+      const dot = p.querySelector('.np-dot');
+      if (dot) dot.classList.add('bad');
+      const foot = p.querySelector('.np-foot');
+      if (foot) foot.textContent = '采集异常：' + msg + '（显示上次数据，稍后重试）';
+    });
+    return;
+  }
+
+  const folded = panels[0].classList.contains('collapsed');
+  const html = `
+  <div class="np-head">
+    <span class="np-title">🖥️ NAS</span>
+    <span class="np-dot bad"></span>
+    <button class="np-fold" type="button" data-np-fold aria-label="收起 / 展开面板">›</button>
+  </div>
+  <div class="np-rail">
+    <span class="pct">--</span>
+    <span class="txt">NAS</span>
+    <span class="bar"><i style="height:4%"></i></span>
+  </div>
+  <div class="np-body">
+    <div class="np-empty">${esc(msg)}</div>
+    <div class="np-foot">连接不上采集服务，稍后自动重试</div>
+  </div>`;
+  panels.forEach(p => {
+    p.innerHTML = html;
+    p.classList.toggle('collapsed', folded);
+  });
+}
+
+/* ================= NAS 详细信息弹窗 ================= */
+function nasDetailHTML(snap) {
+  const h = snap.host || {};
+  const net = snap.net || {};
+  const cts = snap.containers || [];
+  const running = cts.filter(c => c.state === 'running');
+  const disks = snap.disks || [];
+  const cpu = Math.round(h.cpu_pct || 0);
+  const memPct = h.mem_total ? Math.round((h.mem_used / h.mem_total) * 100) : 0;
+  const diskTotal = disks.reduce((s, d) => s + d.total, 0);
+  const diskUsed = disks.reduce((s, d) => s + d.used, 0);
+  const diskFree = Math.max(0, diskTotal - diskUsed);
+  const diskPct = diskTotal ? Math.round((diskUsed / diskTotal) * 100) : 0;
+  const rxLine = nasSparkPath(nasState.histRx, 300, 110, 0, true);
+  const txLine = nasSparkPath(nasState.histTx, 300, 110, 0, true);
+  const rxArea = rxLine ? rxLine + ' L300,110 L0,110 Z' : '';
+  const updated = snap.collected_at
+    ? new Date(snap.collected_at * 1000).toLocaleTimeString('zh-CN', { hour12: false })
+    : '--:--:--';
+
+  const kpi = (k, v, unit, s) => `<div class="nas-d-kpi">
+      <div class="k">${k}</div>
+      <div class="v">${v}<small>${unit}</small></div>
+      <div class="s">${s}</div>
+    </div>`;
+
+  const diskRows = disks.map(d => {
+    const p = Math.round((d.used / d.total) * 100);
+    return `<div class="nas-d-disk">
+      <div class="r"><span>${esc(d.mount)}${d.fstype ? ' · ' + esc(d.fstype) : ''}</span>
+      <span>${nasFmtBytes(d.used)} / ${nasFmtBytes(d.total)}（${p}%，剩余 ${nasFmtBytes(d.total - d.used)}）</span></div>
+      <div class="bar" style="margin-top:5px"><i class="${nasBarClass(p)}" style="width:${p}%"></i></div>
+    </div>`;
+  }).join('') || '<div class="np-empty">未识别到存储池</div>';
+
+  const ctRows = cts.map(c => {
+    const isRun = c.state === 'running';
+    const memPct2 = c.mem_limit ? Math.round((c.mem_used / c.mem_limit) * 100) : 0;
+    return `<tr>
+      <td><div class="nm"><i class="${isRun ? '' : 'stop'}"></i>${esc(c.name)}</div></td>
+      <td style="color:var(--text-muted)">${esc(c.image)}</td>
+      <td>${isRun ? '运行中' : esc(c.state)}</td>
+      <td class="num" style="color:var(--text-muted)">${(c.ports && c.ports.length) ? c.ports.map(p => esc(p)).join('<br>') : '—'}</td>
+      <td class="num">${(c.cpu_pct || 0).toFixed(1)}%</td>
+      <td class="num">${nasFmtBytes(c.mem_used)}${c.mem_limit ? ' / ' + nasFmtBytes(c.mem_limit) + '（' + memPct2 + '%）' : ''}</td>
+      <td class="num"><span class="v-down">↓${nasFmtRate(c.rx_bps)}</span> / <span class="v-up">↑${nasFmtRate(c.tx_bps)}</span></td>
+      <td class="num">${nasFmtUptime(c.uptime)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" class="np-empty">暂无容器</td></tr>';
+
+  return `
+  <div class="nas-d-head">
+    <div class="nas-d-host">
+      <h4>${esc(h.hostname || 'NAS')}</h4>
+      <p>${h.ip ? esc(h.ip) + ' · ' : ''}${esc(h.os_name || 'Linux')}${h.kernel ? ' · ' + esc(h.kernel) : ''} · ${h.cores || 0} 核 · ${esc(h.arch || '')} · 已运行 ${nasFmtUptime(h.uptime)}</p>
+    </div>
+    <div style="margin-left:auto;font-size:11px;color:var(--text-muted)">${updated} 更新${net.scope === 'container' ? ' · 容器网卡口径' : ''}</div>
+  </div>
+  <div class="nas-d-kpis">
+    ${kpi('CPU', cpu, '%', `负载 ${(h.load1 || 0).toFixed(2)} · ${h.temp_c > 0 ? Math.round(h.temp_c) + '°C' : (h.virtualized ? '虚拟机无温度传感器' : '无温度传感器')}`)}
+    ${kpi('内存', nasFmtBytes(h.mem_used), '', `共 ${nasFmtBytes(h.mem_total)} · 使用 ${memPct}%`)}
+    ${kpi('存储', diskPct, '%', `${disks.length} 块盘 · 总 ${nasFmtBytes(diskTotal)} · 剩余 ${nasFmtBytes(diskFree)}`)}
+    <div class="nas-d-kpi">
+      <div class="k">网络</div>
+      <div class="v"><span class="v-down">↓${nasFmtRate(net.rx_bps)}</span></div>
+      <div class="s"><span class="v-up">↑${nasFmtRate(net.tx_bps)}</span> 上行 · 对数刻度 1B/s–10GB/s</div>
+    </div>
+  </div>
+  <div class="nas-d-grid">
+    <div class="nas-d-panel">
+      <h5>网络吞吐（近 10 分钟）</h5>
+      <svg class="nas-d-net" viewBox="0 0 300 110" preserveAspectRatio="none" aria-hidden="true">
+        <g stroke="var(--edge)" stroke-width="1">
+          <line x1="0" y1="27" x2="300" y2="27"/><line x1="0" y1="55" x2="300" y2="55"/><line x1="0" y1="83" x2="300" y2="83"/>
+        </g>
+        <path d="${rxArea}" fill="var(--accent-soft)" stroke="none"/>
+        <path d="${rxLine}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+        <path d="${txLine}" fill="none" stroke="var(--success)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      </svg>
+      <div class="nas-d-legend">
+        <span><i style="background:var(--accent)"></i>下行 ${nasFmtRate(net.rx_bps)}</span>
+        <span><i style="background:var(--success)"></i>上行 ${nasFmtRate(net.tx_bps)}</span>
+        <span>对数刻度 1B/s – 10GB/s</span>
+        <span>每 5s 采样 · 共 10 分钟</span>
+      </div>
+    </div>
+    <div class="nas-d-panel">
+      <h5>存储池</h5>
+      ${diskRows}
+    </div>
+  </div>
+  <div class="nas-d-panel" style="margin-top:10px">
+    <h5>Docker 容器</h5>
+    <div style="overflow-x:auto">
+      <table class="nas-d-table">
+        <thead><tr><th>容器</th><th>镜像</th><th>状态</th><th>端口</th><th>处理器</th><th>已使用内存</th><th>网络 ↓ / ↑</th><th>运行时长</th></tr></thead>
+        <tbody>${ctRows}</tbody>
+      </table>
+    </div>
+  </div>
+  <div class="nas-d-foot">
+    <span>容器 <b>${running.length}</b> 运行 / <b>${cts.length}</b> 个</span>
+    <span>CPU 合计 <b>${cts.reduce((s, c) => s + (c.cpu_pct || 0), 0).toFixed(1)}%</b></span>
+    <span>内存合计 <b>${nasFmtBytes(cts.reduce((s, c) => s + (c.mem_used || 0), 0))}</b></span>
+    <span>Docker <b>${snap.docker_ok ? '已连接' : '未连接'}</b></span>
+  </div>`;
+}
+
+function renderNASDetailIfOpen() {
+  const m = document.getElementById('nasDetailModal');
+  const body = document.getElementById('nasDetailBody');
+  if (!m || !body || !m.classList.contains('show')) return;
+  body.innerHTML = nasState.snap
+    ? nasDetailHTML(nasState.snap)
+    : '<div class="np-empty">正在采集 NAS 数据…</div>';
+}
+
+function openNASDetail() {
+  const m = document.getElementById('nasDetailModal');
+  if (!m) return;
+  applyNasModalAlpha();
+  m.classList.add('show');
+  renderNASDetailIfOpen();
+}
+
+// 弹窗不透明度来自后台设置（40%~100%），以 CSS 变量控制
+function applyNasModalAlpha() {
+  const raw = parseInt((state.settings || {}).nas_modal_alpha, 10);
+  const pct = Math.min(100, Math.max(40, isNaN(raw) ? 100 : raw));
+  document.documentElement.style.setProperty('--nas-alpha', pct + '%');
+}
+
+function closeNASDetail() {
+  const m = document.getElementById('nasDetailModal');
+  if (m) m.classList.remove('show');
+}
+
+(function bindNASDetail() {
+  const m = document.getElementById('nasDetailModal');
+  if (!m) return;
+  const btn = document.getElementById('nasDetailClose');
+  if (btn) btn.onclick = closeNASDetail;
+  m.addEventListener('click', (e) => { if (e.target === m) closeNASDetail(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && m.classList.contains('show')) closeNASDetail();
+  });
+})();
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  if (!nasAnyVisible()) return;
+  if (nasState.timer) { clearTimeout(nasState.timer); nasState.timer = null; }
+  refreshNAS();
+});
 
 boot();
 
