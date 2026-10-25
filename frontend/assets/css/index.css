@@ -1915,6 +1915,8 @@
   display: flex;
   flex-direction: column;
   padding: 0;
+  /* 圆角裁切：避免内部滚动条越过卡片圆角露到外面 */
+  overflow: hidden;
   animation: changelogIn 0.2s var(--ease);
 }
 @keyframes changelogIn {
