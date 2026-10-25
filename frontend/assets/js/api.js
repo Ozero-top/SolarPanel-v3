@@ -3,7 +3,7 @@
  */
 
 /* ================= 应用版本与更新日志（每次更新只需改这里） ================= */
-const APP_VERSION = 'v3.3.5';
+const APP_VERSION = 'v3.3.6';
 const APP_CHANGELOG = [
   { ver: 'v3.3.6', date: '2026-10-25', items: [
     '🔔 新增版本更新提醒',
