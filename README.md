@@ -4,8 +4,8 @@
 
 <h1 align=center>SolarPanel V3 - 轻量自托管导航页面板</h1>
 
-[![Version](https://img.shields.io/badge/Version-v3.3.3-5B8DEF?logo=semanticrelease)](#)
-[![Go](https://img.shields.io/badge/Go-1.23-00ADD8?logo=go)](https://go.dev)
+[![Version](https://img.shields.io/badge/Version-v3.3.4-5B8DEF?logo=semanticrelease)](#)
+[![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev)
 [![Architecture](https://img.shields.io/badge/Architecture-chi%2Bsqlite-50C878)](https://github.com/go-chi/chi)
 [![Multi-Arch](https://img.shields.io/badge/Arch-amd64__arm64__armv7-7A51F5)](https://hub.docker.com/r/ovitor/solarpanel-v3)
 [![Image](https://img.shields.io/badge/Docker-14MB-2496ED?logo=docker)](https://hub.docker.com/r/ovitor/solarpanel-v3)
@@ -41,7 +41,7 @@
 
 | 层 | 技术 |
 |---|---|
-| 后端 | Go 1.23 · [chi/v5](https://github.com/go-chi/chi) v5.2.1 · [modernc.org/sqlite](https://modernc.org/sqlite) v1.34.5 |
+| 后端 | Go 1.25 · [chi/v5](https://github.com/go-chi/chi) v5.4.0 · [modernc.org/sqlite](https://modernc.org/sqlite) v1.34.5 |
 | 前端 | 原生 JS · CSS 变量主题系统 · PWA Service Worker |
 | 构建 | Node 24（生成主题 CSS + 注入 SHA1 资源戳） · Go embed |
 | 部署 | Docker 三阶段构建 · Alpine 3.22 |
@@ -438,6 +438,11 @@ V3 不自动迁移 V2.1 的数据库，请按「先导出、后导入」的顺�
 - 升级后立即修改默认管理员密码；旧版浏览器缓存建议强制刷新一次
 
 > 直接让 V3 复用旧数据目录时，启动会尝试补齐旧库缺失字段以兼容读取；但旧版字段语义可能不同（例如隐藏标记、图标字段命名），**推荐仍按上面的「导出 → 导入」流程升级**，以保证分组、卡片与设置完整还原。
+
+### v3.3.4（2026-10-25）
+
+- **依赖安全升级**：`chi` 5.2.1 → 5.4.0、`golang.org/x/crypto` 0.33.0 → 0.52.0，消除上游披露的漏洞告警
+- **构建基线**：Go 1.23 → 1.25（`go.mod` 与 Dockerfile 同步）
 
 ### v3.3.3（2026-10-25）
 
