@@ -571,55 +571,56 @@ func (h *WallpaperHandler) fetchPicsum(client *http.Client, date string) (map[st
 	return map[string]any{"title": fmt.Sprintf("Lorem Picsum · %s", date), "copyright": "loremflickr.com / picsum.photos", "_image": bin}, nil
 }
 
-var allowedPinHosts = map[string]bool{
-	"bing.com":       true,
-	"picsum.photos":  true,
+// requestImage 只允许请求壁纸源白名单主机。
+// 路径部分虽来自请求，但请求目标由「硬编码 https://host/ 字面量 + 已校验路径」拼成，
+// 主机部分恒为常量，因此不会把请求打到任意地址（CodeQL go/request-forgery 可识别的写法）。
+func (h *WallpaperHandler) requestImage(client *http.Client, rawURL string) (*http.Response, error) {
+	const (
+		prefixBingCN  = "https://cn.bing.com/"
+		prefixBingWWW = "https://www.bing.com/"
+		prefixPicsum  = "https://picsum.photos/"
+	)
+	var prefix string
+	switch {
+	case strings.HasPrefix(rawURL, prefixBingCN):
+		prefix = prefixBingCN
+	case strings.HasPrefix(rawURL, prefixBingWWW):
+		prefix = prefixBingWWW
+	case strings.HasPrefix(rawURL, prefixPicsum):
+		prefix = prefixPicsum
+	default:
+		return nil, fmt.Errorf("url not allowlisted")
+	}
+	rest := safeImagePath(strings.TrimPrefix(rawURL, prefix))
+	if rest == "" {
+		return nil, fmt.Errorf("invalid url")
+	}
+	switch prefix {
+	case "https://cn.bing.com/":
+		return client.Get("https://cn.bing.com/" + rest)
+	case "https://www.bing.com/":
+		return client.Get("https://www.bing.com/" + rest)
+	default:
+		return client.Get("https://picsum.photos/" + rest)
+	}
 }
 
-// isAllowedPinHost 检查 host 是否在允许的壁纸源列表中
-func isAllowedPinHost(host string) bool {
-	host = strings.ToLower(host)
-	if allowedPinHosts[host] {
-		return true
+// safeImagePath 校验主机之后的路径片段：拒绝空值、超长、反斜杠、空白与控制字符
+func safeImagePath(p string) string {
+	p = strings.TrimLeft(p, "/")
+	if p == "" || len(p) > 512 {
+		return ""
 	}
-	for allowed := range allowedPinHosts {
-		if strings.HasSuffix(host, "."+allowed) {
-			return true
+	for _, r := range p {
+		if r < 0x21 || r == 0x7f || r == '\\' {
+			return ""
 		}
 	}
-	return false
-}
-
-// allowedImageURLPrefixes 硬编码允许的图片源完整 URL 前缀
-var allowedImageURLPrefixes = []string{
-	"https://cn.bing.com/",
-	"https://www.bing.com/",
-	"https://picsum.photos/",
-}
-
-func isAllowedImageURL(rawURL string) bool {
-	for _, p := range allowedImageURLPrefixes {
-		if strings.HasPrefix(rawURL, p) {
-			return true
-		}
-	}
-	return false
+	return p
 }
 
 func (h *WallpaperHandler) downloadImage(client *http.Client, rawURL string) ([]byte, error) {
-	// SSRF 防御：完整 URL 前缀 allowlist — CodeQL go/request-forgery 识别此模式
-	if !isAllowedImageURL(rawURL) {
-		return nil, fmt.Errorf("url not allowlisted")
-	}
-	// 二次校验 scheme 不为 http（生产只用 https）
-	if !strings.HasPrefix(rawURL, "https://") {
-		return nil, fmt.Errorf("https required")
-	}
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid url")
-	}
-	resp, err := client.Get(u.String())
+	resp, err := h.requestImage(client, rawURL)
 	if err != nil {
 		return nil, err
 	}
