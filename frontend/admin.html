@@ -752,10 +752,24 @@
       <div class="backup-row" style="margin-top:18px;align-items:center">
         <div class="backup-info">
           <b>更新日志</b>
-          <span>当前版本 <b id="appVer2"></b>；以下为最新版本的功能更新与问题修复记录</span>
+          <span>当前版本 <b id="appVer2"></b><span id="updateState" style="margin-left:8px"></span></span>
         </div>
-        <button class="btn" type="button" id="changelogHistoryBtn">📜 历史更新</button>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <label class="form-hint" style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+            <input type="checkbox" id="updateCheckToggle"> 自动检查更新
+          </label>
+          <select class="select" id="updateIntervalSel" style="width:auto;min-width:120px" title="检查间隔">
+            <option value="1">每 1 小时</option>
+            <option value="3">每 3 小时</option>
+            <option value="6">每 6 小时</option>
+            <option value="12">每 12 小时</option>
+            <option value="24">每 24 小时</option>
+          </select>
+          <button class="btn" type="button" id="checkUpdateBtn">🔄 检查更新</button>
+          <button class="btn" type="button" id="changelogHistoryBtn">📜 历史更新</button>
+        </div>
       </div>
+      <div id="updateNotice" class="form-hint" style="margin-bottom:10px" hidden></div>
       <div id="changelogDetail" class="changelog"></div>
     </section>
 
@@ -1036,7 +1050,7 @@
   </div>
 
   <script src="assets/js/qrcode.min.js"></script>
-  <script src="assets/js/api.js?v=74d3cdef"></script>
-  <script src="assets/js/admin.js?v=9178316c"></script>
+  <script src="assets/js/api.js?v=78a328d3"></script>
+  <script src="assets/js/admin.js?v=cdaa7d4b"></script>
 </body>
 </html>

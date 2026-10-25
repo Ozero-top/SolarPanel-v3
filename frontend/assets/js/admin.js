@@ -76,6 +76,7 @@ const OPEN_TEXT = { 1: '当前页', 2: '新窗口', 3: '弹层' };
   bindAccount();
   bindBackup();
   renderVersionInfo();
+  bindUpdateCheck();
   applyRoleUI();
 
   // —— 2MD: 新增 5 个功能模块 ——
@@ -141,6 +142,7 @@ async function applyThemeFromBackend() {
     applyTheme(s);
     state.siteUrl = (s.site_url || '').trim();
     fillSettingsForm(s);
+    applyUpdateSettings(s);
   } catch (e) {
     toast('设置读取失败：' + e.message, 'error');
   }
@@ -1900,6 +1902,131 @@ function renderVersionInfo() {
   if (historyBtn && historyModal) {
     historyBtn.addEventListener('click', () => historyModal.classList.add('show'));
   }
+}
+
+/* ================= 版本检查（GitHub 最新版本） ================= */
+const UPDATE_SESSION_KEY = 'sp_update_info';
+const UPGRADE_CMD = 'docker pull ovitor/solarpanel-v3:latest && docker restart solarpanel-v3';
+
+/** 回填「自动检查更新」开关与间隔（值来自 settings.php?action=list） */
+function applyUpdateSettings(s) {
+  const toggle = document.getElementById('updateCheckToggle');
+  const sel = document.getElementById('updateIntervalSel');
+  if (toggle) toggle.checked = (s.update_check ?? '1') !== '0';
+  if (sel) sel.value = s.update_check_interval || '6';
+}
+
+/** 请求版本信息；force=false 时同一会话内复用结果，避免重复请求 */
+async function fetchUpdateInfo(force) {
+  if (!force) {
+    try {
+      const raw = sessionStorage.getItem(UPDATE_SESSION_KEY);
+      if (raw) {
+        const c = JSON.parse(raw);
+        if (c && Date.now() - (c.ts || 0) < 6 * 3600 * 1000) return c.data;
+      }
+    } catch (e) { /* 隐私模式忽略 */ }
+  }
+  const d = await API.get(API_BASE + 'version.php' + (force ? '?refresh=1' : ''));
+  try {
+    sessionStorage.setItem(UPDATE_SESSION_KEY, JSON.stringify({ ts: Date.now(), data: d }));
+  } catch (e) { /* 忽略 */ }
+  return d;
+}
+
+/** 渲染版本状态与升级提示 */
+function renderUpdateInfo(info) {
+  const stateEl = document.getElementById('updateState');
+  const notice = document.getElementById('updateNotice');
+  if (!stateEl || !notice) return;
+  notice.hidden = true;
+  notice.innerHTML = '';
+  stateEl.style.fontWeight = '';
+  stateEl.style.color = 'var(--text-muted)';
+  if (!info || !info.enabled) {
+    stateEl.textContent = '（自动检查已关闭）';
+    return;
+  }
+  if (!info.latest) {
+    stateEl.textContent = '（暂时无法连接更新源，可稍后手动检查）';
+    return;
+  }
+  if (!info.has_update) {
+    stateEl.textContent = '（已是最新 ' + info.latest + '）';
+    return;
+  }
+  stateEl.textContent = '（发现新版本 ' + info.latest + '）';
+  stateEl.style.fontWeight = '600';
+  stateEl.style.color = '#e07a1f';
+  notice.hidden = false;
+  notice.innerHTML =
+    '发现新版本 <b>' + escapeHtml(info.latest) + '</b>（当前 ' + escapeHtml(info.current) + '）。' +
+    'Docker 部署升级：<code>' + escapeHtml(UPGRADE_CMD) + '</code>　' +
+    '<a href="' + escapeHtml(info.release_url || '#') + '" target="_blank" rel="noopener">查看发布说明</a>';
+}
+
+async function runUpdateCheck(force) {
+  try {
+    renderUpdateInfo(await fetchUpdateInfo(force));
+  } catch (e) { /* 静默：检查失败不影响使用 */ }
+}
+
+function bindUpdateCheck() {
+  // 非管理员只保留「检查更新」与「历史更新」，不显示开关与间隔
+  if (state.role !== 'admin') {
+    const label = document.getElementById('updateCheckToggle');
+    if (label && label.parentElement) label.parentElement.style.display = 'none';
+    const sel = document.getElementById('updateIntervalSel');
+    if (sel) sel.style.display = 'none';
+  }
+
+  const toggle = document.getElementById('updateCheckToggle');
+  if (toggle) {
+    toggle.addEventListener('change', async () => {
+      try {
+        await API.post(API_BASE + 'settings.php?action=save', { update_check: toggle.checked ? '1' : '0' });
+        toast(toggle.checked ? '已开启自动检查更新' : '已关闭自动检查更新', 'success');
+        // 开关状态变了，丢掉会话缓存后重新取一次
+        try { sessionStorage.removeItem(UPDATE_SESSION_KEY); } catch (e) { /* 忽略 */ }
+        runUpdateCheck(false);
+      } catch (e) {
+        toast(e.message, 'error');
+      }
+    });
+  }
+
+  const sel = document.getElementById('updateIntervalSel');
+  if (sel) {
+    sel.addEventListener('change', async () => {
+      try {
+        await API.post(API_BASE + 'settings.php?action=save', { update_check_interval: sel.value });
+        toast('检查间隔已保存', 'success');
+      } catch (e) {
+        toast(e.message, 'error');
+      }
+    });
+  }
+
+  const btn = document.getElementById('checkUpdateBtn');
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const old = btn.textContent;
+      btn.textContent = '检查中…';
+      try {
+        const info = await fetchUpdateInfo(true);
+        renderUpdateInfo(info);
+        toast(info && info.has_update ? '发现新版本 ' + info.latest : '已是最新版本', 'success');
+      } catch (e) {
+        toast('检查失败：' + e.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = old;
+      }
+    });
+  }
+
+  runUpdateCheck(false);
 }
 
 function renderEngineRows(engines) {

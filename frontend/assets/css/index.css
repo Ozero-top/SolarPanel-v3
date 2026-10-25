@@ -178,6 +178,44 @@
   box-shadow: var(--pressed-sm);
 }
 
+/* 升级提示按钮（仅管理员可见）：胶囊 + 右上角小红点 */
+#updateBtn {
+  position: relative;
+  width: auto;
+  padding: 0 12px;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  color: var(--accent);
+  border-color: var(--accent);
+  white-space: nowrap;
+}
+/* .icon-btn 的 display 会盖掉 UA 的 [hidden]，这里显式声明 */
+#updateBtn[hidden] { display: none; }
+#updateBtn::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e2503a;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+/* 更新日志弹窗顶部的新版本提示 */
+.cl-update-tip {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--accent);
+  color: var(--accent);
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
 /* ================= 导航栏模式：横向分组标签栏 ================= */
 .navbar-tabs {
   display: flex;

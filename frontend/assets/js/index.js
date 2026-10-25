@@ -5,6 +5,7 @@ const state = {
   settings: {},
   groups: [],
   user: null,
+  updateInfo: null, // 管理员可见的新版本信息（version.php 返回）
   lanMode: false, // 由后台「默认地址模式」设置决定
   theme: 'dark',
   sortingGroupId: null, // 当前正在排序的分组 id（仅管理员，null = 未排序）
@@ -182,6 +183,7 @@ async function boot() {
   bindGlobal();
   initNewsSwitch();
   initNASPanel();
+  initUpdateNotice();
 }
 
 /* ---------- 基础元素渲染（标题/logo/公告/页脚/壁纸/内容区） ---------- */
@@ -2179,6 +2181,15 @@ function newsRelTime(ms) {
 function openChangelogModal() {
   const body = document.getElementById('changelogBody');
   body.innerHTML = '';
+  // 有新版本时在弹窗顶部提示升级方式
+  const upd = state.updateInfo;
+  if (upd && upd.has_update) {
+    const tip = document.createElement('div');
+    tip.className = 'cl-update-tip';
+    tip.textContent = '发现新版本 ' + upd.latest + '（当前 ' + upd.current + '）。Docker 升级：'
+      + 'docker pull ovitor/solarpanel-v3:latest && docker restart solarpanel-v3';
+    body.appendChild(tip);
+  }
   const logs = typeof APP_CHANGELOG !== 'undefined' ? APP_CHANGELOG : [];
   const curVer = typeof APP_VERSION !== 'undefined' ? APP_VERSION : '';
   const entry = logs.find(v => v.ver === curVer);
@@ -2211,6 +2222,39 @@ function openChangelogModal() {
 /** 关闭更新日志弹窗 */
 function closeChangelogModal() {
   document.getElementById('changelogModal').classList.remove('show');
+}
+
+/**
+ * 升级提示：仅管理员可见。有新版本时顶栏出现徽章，点击打开更新日志弹窗。
+ * 结果存 sessionStorage，同一会话只查一次；失败静默，不影响主页使用。
+ */
+async function initUpdateNotice() {
+  const btn = document.getElementById('updateBtn');
+  if (!btn || !state.user || state.user.role !== 'admin') return;
+
+  let info = null;
+  try {
+    const raw = sessionStorage.getItem('sp_update_info');
+    if (raw) {
+      const c = JSON.parse(raw);
+      if (c && Date.now() - (c.ts || 0) < 6 * 3600 * 1000) info = c.data;
+    }
+  } catch (e) { /* 隐私模式忽略 */ }
+
+  if (!info) {
+    try {
+      info = await API.get(API_BASE + 'version.php');
+      sessionStorage.setItem('sp_update_info', JSON.stringify({ ts: Date.now(), data: info }));
+    } catch (e) {
+      return;
+    }
+  }
+  if (!info || !info.has_update) return;
+
+  state.updateInfo = info;
+  btn.hidden = false;
+  btn.title = '发现新版本 ' + info.latest + '（当前 ' + info.current + '）';
+  btn.onclick = openChangelogModal;
 }
 
 /* ---------- 访客访问锁屏（guest_required=true 时 boot 提前 return 调此函数） ---------- */

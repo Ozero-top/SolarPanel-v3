@@ -4,7 +4,7 @@
 
 <h1 align=center>SolarPanel V3 - 轻量自托管导航页面板</h1>
 
-[![Version](https://img.shields.io/badge/Version-v3.3.4-5B8DEF?logo=semanticrelease)](#)
+[![Version](https://img.shields.io/badge/Version-v3.3.5-5B8DEF?logo=semanticrelease)](#)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev)
 [![Architecture](https://img.shields.io/badge/Architecture-chi%2Bsqlite-50C878)](https://github.com/go-chi/chi)
 [![Multi-Arch](https://img.shields.io/badge/Arch-amd64__arm64__armv7-7A51F5)](https://hub.docker.com/r/ovitor/solarpanel-v3)
@@ -324,6 +324,7 @@ SolarPanel/
 | GET / POST | `/api/auth.php` | — | 登录 / 登出 / 双因子 / 受信设备 / 访客登录 |
 | GET | `/api/favicon.php?host=xxx` | 120/min | 站点图标代理（三源抓取 · 磁盘缓存 · ETag 协商） |
 | GET | `/api/nas.php` | 240/min | NAS 主机与容器状态（需后台开启；访客可见性由设置控制） |
+| GET | `/api/version.php` | 30/min | 版本检查：返回当前 / 最新版本与是否有更新；`?refresh=1` 跳过缓存（后台「立即检查」用） |
 
 ### 登录后路由（`RequireLogin` + CSRF）
 
@@ -438,6 +439,13 @@ V3 不自动迁移 V2.1 的数据库，请按「先导出、后导入」的顺�
 - 升级后立即修改默认管理员密码；旧版浏览器缓存建议强制刷新一次
 
 > 直接让 V3 复用旧数据目录时，启动会尝试补齐旧库缺失字段以兼容读取；但旧版字段语义可能不同（例如隐藏标记、图标字段命名），**推荐仍按上面的「导出 → 导入」流程升级**，以保证分组、卡片与设置完整还原。
+
+### v3.3.5（2026-10-25）
+
+- **版本检查**：后台「系统备份 → 更新日志」显示当前版本与最新版本，发现新版时给出升级提示与 Docker 升级命令
+- **主页徽章**：仅管理员可见，有新版本时顶栏出现徽章，点击打开更新说明；访客不受影响
+- **可配置**：后台可开关自动检查，间隔 1 / 3 / 6 / 12 / 24 小时（默认 6 小时）
+- **零配额消耗**：优先读 Release 跳转地址，失败改用 tag 订阅源，均不占用第三方接口配额；离线静默
 
 ### v3.3.4（2026-10-25）
 

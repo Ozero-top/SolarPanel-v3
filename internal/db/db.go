@@ -351,3 +351,14 @@ func GetSetting(key string) string {
 	}
 	return v
 }
+
+// SetSetting 写入单个设置，不存在则插入
+func SetSetting(key, value string) {
+	res, err := DB.Exec("UPDATE settings SET config_value=? WHERE config_name=?", value, key)
+	if err != nil {
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		DB.Exec("INSERT INTO settings (config_name, config_value) VALUES (?, ?)", key, value)
+	}
+}

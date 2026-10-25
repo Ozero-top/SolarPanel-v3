@@ -27,6 +27,7 @@ var allowedSettingKeys = map[string]struct{}{
 	"guest_access_enabled": {}, "guest_password_hash": {},
 	"search_bar_enabled": {}, "topbar_desktop_enabled": {},
 	"topbar_mobile_enabled": {},
+	"update_check":          {}, "update_check_interval": {},
 }
 
 // settingValueWhitelist 特定键的取值白名单（与 frontend/themes.json / card_style 可选项保持同步）
@@ -35,6 +36,7 @@ var settingValueWhitelist = map[string]map[string]bool{
 	"card_style":  {"nav": true, "navapp": true},
 	"nas_show":    {"0": true, "1": true},
 	"nas_guest":   {"0": true, "1": true},
+	"update_check": {"0": true, "1": true},
 	"nas_layout":  {"right": true, "left": true, "both": true, "banner": true},
 	// 时钟/天气字体（与 frontend/assets/js/api.js SP_CLOCK_FONTS 保持一致；空 = 跟随系统）
 	"clock_font": {
@@ -134,6 +136,18 @@ func (h *SettingsHandler) Save(w http.ResponseWriter, r *http.Request) {
 				n = 40
 			} else if n > 100 {
 				n = 100
+			}
+			v = strconv.Itoa(n)
+		}
+		if k == "update_check_interval" {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				continue
+			}
+			if n < 1 {
+				n = 1
+			} else if n > 24 {
+				n = 24
 			}
 			v = strconv.Itoa(n)
 		}
