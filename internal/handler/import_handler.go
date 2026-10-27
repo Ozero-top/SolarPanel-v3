@@ -107,7 +107,7 @@ func parseBookmarksHTML(htmlContent string) []bookmarkEntry {
 	h3Re := regexp.MustCompile(`(?i)<h3[^>]*>(.*?)</h3>`)
 	aRe := regexp.MustCompile(`(?i)<a\s+[^>]*?href\s*=\s*["']([^"']+)["'][^>]*>(.*?)</a>`)
 
-	h3Matches := h3Re.FindAllStringIndex(s, -1)
+	h3Matches := h3Re.FindAllStringSubmatchIndex(s, -1)
 	topH3End := 0
 	if len(h3Matches) > 0 {
 		topH3End = h3Matches[0][0]
