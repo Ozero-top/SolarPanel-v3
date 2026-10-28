@@ -1,5 +1,5 @@
 <div align=center>
-<img src="https://updates.ozero.top/SolarPanel.ico" width="64" height="64"> 
+<img src="https://github.com/Ozero-top/SolarPanel-v3/blob/main/frontend/assets/img/icon-192.png" width="64" height="64"> 
 </div>
 
 <h1 align=center>SolarPanel V3 - 轻量自托管导航页面板</h1>
