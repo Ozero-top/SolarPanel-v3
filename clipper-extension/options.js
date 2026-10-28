@@ -39,6 +39,15 @@ function normalize(url) {
   return String(url || '').trim().replace(/\/+$/, '');
 }
 
+// 服务端统一响应信封 {code,data,msg}：成功取 data，失败抛错
+function unwrap(payload) {
+  if (payload && typeof payload === 'object' && 'code' in payload) {
+    if (payload.code !== 0) throw new Error(payload.msg || '请求失败');
+    return payload.data;
+  }
+  return payload;
+}
+
 function setStatus(text, cls) {
   const el = $('status');
   el.textContent = text || '';
@@ -52,7 +61,7 @@ async function loadGroups() {
   try {
     const res = await fetch(base + '/api/v1/groups', { headers: { Authorization: 'Bearer ' + token } });
     if (!res.ok) return;
-    const groups = await res.json();
+    const groups = unwrap(await res.json());
     const sel = $('defaultGroup');
     sel.innerHTML = '<option value="0">默认分组（稍后读）</option>';
     groups.filter((g) => !g.parent_id).forEach((top) => {
@@ -116,11 +125,16 @@ async function test() {
       setStatus('连接失败：' + (data.msg || ('HTTP ' + res.status)), 'err');
       return;
     }
-    if (!data.clip_enabled) {
+    let me;
+    try { me = unwrap(data); } catch (e) {
+      setStatus('连接失败：' + e.message, 'err');
+      return;
+    }
+    if (!me || !me.clip_enabled) {
       setStatus('已连接，但站点关闭了剪藏功能', 'err');
       return;
     }
-    setStatus('连接成功：' + (data.name || data.username) + '（' + data.role + '）', 'ok');
+    setStatus('连接成功：' + (me.name || me.username) + '（' + me.role + '）', 'ok');
     loadGroups();
   } catch (e) {
     setStatus('连接失败：' + e.message, 'err');

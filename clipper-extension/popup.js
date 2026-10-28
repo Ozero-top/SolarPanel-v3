@@ -81,6 +81,15 @@ async function request(path, method, body) {
     err.status = res.status;
     throw err;
   }
+  // 服务端统一响应信封 {code,data,msg}
+  if (data && typeof data === 'object' && 'code' in data) {
+    if (data.code !== 0) {
+      const err = new Error(data.msg || '请求失败');
+      err.code = data.code;
+      throw err;
+    }
+    return data.data;
+  }
   return data;
 }
 
