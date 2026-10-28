@@ -196,6 +196,8 @@ func main() {
 	defer db.Close()
 	// 剪藏查重键兜底回填（迁移已跑过；这里覆盖旧库/导入数据）
 	db.BackfillURLKeys()
+	// 全文索引与快照表条数不一致时重建（迁移失败或手工改库后自愈）
+	db.EnsureClipFTS()
 
 	seedPresetWallpapers(cfg.UploadDir)
 	sessionStore := auth.NewSessionStore(cfg.SessionTTL)
@@ -327,6 +329,10 @@ func main() {
 		v1.Use(rateLimitMW("clip", 120, 60))
 		v1.Post("/clips", clipHandler.Create)
 		v1.Delete("/clips", clipHandler.Delete)
+		v1.Get("/clips/search", clipHandler.Search)
+		v1.Get("/clips/{id}", clipHandler.Detail)
+		v1.Post("/clips/{id}/refetch", clipHandler.Refetch)
+		v1.Delete("/clips/{id}/content", clipHandler.DeleteContent)
 		v1.Get("/me", clipHandler.Me)
 		v1.Get("/groups", clipHandler.Groups)
 		v1.Post("/preview", clipHandler.Preview)
@@ -382,6 +388,8 @@ func main() {
 	r.Get("/clip", serveEmbed("frontend/clip.html", "text/html; charset=utf-8"))
 	r.Get("/clip-share", clipShareHandler.Share)
 	r.Post("/clip-share", clipShareHandler.Share)
+	// 正文快照阅读页（P1）：需要登录后访问
+	r.With(protectAdminHTML).Get("/read/{id}", serveEmbed("frontend/clip-read.html", "text/html; charset=utf-8"))
 
 	// 用户上传文件目录（磁盘直读）
 	// 上传内容来源不可信（可能含 SVG），用 CSP sandbox + default-src 'none' 阻止脚本执行

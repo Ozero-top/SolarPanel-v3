@@ -547,7 +547,8 @@ function spRegisterSW() {
   const isSecure = location.protocol === 'https:' || hn === 'localhost' || hn === '127.0.0.1' || isPrivateIP;
   if (!isSecure) return;
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').then(reg => {
+    // 用绝对路径注册：/read/{id} 等二级路径页面下相对路径会解析成 /read/sw.js（返回 HTML）导致注册失败
+    navigator.serviceWorker.register('/sw.js').then(reg => {
       reg.addEventListener('updatefound', () => {
         const newSW = reg.installing;
         if (!newSW) return;

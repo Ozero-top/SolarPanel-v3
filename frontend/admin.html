@@ -846,13 +846,41 @@
         <div class="backup-row">
           <div class="backup-info">
             <b>默认保存方式</b>
-            <span>P0 只保存导航卡片；正文快照（Markdown）将在 P1 提供。</span>
+            <span>「卡片 + 正文」会在保存时抓取正文并转成 Markdown 快照，支持站内全文检索；正文快照平均占用几十 KB 到几百 KB。</span>
           </div>
           <div class="backup-row-actions">
             <select class="select" id="s_clip_default_capture" style="width:auto;min-width:160px">
-              <option value="card">导航卡片</option>
+              <option value="card">仅导航卡片</option>
+              <option value="snapshot">卡片 + 正文快照</option>
             </select>
           </div>
+        </div>
+
+        <div class="backup-row" style="margin-top:18px">
+          <div class="backup-info">
+            <b>正文快照检索</b>
+            <span>只检索已保存正文的剪藏；中文两个字也能查，英文按关键词匹配，多个关键词用空格分隔。</span>
+          </div>
+          <div class="backup-row-actions">
+            <input class="input" id="clipSearchInput" placeholder="搜索标题或正文" style="width:240px">
+            <button class="btn btn-primary" type="button" id="clipSearchBtn">检索</button>
+          </div>
+        </div>
+
+        <div id="clipSearchWrap" hidden>
+          <table class="table" style="margin-top:10px">
+            <thead>
+              <tr>
+                <th>标题</th>
+                <th style="width:110px">分组</th>
+                <th style="width:80px">字数</th>
+                <th style="width:150px">抓取时间</th>
+                <th style="width:70px">操作</th>
+              </tr>
+            </thead>
+            <tbody id="clipSearchTbody"></tbody>
+          </table>
+          <div class="form-hint" id="clipSearchEmpty" hidden>没有匹配的快照内容。</div>
         </div>
 
         <div class="backup-row" style="margin-top:18px">
@@ -1223,7 +1251,7 @@
   </div>
 
   <script src="assets/js/qrcode.min.js"></script>
-  <script src="assets/js/api.js?v=dee5b814"></script>
-  <script src="assets/js/admin.js?v=8695a7c3"></script>
+  <script src="assets/js/api.js?v=09bcb38a"></script>
+  <script src="assets/js/admin.js?v=f29ee473"></script>
 </body>
 </html>

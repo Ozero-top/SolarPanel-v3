@@ -20,7 +20,7 @@ const (
 	clipFetchMaxRedirect = 3
 )
 
-// clipPage 服务端抓取到的页面元数据（P0 只取导航卡片所需字段）
+// clipPage 服务端抓取到的页面数据：P0 只用元数据，P1 追加整页 HTML 供正文提取
 type clipPage struct {
 	FinalURL   *url.URL
 	Title      string
@@ -28,6 +28,8 @@ type clipPage struct {
 	Canonical  string
 	CoverURL   string
 	IconCands  []string
+	HTML       string
+	HTTPStatus int
 	FetchError string
 }
 
@@ -99,6 +101,8 @@ func fetchClipPage(rawURL string) *clipPage {
 		return out
 	}
 	html := string(body)
+	out.HTML = html
+	out.HTTPStatus = resp.StatusCode
 
 	out.Title, out.Desc = extractMeta(html)
 	out.CoverURL = absolutizeURL(firstMetaContent(html, reOGImage, reOGImage2, reTwImage, reTwImage2), out.FinalURL)

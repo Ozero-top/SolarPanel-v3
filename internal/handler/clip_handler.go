@@ -47,6 +47,8 @@ type clipInput struct {
 	Note      string `json:"note"`
 	GroupID   int    `json:"group_id"`
 	GroupName string `json:"group_name"`
+	Capture   string `json:"capture"`
+	Selection string `json:"selection"`
 	Force     bool   `json:"force"`
 	ClientID  string `json:"client_id"`
 	Source    string `json:"-"`
@@ -178,9 +180,15 @@ func (h *ClipHandler) createClip(w http.ResponseWriter, r *http.Request, p *clip
 		if it, ok := findClipRequest(p.TokenID, in.ClientID); ok {
 			group := ""
 			db.DB.QueryRow("SELECT title FROM item_groups WHERE id = ?", it.GroupID).Scan(&group)
-			return &clipResult{Item: it, Group: group, Warnings: []string{}, Snapshot: false}, 0, "已保存"
+			hasSnapshot := false
+			if c, err := loadClipContent(it.ID); err == nil && c.ContentMD != "" {
+				hasSnapshot = true
+			}
+			return &clipResult{Item: it, Group: group, Warnings: []string{}, Snapshot: hasSnapshot}, 0, "已保存"
 		}
 	}
+
+	mode := clipCaptureMode(in.Capture)
 
 	// 先按原始 URL 查重，force=true 跳过
 	var existing *ItemRow
@@ -193,8 +201,22 @@ func (h *ClipHandler) createClip(w http.ResponseWriter, r *http.Request, p *clip
 			}
 			group := ""
 			db.DB.QueryRow("SELECT title FROM item_groups WHERE id = ?", existing.GroupID).Scan(&group)
+			// 已存在但本次要求正文且此前没有快照时，顺手补齐快照
+			snap, snapWarn := false, []string{}
+			if current, err := loadClipContent(existing.ID); err == nil && current.ContentMD != "" {
+				snap = true
+			} else if mode == "snapshot" {
+				page := fetchClipPage(norm)
+				if page.FetchError != "" {
+					snapWarn = append(snapWarn, "fetch_failed")
+				} else if _, reason := saveClipSnapshot(existing.ID, key, raw, in.Source, existing.Title, "", page); reason != "" {
+					snapWarn = append(snapWarn, reason)
+				} else {
+					snap = true
+				}
+			}
 			auditClip(w, r, p, in.Source, "duplicate", existing.ID)
-			return &clipResult{Item: existing, Group: group, Duplicate: true, Warnings: []string{}, Snapshot: false}, 0, "该链接已存在"
+			return &clipResult{Item: existing, Group: group, Duplicate: true, Warnings: snapWarn, Snapshot: snap}, 0, "该链接已存在"
 		}
 	}
 
@@ -243,11 +265,11 @@ func (h *ClipHandler) createClip(w http.ResponseWriter, r *http.Request, p *clip
 		desc = page.Desc
 	}
 
-	iconType, iconValue := "favicon", ""
+	iconType, iconValue, coverPath := "favicon", "", ""
 	if page.FetchError == "" {
-		cover := saveClipCover(h.cfg, key, page.CoverURL)
-		if cover != "" {
-			iconType, iconValue = "image", cover
+		coverPath = saveClipCover(h.cfg, key, page.CoverURL)
+		if coverPath != "" {
+			iconType, iconValue = "image", coverPath
 		} else if host != "" {
 			iconValue = trySaveIconFromCandidates(h.cfg, host, clipIconCandidates(page, host))
 		}
@@ -279,8 +301,30 @@ func (h *ClipHandler) createClip(w http.ResponseWriter, r *http.Request, p *clip
 		db.DB.Exec("INSERT OR REPLACE INTO clip_requests (token_id, client_id, item_id, created_at) VALUES (?,?,?,?)",
 			p.TokenID, trimRunes(in.ClientID, 64), item.ID, db.NowStr())
 	}
+
+	// P1 正文快照：按保存方式抓正文、写 clip_contents 并同步全文索引
+	snapshot := false
+	if mode == "snapshot" {
+		if page.FetchError != "" {
+			warnings = appendUnique(warnings, "fetch_failed")
+		} else if _, reason := saveClipSnapshot(item.ID, key, raw, in.Source, title, coverPath, page); reason != "" {
+			warnings = appendUnique(warnings, reason)
+		} else {
+			snapshot = true
+		}
+	}
 	auditClip(w, r, p, in.Source, "success", item.ID)
-	return &clipResult{Item: item, Group: groupTitle, Warnings: warnings, Snapshot: false}, 0, "已保存"
+	return &clipResult{Item: item, Group: groupTitle, Warnings: warnings, Snapshot: snapshot}, 0, "已保存"
+}
+
+// appendUnique 追加不重复的告警码
+func appendUnique(list []string, item string) []string {
+	for _, v := range list {
+		if v == item {
+			return list
+		}
+	}
+	return append(list, item)
 }
 
 // Delete DELETE /api/v1/clips：撤销刚保存的卡片（仅本人，管理员不限）
@@ -305,6 +349,7 @@ func (h *ClipHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		Err(w, http.StatusForbidden, 1, "只能撤销自己剪藏的卡片")
 		return
 	}
+	dropClipSnapshot(body.ID)
 	if _, err := db.DB.Exec("DELETE FROM items WHERE id = ?", body.ID); err != nil {
 		Fail(w, "删除失败")
 		return

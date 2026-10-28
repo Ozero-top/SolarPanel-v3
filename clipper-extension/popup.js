@@ -40,6 +40,13 @@ async function init() {
   $('fUrl').textContent = state.url;
   $('fUrl').title = state.url;
   $('fTitle').value = state.tab.title || '';
+  $('fSnapshot').checked = !!cfg.snapshot;
+  $('fSnapshot').addEventListener('change', async () => {
+    const data = await chrome.storage.local.get('spClipConfig');
+    const next = data.spClipConfig || {};
+    next.snapshot = $('fSnapshot').checked;
+    await chrome.storage.local.set({ spClipConfig: next });
+  });
 
   if (!/^https?:\/\//i.test(state.url)) {
     setStatus('当前页面不支持保存（仅支持 http / https 页面）', 'err');
@@ -152,6 +159,7 @@ async function save(force) {
         title: $('fTitle').value.trim(),
         note: $('fNote').value.trim(),
         group_id: parseInt($('fGroup').value || '0', 10),
+        capture: $('fSnapshot').checked ? 'snapshot' : '',
         force: force,
         clientId: state.clientId,
       },
@@ -171,7 +179,7 @@ async function save(force) {
       return;
     }
     state.item = res.item;
-    setStatus('已保存到「' + (res.group || '默认分组') + '」', 'ok');
+    setStatus('已保存到「' + (res.group || '默认分组') + '」' + (res.snapshot ? '（含正文快照）' : ''), 'ok');
     $('doneBox').classList.remove('hidden');
     $('openPage').href = state.url;
     $('saveBtn').classList.add('hidden');

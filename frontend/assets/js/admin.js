@@ -3270,6 +3270,15 @@ function bindClip() {
   document.getElementById('saveClipSettingsBtn').addEventListener('click', saveClipSettings);
   document.getElementById('createTokenBtn').addEventListener('click', createClipToken);
 
+  // 正文快照检索
+  document.getElementById('clipSearchBtn').addEventListener('click', runClipSearch);
+  document.getElementById('clipSearchInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      runClipSearch();
+    }
+  });
+
   document.getElementById('tokensTbody').addEventListener('click', async (e) => {
     const btn = e.target.closest('button[data-revoke]');
     if (!btn) return;
@@ -3301,7 +3310,8 @@ async function loadClipPage() {
     const g = document.getElementById('s_clip_default_group');
     g.value = s.clip_default_group || '0';
     if (g.value !== (s.clip_default_group || '0')) g.value = '0';
-    document.getElementById('s_clip_default_capture').value = 'card';
+    document.getElementById('s_clip_default_capture').value =
+      (s.clip_default_capture === 'snapshot') ? 'snapshot' : 'card';
   } catch (_) {
     /* 编辑者无站点设置读取权限时保持默认展示 */
   }
@@ -3338,7 +3348,7 @@ async function saveClipSettings() {
     await API.post(API_BASE + 'settings.php?action=save', {
       clip_enabled: collectSetting('clip_enabled'),
       clip_default_group: collectSetting('clip_default_group'),
-      clip_default_capture: 'card',
+      clip_default_capture: collectSetting('clip_default_capture'),
     });
     toast('剪藏设置已保存', 'success');
   } catch (e) {
@@ -3347,6 +3357,80 @@ async function saveClipSettings() {
     btn.disabled = false;
     btn.textContent = '保存设置';
   }
+}
+
+// 正文快照检索：结果渲染到后台表格，标题进入阅读页
+async function runClipSearch() {
+  const q = document.getElementById('clipSearchInput').value.trim();
+  const wrap = document.getElementById('clipSearchWrap');
+  if (!q) {
+    wrap.hidden = true;
+    return;
+  }
+  const btn = document.getElementById('clipSearchBtn');
+  btn.disabled = true;
+  btn.textContent = '检索中…';
+  try {
+    const list = await API.get('/api/v1/clips/search?q=' + encodeURIComponent(q) + '&limit=50');
+    renderClipSearch(list || []);
+  } catch (e) {
+    toast(e.message || '检索失败', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '检索';
+  }
+}
+
+function renderClipSearch(list) {
+  const wrap = document.getElementById('clipSearchWrap');
+  const tbody = document.getElementById('clipSearchTbody');
+  const empty = document.getElementById('clipSearchEmpty');
+  wrap.hidden = false;
+  tbody.innerHTML = '';
+  empty.hidden = list.length > 0;
+
+  list.forEach((hit) => {
+    const tr = document.createElement('tr');
+
+    const tdTitle = document.createElement('td');
+    const link = document.createElement('a');
+    link.href = '/read/' + parseInt(hit.id, 10);
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = hit.title || hit.url || '未命名剪藏';
+    tdTitle.appendChild(link);
+    if (hit.snippet) {
+      const tip = document.createElement('div');
+      tip.className = 'form-hint';
+      tip.style.marginTop = '2px';
+      tip.textContent = hit.snippet;
+      tdTitle.appendChild(tip);
+    }
+    tr.appendChild(tdTitle);
+
+    const tdGroup = document.createElement('td');
+    tdGroup.textContent = hit.group || '—';
+    tr.appendChild(tdGroup);
+
+    const tdWords = document.createElement('td');
+    tdWords.textContent = hit.word_count ? hit.word_count + ' 字' : '—';
+    tr.appendChild(tdWords);
+
+    const tdTime = document.createElement('td');
+    tdTime.textContent = hit.fetched_at || '—';
+    tr.appendChild(tdTime);
+
+    const tdOp = document.createElement('td');
+    const read = document.createElement('a');
+    read.href = '/read/' + parseInt(hit.id, 10);
+    read.target = '_blank';
+    read.rel = 'noopener';
+    read.textContent = '阅读';
+    tdOp.appendChild(read);
+    tr.appendChild(tdOp);
+
+    tbody.appendChild(tr);
+  });
 }
 
 async function createClipToken() {

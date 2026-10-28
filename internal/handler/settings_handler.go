@@ -43,7 +43,7 @@ var settingValueWhitelist = map[string]map[string]bool{
 	"auto_backup_enabled":  {"0": true, "1": true},
 	"auto_backup_interval": {"1": true, "3": true, "5": true, "7": true, "9": true},
 	"clip_enabled":         {"0": true, "1": true},
-	"clip_default_capture": {"card": true},
+	"clip_default_capture": {"card": true, "snapshot": true},
 	// 时钟/天气字体（与 frontend/assets/js/api.js SP_CLOCK_FONTS 保持一致；空 = 跟随系统）
 	"clock_font": {
 		"":         true,

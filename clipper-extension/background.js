@@ -112,6 +112,7 @@ async function saveClip(payload) {
     title: payload.title || '',
     note: payload.note || '',
     group_id: payload.group_id || cfg.defaultGroup || 0,
+    capture: payload.capture || '',
     force: !!payload.force,
     client_id: payload.clientId || crypto.randomUUID(),
   };

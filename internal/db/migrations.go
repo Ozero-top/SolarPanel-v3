@@ -38,6 +38,68 @@ var migrations = []Migration{
 	{Version: 4, Name: "clip: items.url_key + token tables",
 		SQL: `ALTER TABLE items ADD COLUMN url_key TEXT NOT NULL DEFAULT ''`,
 		Fn:  backfillV4Clip},
+
+	// v5: 剪藏正文快照的全文检索（P1）
+	{Version: 5, Name: "clip: FTS5 index", Fn: migrateV5ClipFTS},
+}
+
+// migrateV5ClipFTS 建立正文快照的 FTS5 索引并全量回填。
+// trigram 分词器对中文按 3 字窗口切分，中文检索可用；旧版 SQLite 无 trigram 时退回 unicode61。
+func migrateV5ClipFTS() error {
+	ddls := []string{
+		`CREATE VIRTUAL TABLE IF NOT EXISTS clip_fts USING fts5(title, excerpt, content_md, tokenize='trigram')`,
+		`CREATE VIRTUAL TABLE IF NOT EXISTS clip_fts USING fts5(title, excerpt, content_md, tokenize='unicode61 remove_diacritics 2')`,
+	}
+	var lastErr error
+	created := false
+	for _, ddl := range ddls {
+		if _, err := DB.Exec(ddl); err == nil {
+			created = true
+			break
+		} else {
+			lastErr = err
+		}
+	}
+	if !created {
+		return lastErr
+	}
+	RebuildClipFTS()
+	log.Println("[migrate] v5: clip_fts 全文索引已就绪")
+	return nil
+}
+
+// RebuildClipFTS 全量重建快照索引（启动时数量不一致、恢复备份后调用，幂等）。
+// rowid 直接使用 item_id，便于与 items 关联。
+func RebuildClipFTS() {
+	if DB == nil {
+		return
+	}
+	if _, err := DB.Exec(`DELETE FROM clip_fts`); err != nil {
+		log.Printf("[clip] 清空 FTS 索引失败: %v", err)
+		return
+	}
+	_, err := DB.Exec(`INSERT INTO clip_fts(rowid, title, excerpt, content_md)
+		SELECT c.item_id, COALESCE(i.title, ''), c.excerpt, c.content_md
+		FROM clip_contents c LEFT JOIN items i ON i.id = c.item_id`)
+	if err != nil {
+		log.Printf("[clip] 重建 FTS 索引失败: %v", err)
+		return
+	}
+	log.Println("[clip] FTS 索引已重建")
+}
+
+// EnsureClipFTS 启动时校验索引条数，与快照表不一致则重建
+func EnsureClipFTS() {
+	if DB == nil {
+		return
+	}
+	var indexed, total int
+	DB.QueryRow(`SELECT COUNT(*) FROM clip_fts`).Scan(&indexed)
+	DB.QueryRow(`SELECT COUNT(*) FROM clip_contents`).Scan(&total)
+	if indexed != total {
+		log.Printf("[clip] FTS 索引条数不一致（%d/%d），重建", indexed, total)
+		RebuildClipFTS()
+	}
 }
 
 // backfillV4Clip v4 迁移专用：确保 url_key 列与索引存在，并回填已有卡片

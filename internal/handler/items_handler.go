@@ -1057,6 +1057,8 @@ func (h *ItemsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		Fail(w, "参数错误")
 		return
 	}
+	// 快照与全文索引随卡片一起清理（不依赖 FOREIGN KEY 级联是否开启）
+	dropClipSnapshot(int(body.ID))
 	db.DB.Exec("DELETE FROM items WHERE id=?", body.ID)
 	OK(w, nil)
 }

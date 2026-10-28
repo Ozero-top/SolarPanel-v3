@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<title>正文快照 · SolarPanel</title>
+<link rel="stylesheet" href="/assets/css/clip-read.css?v=84f7ebd1">
+</head>
+<body>
+<header class="rd-bar">
+  <a class="rd-brand" href="/">SolarPanel</a>
+  <a class="rd-back" href="/admin.html">剪藏列表</a>
+</header>
+
+<main class="rd-wrap">
+  <div id="rd-loading" class="rd-state">正在加载正文…</div>
+
+  <div id="rd-error" class="rd-state error hidden">
+    <p id="rd-error-msg"></p>
+    <a id="rd-error-link" class="rd-btn ghost hidden" href="/login.html">去登录</a>
+  </div>
+
+  <article id="rd-article" class="hidden">
+    <h1 id="rd-title"></h1>
+    <p id="rd-meta" class="rd-meta"></p>
+
+    <div class="rd-actions">
+      <a id="rd-origin" class="rd-btn" href="#" target="_blank" rel="noopener noreferrer">打开原文</a>
+      <button id="rd-refetch" class="rd-btn ghost" type="button">重新抓取</button>
+      <button id="rd-delete" class="rd-btn ghost" type="button">删除快照</button>
+    </div>
+    <p id="rd-msg" class="rd-msg" role="status"></p>
+
+    <div id="rd-body" class="rd-body"></div>
+    <div id="rd-empty" class="rd-empty hidden">
+      <p>这张卡片还没有正文快照。</p>
+      <button id="rd-capture" class="rd-btn" type="button">抓取正文</button>
+    </div>
+  </article>
+</main>
+
+<script src="/assets/js/api.js?v=09bcb38a"></script>
+<script src="/assets/js/clip-read.js?v=45dab53c"></script>
+</body>
+</html>

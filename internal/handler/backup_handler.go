@@ -527,6 +527,9 @@ func (h *BackupHandler) applyPayload(payload backupPayload) (map[string]int, err
 		return nil, err
 	}
 
+	// 快照数据整体替换后重建全文索引
+	db.RebuildClipFTS()
+
 	writtenFiles := 0
 	if len(payload.Files) > 0 {
 		skipPrefixes := []string{"weather/", "weather\\"}
@@ -613,6 +616,7 @@ func (h *BackupHandler) Reset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.clearUploadDirPreserveWeather()
+	db.RebuildClipFTS()
 	OK(w, nil)
 }
 
