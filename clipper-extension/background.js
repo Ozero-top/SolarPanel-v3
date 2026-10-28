@@ -73,6 +73,49 @@ async function pageTitle(tabId) {
   }
 }
 
+/** 取当前标签页地址：快捷键触发时 tab.url 可能为空，回退到页面内 location.href */
+async function tabURL(tab) {
+  const direct = (tab && tab.url) || '';
+  if (/^https?:\/\//i.test(direct)) return direct;
+  if (!tab || !tab.id) return '';
+  try {
+    const [r] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => location.href,
+    });
+    return (r && r.result) || '';
+  } catch (_) {
+    return '';
+  }
+}
+
+/** 快捷键 / 右键保存没有弹窗，在页面右下角给一条轻提示作为可见反馈 */
+async function toast(tabId, text, ok) {
+  if (!tabId) return;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (msg, good) => {
+        const old = document.getElementById('__sp_clip_toast__');
+        if (old) old.remove();
+        const box = document.createElement('div');
+        box.id = '__sp_clip_toast__';
+        box.textContent = msg;
+        box.style.cssText =
+          'position:fixed;z-index:2147483647;right:18px;bottom:18px;padding:10px 16px;' +
+          'border-radius:10px;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.28);' +
+          'font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;' +
+          'background:' + (good ? '#15803d' : '#b91c1c') + ';';
+        document.documentElement.appendChild(box);
+        setTimeout(() => box.remove(), 2800);
+      },
+      args: [text, !!ok],
+    });
+  } catch (_) {
+    /* 页面禁止注入脚本时忽略，仍保留角标提示 */
+  }
+}
+
 async function enqueue(payload) {
   const data = await chrome.storage.local.get(QUEUE_KEY);
   const queue = data[QUEUE_KEY] || [];
@@ -128,18 +171,28 @@ async function saveClip(payload) {
 }
 
 async function quickSave(tab, extra) {
-  const url = (extra && extra.url) || (tab && tab.url) || '';
+  const tabId = (tab && tab.id) || 0;
+  const url = (extra && extra.url) || (await tabURL(tab));
   if (!/^https?:\/\//i.test(url)) {
     badge('!', '#b91c1c');
+    await toast(tabId, '当前页面不支持保存（仅支持 http / https）', false);
     return;
   }
   let title = (extra && extra.title) || (tab && tab.title) || '';
-  if (!title && tab && tab.id) title = await pageTitle(tab.id);
+  if (!title && tabId) title = await pageTitle(tabId);
   try {
     const res = await saveClip({ url, title, note: (extra && extra.note) || '', source: 'quick' });
-    badge(res && res.duplicate ? '=' : '✓', res && res.duplicate ? '#b45309' : '#15803d');
+    if (res && res.queued) {
+      badge('…', '#b45309');
+      await toast(tabId, '网络不可用，已存入离线队列，恢复后自动补发', true);
+      return;
+    }
+    const dup = !!(res && res.duplicate);
+    badge(dup ? '=' : '✓', dup ? '#b45309' : '#15803d');
+    await toast(tabId, dup ? '该链接已存在，可在导航页查看' : '已保存到 SolarPanel', true);
   } catch (e) {
     badge('!', '#b91c1c');
+    await toast(tabId, '保存失败：' + ((e && e.message) || '未知错误'), false);
   }
 }
 
