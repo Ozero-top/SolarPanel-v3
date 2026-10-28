@@ -31,12 +31,34 @@ async function init() {
     }
     chrome.tabs.create({ url: base + '/admin.html' });
   });
+  $('shortcutBtn').addEventListener('click', () => {
+    // Chrome 只允许用户在快捷键页手动绑定，扩展没有写入组合键的 API
+    chrome.tabs.create({ url: 'chrome://extensions/shortcuts' }, () => {
+      if (chrome.runtime.lastError) {
+        setStatus('请手动在地址栏打开 chrome://extensions/shortcuts 修改快捷键', 'err');
+      }
+    });
+  });
+  loadShortcut();
+  window.addEventListener('focus', loadShortcut);
 
   if (state.serverUrl) loadGroups();
 }
 
 function normalize(url) {
   return String(url || '').trim().replace(/\/+$/, '');
+}
+
+/** 读取当前快捷键绑定：Chrome 不提供写入 API，只能在浏览器快捷键页手动修改 */
+async function loadShortcut() {
+  const el = $('shortcutKey');
+  try {
+    const cmds = await chrome.commands.getAll();
+    const cmd = cmds.find((c) => c.name === 'save-page');
+    el.value = cmd && cmd.shortcut ? cmd.shortcut : '未绑定';
+  } catch (_) {
+    el.value = '未绑定';
+  }
 }
 
 // 服务端统一响应信封 {code,data,msg}：成功取 data，失败抛错

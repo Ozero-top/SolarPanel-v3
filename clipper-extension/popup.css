@@ -110,3 +110,5 @@ body {
 .alert button { border: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; padding: 0; }
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
 .foot { display: flex; justify-content: space-between; margin-top: 10px; font-size: 11px; color: var(--muted); }
+.shortcut-tip { margin: 6px 0 0; font-size: 11px; line-height: 1.55; color: var(--muted); }
+.shortcut-tip code { color: var(--text); background: rgba(127, 127, 127, .18); padding: 0 4px; border-radius: 4px; }

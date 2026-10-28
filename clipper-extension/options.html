@@ -39,6 +39,14 @@
   <span>默认分组</span>
   <select id="defaultGroup"><option value="0">默认分组（稍后读）</option></select>
 </div>
+<div class="row">
+  <span>快速保存快捷键</span>
+  <div class="inline">
+    <input id="shortcutKey" type="text" readonly placeholder="读取中…">
+    <button class="btn ghost" type="button" id="shortcutBtn">修改快捷键</button>
+  </div>
+  <p class="hint" style="margin:6px 0 0;font-size:12px">Chrome 不允许扩展自行写入组合键：点击「修改快捷键」会打开浏览器快捷键页，找到「保存当前页面到 SolarPanel」后点输入框按下想要的组合即可（如 <code>Ctrl+Shift+Y</code>）。若显示为空，通常是与其它扩展或输入法（Alt+Shift 切换语言）冲突，重新录制一个组合即可。</p>
+</div>
 
 <div class="inline" style="margin-bottom:6px">
   <button class="btn" type="button" id="saveBtn">保存</button>
