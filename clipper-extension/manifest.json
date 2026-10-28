@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SolarPanel 剪藏",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "一键把当前网页保存为 SolarPanel 导航卡片，支持右键、快捷键与分组。",
   "permissions": ["activeTab", "scripting", "contextMenus", "storage"],
   "action": {
