@@ -93,6 +93,24 @@ body {
   font-size: 13px;
 }
 
+/* 标签 chips：与正文保持同一阅读版心 */
+.rd-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.rd-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .rd-actions {
   display: flex;
   flex-wrap: wrap;

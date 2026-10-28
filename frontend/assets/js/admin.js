@@ -998,6 +998,7 @@ function openItemModal(item) {
   document.getElementById('i_url').value = item ? item.url : '';
   document.getElementById('i_lan').value = item ? item.lan_url : '';
   document.getElementById('i_desc').value = item ? item.description : '';
+  document.getElementById('i_tags').value = item && Array.isArray(item.tags) ? item.tags.join('，') : '';
 
   // 图标类型 + 手动文字回填 + __iconTextManual 标记
   const itype = item ? item.icon_type : 'favicon';
@@ -1361,6 +1362,7 @@ function bindItems() {
         url: document.getElementById('i_url').value.trim(),
         lan_url: document.getElementById('i_lan').value.trim(),
         description: document.getElementById('i_desc').value.trim(),
+        tags: document.getElementById('i_tags').value.split(/[,，;；\s]+/).map(t => t.trim()).filter(Boolean),
         icon_type: itype,
         icon_value: iconValue,
         icon_bg: document.getElementById('i_bg').value.trim(),
@@ -3405,6 +3407,13 @@ function renderClipSearch(list) {
       tip.style.marginTop = '2px';
       tip.textContent = hit.snippet;
       tdTitle.appendChild(tip);
+    }
+    if (Array.isArray(hit.tags) && hit.tags.length) {
+      const tagLine = document.createElement('div');
+      tagLine.className = 'form-hint';
+      tagLine.style.marginTop = '2px';
+      tagLine.textContent = hit.tags.map(t => '#' + t).join(' ');
+      tdTitle.appendChild(tagLine);
     }
     tr.appendChild(tdTitle);
 

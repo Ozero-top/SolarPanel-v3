@@ -34,14 +34,15 @@ type clipContentRow struct {
 
 // clipSearchHit 检索结果行
 type clipSearchHit struct {
-	ID        int    `json:"id"`
-	Title     string `json:"title"`
-	URL       string `json:"url"`
-	Group     string `json:"group"`
-	Excerpt   string `json:"excerpt"`
-	Snippet   string `json:"snippet"`
-	WordCount int    `json:"word_count"`
-	FetchedAt string `json:"fetched_at"`
+	ID        int      `json:"id"`
+	Title     string   `json:"title"`
+	URL       string   `json:"url"`
+	Group     string   `json:"group"`
+	Excerpt   string   `json:"excerpt"`
+	Snippet   string   `json:"snippet"`
+	WordCount int      `json:"word_count"`
+	FetchedAt string   `json:"fetched_at"`
+	Tags      []string `json:"tags"`
 }
 
 var clipFTS struct {
@@ -99,14 +100,14 @@ func saveClipSnapshot(itemID int, urlKey, rawURL, source, title, coverPath strin
 	return art.Hash, ""
 }
 
-// indexClipFTS 同步单条快照的全文索引（先删后插，保证标题变更也能刷新）
+// indexClipFTS 同步单条快照的全文索引（先删后插，保证标题/标签变更也能刷新）
 func indexClipFTS(itemID int, title, excerpt, contentMD string) {
 	if !clipFTSAvailable() {
 		return
 	}
 	db.DB.Exec(`DELETE FROM clip_fts WHERE rowid = ?`, itemID)
-	db.DB.Exec(`INSERT INTO clip_fts(rowid, title, excerpt, content_md) VALUES (?,?,?,?)`,
-		itemID, title, excerpt, contentMD)
+	db.DB.Exec(`INSERT INTO clip_fts(rowid, title, excerpt, content_md, tags) VALUES (?,?,?,?,?)`,
+		itemID, title, excerpt, contentMD, strings.Join(loadItemTags(itemID), " "))
 }
 
 // dropClipSnapshot 删除快照与索引（卡片本身保留）
@@ -147,7 +148,7 @@ func (h *ClipHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	}
 	var group string
 	db.DB.QueryRow("SELECT title FROM item_groups WHERE id = ?", it.GroupID).Scan(&group)
-	resp := map[string]any{"item": it, "group": group, "has_snapshot": false, "content": nil}
+	resp := map[string]any{"item": it, "group": group, "has_snapshot": false, "content": nil, "tags": loadItemTags(id)}
 	if c, err := loadClipContent(id); err == nil {
 		resp["has_snapshot"] = c.ContentMD != ""
 		resp["content"] = c
@@ -275,7 +276,8 @@ func (h *ClipHandler) Search(w http.ResponseWriter, r *http.Request) {
 			match = append(match, `"`+strings.ReplaceAll(t, `"`, `""`)+`"`)
 		}
 		rows, err = db.DB.Query(`SELECT c.item_id, COALESCE(i.title,''), COALESCE(i.url,''), COALESCE(g.title,''),
-			c.excerpt, c.content_md, c.word_count, c.fetched_at
+			c.excerpt, c.content_md, c.word_count, c.fetched_at,
+			COALESCE((SELECT group_concat(t.tag, ',') FROM item_tags t WHERE t.item_id = c.item_id), '')
 			FROM clip_fts f
 			JOIN clip_contents c ON c.item_id = f.rowid
 			LEFT JOIN items i ON i.id = c.item_id
@@ -285,15 +287,16 @@ func (h *ClipHandler) Search(w http.ResponseWriter, r *http.Request) {
 			LIMIT ? OFFSET ?`, strings.Join(match, " AND "), limit, offset)
 	} else {
 		where := make([]string, 0, len(terms))
-		args := make([]any, 0, len(terms)*3+2)
+		args := make([]any, 0, len(terms)*4+2)
 		for _, t := range terms {
-			where = append(where, "(i.title LIKE ? OR c.excerpt LIKE ? OR c.content_md LIKE ?)")
+			where = append(where, "(i.title LIKE ? OR c.excerpt LIKE ? OR c.content_md LIKE ? OR EXISTS (SELECT 1 FROM item_tags t WHERE t.item_id = c.item_id AND t.tag LIKE ?))")
 			like := "%" + t + "%"
-			args = append(args, like, like, like)
+			args = append(args, like, like, like, like)
 		}
 		args = append(args, limit, offset)
 		rows, err = db.DB.Query(`SELECT c.item_id, COALESCE(i.title,''), COALESCE(i.url,''), COALESCE(g.title,''),
-			c.excerpt, c.content_md, c.word_count, c.fetched_at
+			c.excerpt, c.content_md, c.word_count, c.fetched_at,
+			COALESCE((SELECT group_concat(t.tag, ',') FROM item_tags t WHERE t.item_id = c.item_id), '')
 			FROM clip_contents c
 			LEFT JOIN items i ON i.id = c.item_id
 			LEFT JOIN item_groups g ON g.id = i.group_id
@@ -310,10 +313,11 @@ func (h *ClipHandler) Search(w http.ResponseWriter, r *http.Request) {
 	list := []clipSearchHit{}
 	for rows.Next() {
 		var hit clipSearchHit
-		var contentMD string
-		if err := rows.Scan(&hit.ID, &hit.Title, &hit.URL, &hit.Group, &hit.Excerpt, &contentMD, &hit.WordCount, &hit.FetchedAt); err != nil {
+		var contentMD, tagStr string
+		if err := rows.Scan(&hit.ID, &hit.Title, &hit.URL, &hit.Group, &hit.Excerpt, &contentMD, &hit.WordCount, &hit.FetchedAt, &tagStr); err != nil {
 			continue
 		}
+		hit.Tags = splitTagList(tagStr)
 		hit.Snippet = clipSnippet(contentMD, terms, 160)
 		list = append(list, hit)
 	}

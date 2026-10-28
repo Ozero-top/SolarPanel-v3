@@ -163,6 +163,18 @@ func (h *PublicHandler) Public(w http.ResponseWriter, r *http.Request) {
 	}
 	itemQ.Close()
 
+	// 批量补齐标签，公开接口同步输出（前端暂不展示）
+	ids := make([]int, 0, len(items))
+	for _, it := range items {
+		ids = append(ids, it.ID)
+	}
+	tagMap := loadTagsForItems(ids)
+	for i := range items {
+		if tags, ok := tagMap[items[i].ID]; ok {
+			items[i].Tags = tags
+		}
+	}
+
 	// 先按分组归档卡片，避免分组 × 卡片的双重遍历
 	itemsByGroup := make(map[int][]ItemRow, len(groups))
 	for _, it := range items {

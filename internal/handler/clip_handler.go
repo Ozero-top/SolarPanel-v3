@@ -350,6 +350,7 @@ func (h *ClipHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dropClipSnapshot(body.ID)
+	deleteItemTags(body.ID)
 	if _, err := db.DB.Exec("DELETE FROM items WHERE id = ?", body.ID); err != nil {
 		Fail(w, "删除失败")
 		return

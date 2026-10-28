@@ -59,6 +59,18 @@ function render(data) {
   if (c && c.fetched_at) bits.push('抓取于 ' + c.fetched_at);
   $('rd-meta').textContent = bits.join(' · ');
 
+  // 标签：只做展示，编辑在后台卡片弹窗
+  const tagsBox = $('rd-tags');
+  tagsBox.textContent = '';
+  const tags = Array.isArray(data.tags) ? data.tags : [];
+  tagsBox.classList.toggle('hidden', tags.length === 0);
+  tags.forEach((t) => {
+    const chip = document.createElement('span');
+    chip.className = 'rd-tag';
+    chip.textContent = '#' + t;
+    tagsBox.appendChild(chip);
+  });
+
   const body = $('rd-body');
   body.textContent = '';
   if (!data.has_snapshot || !c || !c.content_md) {

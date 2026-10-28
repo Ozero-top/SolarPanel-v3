@@ -21,6 +21,128 @@
     $('view-result').classList.toggle('hidden', view !== 'result');
   }
 
+  /* ================= 离线队列（IndexedDB） =================
+     保存失败（断网/服务不可达）时把请求暂存本机，联网或下次打开自动重发。 */
+  const QUEUE_DB = 'sp-clip-queue';
+  const QUEUE_STORE = 'pending';
+  const QUEUE_MAX = 50;
+  let flushing = false;
+
+  function openQueueDB() {
+    return new Promise((resolve, reject) => {
+      if (!('indexedDB' in window)) {
+        reject(new Error('IndexedDB 不可用'));
+        return;
+      }
+      const req = indexedDB.open(QUEUE_DB, 1);
+      req.onupgradeneeded = () => {
+        const idb = req.result;
+        if (!idb.objectStoreNames.contains(QUEUE_STORE)) {
+          idb.createObjectStore(QUEUE_STORE, { keyPath: 'id', autoIncrement: true });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error('IndexedDB 打开失败'));
+    });
+  }
+
+  async function queueAll() {
+    const idb = await openQueueDB();
+    return new Promise((resolve, reject) => {
+      const tx = idb.transaction(QUEUE_STORE, 'readonly');
+      const req = tx.objectStore(QUEUE_STORE).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function queuePut(record) {
+    const idb = await openQueueDB();
+    return new Promise((resolve, reject) => {
+      const tx = idb.transaction(QUEUE_STORE, 'readwrite');
+      tx.objectStore(QUEUE_STORE).add(record);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function queueDrop(id) {
+    const idb = await openQueueDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction(QUEUE_STORE, 'readwrite');
+      tx.objectStore(QUEUE_STORE).delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  }
+
+  async function updateQueueHint() {
+    const el = $('queue-hint');
+    if (!el) return;
+    try {
+      const list = await queueAll();
+      el.classList.toggle('hidden', list.length === 0);
+      el.textContent = list.length
+        ? '本机还有 ' + list.length + ' 条离线剪藏待发送，联网后会自动重试。'
+        : '';
+    } catch (_) {
+      el.classList.add('hidden');
+    }
+  }
+
+  // 网络类失败才入队；权限/参数类失败直接提示，避免队列被脏数据堵死
+  function isNetworkError(err) {
+    if (!navigator.onLine) return true;
+    const msg = String((err && err.message) || '');
+    return msg.indexOf('网络请求失败') >= 0 || msg.indexOf('无法连接') >= 0 || msg.indexOf('Failed to fetch') >= 0;
+  }
+
+  async function enqueueClip(payload) {
+    try {
+      await queuePut({ payload: payload, created_at: Date.now() });
+      // 超出上限时丢弃最早的一条
+      const list = await queueAll();
+      if (list.length > QUEUE_MAX) {
+        await queueDrop(list[0].id);
+      }
+      await updateQueueHint();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function flushQueue() {
+    if (flushing || !navigator.onLine) return 0;
+    flushing = true;
+    let done = 0;
+    try {
+      const list = await queueAll();
+      for (const rec of list) {
+        try {
+          await API.post('/api/v1/clips', rec.payload);
+          await queueDrop(rec.id);
+          done++;
+        } catch (e) {
+          const msg = String((e && e.message) || '');
+          const permanent = /登录|权限|参数|已关闭|不能为空|开头|无法识别/.test(msg);
+          if (permanent) {
+            await queueDrop(rec.id);
+            continue;
+          }
+          break; // 仍是网络问题，保留剩余记录
+        }
+      }
+    } catch (_) {
+      /* IndexedDB 不可用时静默 */
+    } finally {
+      flushing = false;
+      await updateQueueHint();
+    }
+    if (done > 0) setMsg('已自动补发 ' + done + ' 条离线剪藏。', 'ok');
+    return done;
+  }
+
   function iconNode(item) {
     const box = $('result-icon');
     box.textContent = '';
@@ -170,14 +292,15 @@
     const btn = $('btn-save');
     btn.disabled = true;
     setMsg('正在保存，服务端抓取可能需要几秒…');
+    const payload = {
+      url: url,
+      title: $('f-title').value.trim(),
+      note: $('f-note').value.trim(),
+      group_id: parseInt($('f-group').value || '0', 10),
+      force: state.force,
+    };
     try {
-      const res = await API.post('/api/v1/clips', {
-        url: url,
-        title: $('f-title').value.trim(),
-        note: $('f-note').value.trim(),
-        group_id: parseInt($('f-group').value || '0', 10),
-        force: state.force,
-      });
+      const res = await API.post('/api/v1/clips', payload);
       if (res.duplicate && !state.force) {
         showDuplicate(res.item && res.item.id);
         setMsg('该链接已存在，可直接打开已有卡片，或选择「仍要另存」。', 'ok');
@@ -185,6 +308,14 @@
       }
       showSavedResult(res, url);
     } catch (err) {
+      // 断网 / 服务不可达：写入本机队列，联网后自动重发
+      if (isNetworkError(err)) {
+        const queued = await enqueueClip(payload);
+        if (queued) {
+          setMsg('无法连接服务器，已暂存到本机，联网后会自动重发。', 'ok');
+          return;
+        }
+      }
       const text = err.message || '保存失败';
       if (text.indexOf('已存在') >= 0) showDuplicate(-1);
       setMsg(text, 'error');
@@ -243,6 +374,14 @@
       showDuplicate(0);
       clearTimeout(state.previewTimer);
       state.previewTimer = setTimeout(preview, 700);
+    });
+
+    // 离线队列：进页面先补发，网络恢复时再补发一次
+    updateQueueHint();
+    flushQueue();
+    window.addEventListener('online', () => {
+      setMsg('网络已恢复，正在补发离线剪藏…');
+      flushQueue();
     });
   }
 

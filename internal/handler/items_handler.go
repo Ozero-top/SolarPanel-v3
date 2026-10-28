@@ -36,20 +36,21 @@ func NewItemsHandler(cfg *config.Config) *ItemsHandler {
 
 // ItemRow 卡片行
 type ItemRow struct {
-	ID          int    `json:"id"`
-	GroupID     int    `json:"group_id"`
-	Title       string `json:"title"`
-	URL         string `json:"url"`
-	LanURL      string `json:"lan_url"`
-	Description string `json:"description"`
-	IconType    string `json:"icon_type"`
-	IconValue   string `json:"icon_value"`
-	IconBG      string `json:"icon_bg"`
-	OpenMethod  int    `json:"open_method"`
-	Sort        int    `json:"sort"`
-	IsHidden    int    `json:"is_hidden"`
-	UserID      int    `json:"user_id"`
-	CreatedAt   string `json:"created_at"`
+	ID          int      `json:"id"`
+	GroupID     int      `json:"group_id"`
+	Title       string   `json:"title"`
+	URL         string   `json:"url"`
+	LanURL      string   `json:"lan_url"`
+	Description string   `json:"description"`
+	IconType    string   `json:"icon_type"`
+	IconValue   string   `json:"icon_value"`
+	IconBG      string   `json:"icon_bg"`
+	OpenMethod  int      `json:"open_method"`
+	Sort        int      `json:"sort"`
+	IsHidden    int      `json:"is_hidden"`
+	UserID      int      `json:"user_id"`
+	CreatedAt   string   `json:"created_at"`
+	Tags        []string `json:"tags,omitempty"`
 }
 
 func isValidURL(s string) bool {
@@ -719,7 +720,11 @@ func scanItem(row *sql.Row) (*ItemRow, error) {
 	err := row.Scan(&it.ID, &it.GroupID, &it.Title, &it.URL, &it.LanURL, &it.Description,
 		&it.IconType, &it.IconValue, &it.IconBG, &it.OpenMethod, &it.Sort, &it.IsHidden,
 		&it.UserID, &it.CreatedAt)
-	return &it, err
+	if err != nil {
+		return &it, err
+	}
+	it.Tags = loadItemTags(it.ID)
+	return &it, nil
 }
 
 func (h *ItemsHandler) Favicon(w http.ResponseWriter, r *http.Request) {
@@ -954,6 +959,17 @@ func (h *ItemsHandler) List(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []ItemRow{}
 	}
+	// 批量补齐标签，避免逐条查询
+	ids := make([]int, 0, len(items))
+	for _, it := range items {
+		ids = append(ids, it.ID)
+	}
+	tagMap := loadTagsForItems(ids)
+	for i := range items {
+		if tags, ok := tagMap[items[i].ID]; ok {
+			items[i].Tags = tags
+		}
+	}
 	OK(w, items)
 }
 
@@ -964,18 +980,19 @@ func (h *ItemsHandler) Edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		ID          uint   `json:"id"`
-		GroupID     uint   `json:"group_id"`
-		Title       string `json:"title"`
-		URL         string `json:"url"`
-		LanURL      string `json:"lan_url"`
-		Description string `json:"description"`
-		IconType    string `json:"icon_type"`
-		IconValue   string `json:"icon_value"`
-		IconBG      string `json:"icon_bg"`
-		OpenMethod  int    `json:"open_method"`
-		Sort        int    `json:"sort"`
-		IsHidden    int    `json:"is_hidden"`
+		ID          uint      `json:"id"`
+		GroupID     uint      `json:"group_id"`
+		Title       string    `json:"title"`
+		URL         string    `json:"url"`
+		LanURL      string    `json:"lan_url"`
+		Description string    `json:"description"`
+		IconType    string    `json:"icon_type"`
+		IconValue   string    `json:"icon_value"`
+		IconBG      string    `json:"icon_bg"`
+		OpenMethod  int       `json:"open_method"`
+		Sort        int       `json:"sort"`
+		IsHidden    int       `json:"is_hidden"`
+		Tags        *[]string `json:"tags"`
 	}
 	if err := BindJSON(r, &body); err != nil {
 		Fail(w, "参数错误")
@@ -1025,6 +1042,9 @@ func (h *ItemsHandler) Edit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		lastID, _ := res.LastInsertId()
+		if body.Tags != nil {
+			setItemTags(int(lastID), *body.Tags)
+		}
 		it, _ := scanItem(db.DB.QueryRow("SELECT id, group_id, title, url, lan_url, description, icon_type, icon_value, icon_bg, open_method, sort, is_hidden, user_id, created_at FROM items WHERE id=?", lastID))
 		OK(w, it)
 		return
@@ -1035,6 +1055,12 @@ func (h *ItemsHandler) Edit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		Fail(w, "保存失败")
 		return
+	}
+	if body.Tags != nil {
+		setItemTags(int(body.ID), *body.Tags)
+	} else {
+		// 标题可能变化，刷新全文索引里的标题字段
+		refreshClipFTS(int(body.ID))
 	}
 	it, err := scanItem(db.DB.QueryRow("SELECT id, group_id, title, url, lan_url, description, icon_type, icon_value, icon_bg, open_method, sort, is_hidden, user_id, created_at FROM items WHERE id=?", body.ID))
 	if err != nil {
@@ -1057,8 +1083,9 @@ func (h *ItemsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		Fail(w, "参数错误")
 		return
 	}
-	// 快照与全文索引随卡片一起清理（不依赖 FOREIGN KEY 级联是否开启）
+	// 快照、全文索引与标签随卡片一起清理（不依赖 FOREIGN KEY 级联是否开启）
 	dropClipSnapshot(int(body.ID))
+	deleteItemTags(int(body.ID))
 	db.DB.Exec("DELETE FROM items WHERE id=?", body.ID)
 	OK(w, nil)
 }

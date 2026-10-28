@@ -42,6 +42,13 @@ type backupPayload struct {
 	URLKeys      map[string]string   `json:"url_keys,omitempty"`
 	Tokens       []backupTokenRow    `json:"tokens,omitempty"`
 	ClipContents []backupClipContent `json:"clip_contents,omitempty"`
+	ItemTags     []backupItemTag     `json:"item_tags,omitempty"`
+}
+
+// backupItemTag 卡片标签（P2）
+type backupItemTag struct {
+	ItemID int    `json:"item_id"`
+	Tag    string `json:"tag"`
 }
 
 // backupTokenRow 个人访问令牌（只含哈希，不含明文）
@@ -288,6 +295,16 @@ func (h *BackupHandler) collectPayload(includeFiles bool) (backupPayload, error)
 		contentQ.Close()
 	}
 
+	if tagQ, err := db.DB.Query(`SELECT item_id, tag FROM item_tags ORDER BY item_id ASC, tag ASC`); err == nil {
+		for tagQ.Next() {
+			var t backupItemTag
+			if tagQ.Scan(&t.ItemID, &t.Tag) == nil {
+				payload.ItemTags = append(payload.ItemTags, t)
+			}
+		}
+		tagQ.Close()
+	}
+
 	payload.Version = "1.0"
 	payload.Time = time.Now().Format("2006-01-02 15:04:05")
 
@@ -439,6 +456,7 @@ func (h *BackupHandler) applyPayload(payload backupPayload) (map[string]int, err
 	defer tx.Rollback()
 
 	tx.Exec("DELETE FROM clip_contents")
+	tx.Exec("DELETE FROM item_tags")
 	tx.Exec("DELETE FROM clip_requests")
 	tx.Exec("DELETE FROM api_tokens")
 	tx.Exec("DELETE FROM items")
@@ -519,6 +537,14 @@ func (h *BackupHandler) applyPayload(payload backupPayload) (map[string]int, err
 			c.FetchedAt, c.HTTPStatus, c.ContentHash, c.WordCount, c.FetchError)
 	}
 
+	for _, t := range payload.ItemTags {
+		newID, ok := itemIDMap[int64(t.ItemID)]
+		if !ok {
+			continue
+		}
+		tx.Exec(`INSERT OR IGNORE INTO item_tags (item_id, tag) VALUES (?,?)`, newID, t.Tag)
+	}
+
 	for _, f := range payload.Feeds {
 		tx.Exec("INSERT INTO custom_feeds (title, url, sort, enabled) VALUES (?, ?, ?, ?)", f.Title, f.URL, f.Sort, f.Enabled)
 	}
@@ -581,6 +607,7 @@ func (h *BackupHandler) applyPayload(payload backupPayload) (map[string]int, err
 		"groups":   len(payload.Groups),
 		"items":    len(payload.Items),
 		"feeds":    len(payload.Feeds),
+		"tags":     len(payload.ItemTags),
 		"files":    writtenFiles,
 	}, nil
 }
@@ -598,6 +625,7 @@ func (h *BackupHandler) Reset(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	tx.Exec("DELETE FROM clip_contents")
+	tx.Exec("DELETE FROM item_tags")
 	tx.Exec("DELETE FROM clip_requests")
 	tx.Exec("DELETE FROM api_tokens")
 	tx.Exec("DELETE FROM items")

@@ -325,6 +325,15 @@ var schemaDDL = []string{
 		fetch_error  TEXT NOT NULL DEFAULT '',
 		FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
 	)`,
+
+	// 剪藏标签（P2）：一卡多标签，卡片删除时级联清理
+	`CREATE TABLE IF NOT EXISTS item_tags (
+		item_id INTEGER NOT NULL,
+		tag     TEXT NOT NULL,
+		PRIMARY KEY (item_id, tag),
+		FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_item_tags_tag ON item_tags(tag)`,
 }
 
 // backfillParentIDs 孤儿分组清理：parent_id 指向不存在的 id 时重置为 0

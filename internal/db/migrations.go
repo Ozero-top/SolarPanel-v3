@@ -41,6 +41,9 @@ var migrations = []Migration{
 
 	// v5: 剪藏正文快照的全文检索（P1）
 	{Version: 5, Name: "clip: FTS5 index", Fn: migrateV5ClipFTS},
+
+	// v6: 剪藏标签（P2）— item_tags 表，并把标签并入全文索引
+	{Version: 6, Name: "clip: item_tags + FTS tags", Fn: migrateV6ItemTags},
 }
 
 // migrateV5ClipFTS 建立正文快照的 FTS5 索引并全量回填。
@@ -63,13 +66,16 @@ func migrateV5ClipFTS() error {
 	if !created {
 		return lastErr
 	}
-	RebuildClipFTS()
+	// 旧结构（无 tags 列）由 v6 统一重建，避免此处重建报“无 tags 列”
+	if clipFTSHasTags() {
+		RebuildClipFTS()
+	}
 	log.Println("[migrate] v5: clip_fts 全文索引已就绪")
 	return nil
 }
 
 // RebuildClipFTS 全量重建快照索引（启动时数量不一致、恢复备份后调用，幂等）。
-// rowid 直接使用 item_id，便于与 items 关联。
+// rowid 直接使用 item_id，便于与 items 关联；tags 列拼接该卡片的全部标签。
 func RebuildClipFTS() {
 	if DB == nil {
 		return
@@ -78,8 +84,9 @@ func RebuildClipFTS() {
 		log.Printf("[clip] 清空 FTS 索引失败: %v", err)
 		return
 	}
-	_, err := DB.Exec(`INSERT INTO clip_fts(rowid, title, excerpt, content_md)
-		SELECT c.item_id, COALESCE(i.title, ''), c.excerpt, c.content_md
+	_, err := DB.Exec(`INSERT INTO clip_fts(rowid, title, excerpt, content_md, tags)
+		SELECT c.item_id, COALESCE(i.title, ''), c.excerpt, c.content_md,
+		       COALESCE((SELECT group_concat(t.tag, ' ') FROM item_tags t WHERE t.item_id = c.item_id), '')
 		FROM clip_contents c LEFT JOIN items i ON i.id = c.item_id`)
 	if err != nil {
 		log.Printf("[clip] 重建 FTS 索引失败: %v", err)
@@ -93,6 +100,15 @@ func EnsureClipFTS() {
 	if DB == nil {
 		return
 	}
+	// 旧库的 clip_fts 只有三列（无 tags）时，按新结构重建
+	if !clipFTSHasTags() {
+		if err := recreateClipFTS(); err != nil {
+			log.Printf("[clip] 重建 FTS 表结构失败: %v", err)
+			return
+		}
+		RebuildClipFTS()
+		return
+	}
 	var indexed, total int
 	DB.QueryRow(`SELECT COUNT(*) FROM clip_fts`).Scan(&indexed)
 	DB.QueryRow(`SELECT COUNT(*) FROM clip_contents`).Scan(&total)
@@ -100,6 +116,69 @@ func EnsureClipFTS() {
 		log.Printf("[clip] FTS 索引条数不一致（%d/%d），重建", indexed, total)
 		RebuildClipFTS()
 	}
+}
+
+// migrateV6ItemTags 建立标签表，并把 tags 列并入全文索引（FTS5 列变更需删表重建）
+func migrateV6ItemTags() error {
+	if _, err := DB.Exec(`CREATE TABLE IF NOT EXISTS item_tags (
+		item_id INTEGER NOT NULL,
+		tag     TEXT NOT NULL,
+		PRIMARY KEY (item_id, tag),
+		FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+	)`); err != nil {
+		return err
+	}
+	if _, err := DB.Exec(`CREATE INDEX IF NOT EXISTS idx_item_tags_tag ON item_tags(tag)`); err != nil {
+		return err
+	}
+	if err := recreateClipFTS(); err != nil {
+		return err
+	}
+	RebuildClipFTS()
+	log.Println("[migrate] v6: item_tags 与全文索引(tags) 已就绪")
+	return nil
+}
+
+// recreateClipFTS 按四列结构（含 tags）重建 FTS 虚表，trigram 不可用时退回 unicode61
+func recreateClipFTS() error {
+	if DB == nil {
+		return nil
+	}
+	DB.Exec(`DROP TABLE IF EXISTS clip_fts`)
+	ddls := []string{
+		`CREATE VIRTUAL TABLE IF NOT EXISTS clip_fts USING fts5(title, excerpt, content_md, tags, tokenize='trigram')`,
+		`CREATE VIRTUAL TABLE IF NOT EXISTS clip_fts USING fts5(title, excerpt, content_md, tags, tokenize='unicode61 remove_diacritics 2')`,
+	}
+	var lastErr error
+	for _, ddl := range ddls {
+		if _, err := DB.Exec(ddl); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+	}
+	return lastErr
+}
+
+// clipFTSHasTags 检查当前 FTS 虚表是否包含 tags 列
+func clipFTSHasTags() bool {
+	rows, err := DB.Query(`PRAGMA table_info(clip_fts)`)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, ctype string
+		var dflt any
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			continue
+		}
+		if name == "tags" {
+			return true
+		}
+	}
+	return false
 }
 
 // backfillV4Clip v4 迁移专用：确保 url_key 列与索引存在，并回填已有卡片
