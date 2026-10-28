@@ -1084,7 +1084,7 @@ func (h *ItemsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 快照、全文索引与标签随卡片一起清理（不依赖 FOREIGN KEY 级联是否开启）
-	dropClipSnapshot(int(body.ID))
+	dropClipSnapshotWithFiles(h.cfg, int(body.ID))
 	deleteItemTags(int(body.ID))
 	db.DB.Exec("DELETE FROM items WHERE id=?", body.ID)
 	OK(w, nil)

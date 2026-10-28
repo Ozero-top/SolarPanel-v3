@@ -2,7 +2,9 @@ package handler
 
 import (
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 
 	"solarpanel/internal/auth"
 	"solarpanel/internal/db"
@@ -30,6 +32,8 @@ var allowedSettingKeys = map[string]struct{}{
 	"update_check":          {}, "update_check_interval": {},
 	"auto_backup_enabled": {}, "auto_backup_interval": {},
 	"clip_enabled": {}, "clip_default_group": {}, "clip_default_capture": {},
+	"clip_ai_enabled": {}, "clip_ai_provider": {}, "clip_ai_base_url": {},
+	"clip_ai_api_key": {}, "clip_ai_model": {}, "clip_image_domains": {},
 }
 
 // settingValueWhitelist 特定键的取值白名单（与 frontend/themes.json / card_style 可选项保持同步）
@@ -44,6 +48,8 @@ var settingValueWhitelist = map[string]map[string]bool{
 	"auto_backup_interval": {"1": true, "3": true, "5": true, "7": true, "9": true},
 	"clip_enabled":         {"0": true, "1": true},
 	"clip_default_capture": {"card": true, "snapshot": true},
+	"clip_ai_enabled":      {"0": true, "1": true},
+	"clip_ai_provider":     {"local": true, "api": true},
 	// 时钟/天气字体（与 frontend/assets/js/api.js SP_CLOCK_FONTS 保持一致；空 = 跟随系统）
 	"clock_font": {
 		"":         true,
@@ -173,6 +179,31 @@ func (h *SettingsHandler) Save(w http.ResponseWriter, r *http.Request) {
 				n = 24
 			}
 			v = strconv.Itoa(n)
+		}
+		// 外部 AI 接口地址/密钥/模型：去空格并限制长度，地址必须为 http(s)
+		if k == "clip_ai_base_url" {
+			v = strings.TrimRight(strings.TrimSpace(v), "/")
+			if len(v) > 300 {
+				continue
+			}
+			if v != "" {
+				u, err := url.Parse(v)
+				if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+					continue
+				}
+			}
+		}
+		if k == "clip_ai_api_key" && len(strings.TrimSpace(v)) > 300 {
+			continue
+		}
+		if k == "clip_ai_model" {
+			v = strings.TrimSpace(v)
+			if len(v) > 80 {
+				continue
+			}
+		}
+		if k == "clip_image_domains" && len(v) > 2000 {
+			continue
 		}
 		if k == "guest_password_hash" {
 			if v == "" {

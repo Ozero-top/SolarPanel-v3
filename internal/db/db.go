@@ -86,6 +86,11 @@ var expectedColumns = map[string][]struct{ Name, Def string }{
 		{"enabled", "INTEGER NOT NULL DEFAULT 1"},
 		{"created_at", "TEXT NOT NULL DEFAULT ''"},
 	},
+	"clip_contents": {
+		{"summary", "TEXT NOT NULL DEFAULT ''"},
+		{"auto_tags", "TEXT NOT NULL DEFAULT ''"},
+		{"screenshot_path", "TEXT NOT NULL DEFAULT ''"},
+	},
 }
 
 // ensureColumns 为旧库补齐缺失列（幂等，表不存在时跳过）
@@ -323,6 +328,9 @@ var schemaDDL = []string{
 		content_hash TEXT NOT NULL DEFAULT '',
 		word_count   INTEGER NOT NULL DEFAULT 0,
 		fetch_error  TEXT NOT NULL DEFAULT '',
+		summary      TEXT NOT NULL DEFAULT '',
+		auto_tags    TEXT NOT NULL DEFAULT '',
+		screenshot_path TEXT NOT NULL DEFAULT '',
 		FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
 	)`,
 

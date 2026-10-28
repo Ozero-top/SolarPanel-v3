@@ -349,7 +349,7 @@ func (h *ClipHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		Err(w, http.StatusForbidden, 1, "只能撤销自己剪藏的卡片")
 		return
 	}
-	dropClipSnapshot(body.ID)
+	dropClipSnapshotWithFiles(h.cfg, body.ID)
 	deleteItemTags(body.ID)
 	if _, err := db.DB.Exec("DELETE FROM items WHERE id = ?", body.ID); err != nil {
 		Fail(w, "删除失败")
@@ -390,14 +390,14 @@ func (h *ClipHandler) Preview(w http.ResponseWriter, r *http.Request) {
 	}
 	existing, _ := findItemByURLKey(key)
 	resp := map[string]any{
-		"url":          norm,
-		"url_key":      key,
-		"title":        page.Title,
-		"description":  page.Desc,
-		"cover":        "",
-		"duplicate":    existing != nil,
-		"warnings":     []string{},
-		"existing_id":  0,
+		"url":         norm,
+		"url_key":     key,
+		"title":       page.Title,
+		"description": page.Desc,
+		"cover":       "",
+		"duplicate":   existing != nil,
+		"warnings":    []string{},
+		"existing_id": 0,
 	}
 	if page.FetchError != "" {
 		resp["warnings"] = []string{"fetch_failed"}

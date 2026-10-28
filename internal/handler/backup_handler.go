@@ -79,6 +79,10 @@ type backupClipContent struct {
 	ContentHash string `json:"content_hash"`
 	WordCount   int    `json:"word_count"`
 	FetchError  string `json:"fetch_error"`
+	// P2 增强字段（旧备份缺省为空）
+	Summary        string `json:"summary,omitempty"`
+	AutoTags       string `json:"auto_tags,omitempty"`
+	ScreenshotPath string `json:"screenshot_path,omitempty"`
 }
 
 const (
@@ -123,6 +127,8 @@ func (h *BackupHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
 			h.Export(w, r)
 		case "list":
 			h.List(w, r)
+		case "stats":
+			h.Stats(w, r)
 		case "download":
 			h.Download(w, r)
 		default:
@@ -158,6 +164,41 @@ func (h *BackupHandler) requireAdmin(w http.ResponseWriter, r *http.Request, msg
 		return false
 	}
 	return true
+}
+
+// Stats GET /api/backup.php?action=stats：统计正文快照与整页截图的占用体积，
+// 供备份页提示导出体积（P2 遗留项）。
+func (h *BackupHandler) Stats(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdmin(w, r, "仅管理员可查看备份体积") {
+		return
+	}
+	var snapshotCount int
+	var snapshotBytes int64
+	if err := db.DB.QueryRow(`SELECT COUNT(*),
+		COALESCE(SUM(LENGTH(CAST(content_md AS BLOB)) + LENGTH(CAST(COALESCE(summary,'') AS BLOB))), 0)
+		FROM clip_contents WHERE content_md <> ''`).Scan(&snapshotCount, &snapshotBytes); err != nil {
+		snapshotCount, snapshotBytes = 0, 0
+	}
+
+	var shotCount int
+	var shotBytes int64
+	shotDir := filepath.Join(h.cfg.UploadDir, "clips", "shots")
+	filepath.Walk(shotDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || info.IsDir() {
+			return nil
+		}
+		shotCount++
+		shotBytes += info.Size()
+		return nil
+	})
+
+	OK(w, map[string]any{
+		"snapshot_count":   snapshotCount,
+		"snapshot_bytes":   snapshotBytes,
+		"screenshot_count": shotCount,
+		"screenshot_bytes": shotBytes,
+		"total_bytes":      snapshotBytes + shotBytes,
+	})
 }
 
 func (h *BackupHandler) Export(w http.ResponseWriter, r *http.Request) {
@@ -284,11 +325,13 @@ func (h *BackupHandler) collectPayload(includeFiles bool) (backupPayload, error)
 	}
 
 	if contentQ, err := db.DB.Query(`SELECT item_id, url_key, url_original, source, excerpt, content_md, cover_path,
-			fetched_at, http_status, content_hash, word_count, fetch_error FROM clip_contents ORDER BY item_id ASC`); err == nil {
+			fetched_at, http_status, content_hash, word_count, fetch_error,
+			summary, auto_tags, screenshot_path FROM clip_contents ORDER BY item_id ASC`); err == nil {
 		for contentQ.Next() {
 			var c backupClipContent
 			if contentQ.Scan(&c.ItemID, &c.URLKey, &c.URLOriginal, &c.Source, &c.Excerpt, &c.ContentMD, &c.CoverPath,
-				&c.FetchedAt, &c.HTTPStatus, &c.ContentHash, &c.WordCount, &c.FetchError) == nil {
+				&c.FetchedAt, &c.HTTPStatus, &c.ContentHash, &c.WordCount, &c.FetchError,
+				&c.Summary, &c.AutoTags, &c.ScreenshotPath) == nil {
 				payload.ClipContents = append(payload.ClipContents, c)
 			}
 		}
@@ -532,9 +575,11 @@ func (h *BackupHandler) applyPayload(payload backupPayload) (map[string]int, err
 			continue
 		}
 		tx.Exec(`INSERT OR REPLACE INTO clip_contents (item_id, url_key, url_original, source, excerpt, content_md, cover_path,
-				fetched_at, http_status, content_hash, word_count, fetch_error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+				fetched_at, http_status, content_hash, word_count, fetch_error,
+				summary, auto_tags, screenshot_path) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			newID, c.URLKey, c.URLOriginal, c.Source, c.Excerpt, c.ContentMD, c.CoverPath,
-			c.FetchedAt, c.HTTPStatus, c.ContentHash, c.WordCount, c.FetchError)
+			c.FetchedAt, c.HTTPStatus, c.ContentHash, c.WordCount, c.FetchError,
+			c.Summary, c.AutoTags, c.ScreenshotPath)
 	}
 
 	for _, t := range payload.ItemTags {

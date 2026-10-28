@@ -788,6 +788,15 @@
           </div>
           <div class="backup-list" id="manualBackupList"><div class="backup-list-empty">暂无手动备份</div></div>
         </div>
+        <div class="backup-row" style="margin-top:12px">
+          <div class="backup-info">
+            <b>剪藏快照占用</b>
+            <span>正文快照与整页截图会随 JSON 备份一起导出；导出体积过大时，建议先在阅读页清理不需要的快照。</span>
+          </div>
+          <div class="backup-row-actions">
+            <span class="form-hint" id="clipStorageHint" style="margin:0">统计中…</span>
+          </div>
+        </div>
       </div>
 
       <!-- 更新日志 -->
@@ -853,6 +862,36 @@
               <option value="card">仅导航卡片</option>
               <option value="snapshot">卡片 + 正文快照</option>
             </select>
+          </div>
+        </div>
+
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>摘要与自动标签</b>
+            <span>保存正文快照时自动生成摘要与标签。默认使用本地词频规则；选择「外部 API」并填写 OpenAI 兼容接口后改用外部模型，调用失败会自动回退本地规则。</span>
+          </div>
+          <div class="backup-row-actions" style="flex-direction:column;align-items:stretch;gap:8px;min-width:280px">
+            <label class="form-hint" style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+              <input type="checkbox" id="s_clip_ai_enabled"> 启用摘要与自动标签
+            </label>
+            <select class="select" id="s_clip_ai_provider">
+              <option value="local">本地规则（默认）</option>
+              <option value="api">外部 API</option>
+            </select>
+            <input class="input" id="s_clip_ai_base_url" placeholder="接口地址，如 https://api.openai.com/v1">
+            <input class="input" id="s_clip_ai_api_key" type="password" placeholder="API Key（仅管理员可见）">
+            <input class="input" id="s_clip_ai_model" placeholder="模型，如 gpt-4o-mini">
+            <span class="form-hint">外部接口需兼容 /chat/completions，超时 20 秒。</span>
+          </div>
+        </div>
+
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>快照图片域名白名单</b>
+            <span>限制阅读页自动加载的图片域名，列表外的图片只显示外链，避免向第三方泄露阅读者信息。留空表示不限制，多个域名用逗号或空格分隔（子域自动放行）。</span>
+          </div>
+          <div class="backup-row-actions">
+            <input class="input" id="s_clip_image_domains" placeholder="example.com, cdn.example.com" style="width:280px">
           </div>
         </div>
 
@@ -1256,6 +1295,6 @@
 
   <script src="assets/js/qrcode.min.js"></script>
   <script src="assets/js/api.js?v=09bcb38a"></script>
-  <script src="assets/js/admin.js?v=39dbb88b"></script>
+  <script src="assets/js/admin.js?v=d04fc732"></script>
 </body>
 </html>

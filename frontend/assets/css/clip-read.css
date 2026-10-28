@@ -111,6 +111,44 @@ body {
   line-height: 18px;
 }
 
+/* 自动标签：虚线边框与用户标签区分 */
+.rd-tags-auto .rd-tag {
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  color: color-mix(in srgb, var(--accent) 80%, var(--text));
+}
+
+.rd-summary {
+  margin: 10px 0 14px;
+  padding: 12px 16px;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-radius: 0 10px 10px 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.rd-shot {
+  margin: 18px 0 0;
+  text-align: center;
+}
+
+.rd-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.rd-shot-cap {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .rd-actions {
   display: flex;
   flex-wrap: wrap;

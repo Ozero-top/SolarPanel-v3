@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f1115">
 <title>正文快照 · SolarPanel</title>
-<link rel="stylesheet" href="/assets/css/clip-read.css?v=552706b4">
+<link rel="stylesheet" href="/assets/css/clip-read.css?v=921ec5a7">
 </head>
 <body>
 <header class="rd-bar">
@@ -25,6 +25,8 @@
     <h1 id="rd-title"></h1>
     <p id="rd-meta" class="rd-meta"></p>
     <div id="rd-tags" class="rd-tags hidden"></div>
+    <p id="rd-summary" class="rd-summary hidden"></p>
+    <div id="rd-aitags" class="rd-tags rd-tags-auto hidden"></div>
 
     <div class="rd-actions">
       <a id="rd-origin" class="rd-btn" href="#" target="_blank" rel="noopener noreferrer">打开原文</a>
@@ -32,6 +34,13 @@
       <button id="rd-delete" class="rd-btn ghost" type="button">删除快照</button>
     </div>
     <p id="rd-msg" class="rd-msg" role="status"></p>
+
+    <div id="rd-shot" class="rd-shot hidden">
+      <a id="rd-shot-link" href="#" target="_blank" rel="noopener noreferrer" title="查看完整截图">
+        <img id="rd-shot-img" alt="整页截图" loading="lazy">
+      </a>
+      <p class="rd-shot-cap">整页截图（点击查看原图）</p>
+    </div>
 
     <div id="rd-body" class="rd-body"></div>
     <div id="rd-empty" class="rd-empty hidden">
@@ -42,6 +51,6 @@
 </main>
 
 <script src="/assets/js/api.js?v=09bcb38a"></script>
-<script src="/assets/js/clip-read.js?v=9f6dbcba"></script>
+<script src="/assets/js/clip-read.js?v=023a220c"></script>
 </body>
 </html>

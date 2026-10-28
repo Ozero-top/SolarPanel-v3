@@ -132,7 +132,7 @@ function applyRoleUI() {
     const auditTab = document.querySelector('.admin-tabs .tab[data-tab="audit"]');
     if (auditTab) auditTab.style.display = 'none';
     // 剪藏设置：改全站开关/默认分组仅管理员，编辑者仍可管理自己的 Token
-    document.querySelectorAll('#tab-clip #s_clip_enabled, #tab-clip #s_clip_default_group, #tab-clip #s_clip_default_capture, #tab-clip #saveClipSettingsBtn').forEach(el => { el.disabled = true; });
+    document.querySelectorAll('#tab-clip #s_clip_enabled, #tab-clip #s_clip_default_group, #tab-clip #s_clip_default_capture, #tab-clip #s_clip_ai_enabled, #tab-clip #s_clip_ai_provider, #tab-clip #s_clip_ai_base_url, #tab-clip #s_clip_ai_api_key, #tab-clip #s_clip_ai_model, #tab-clip #s_clip_image_domains, #tab-clip #saveClipSettingsBtn').forEach(el => { el.disabled = true; });
     // 默认页签为站点设置，编辑者不可见 → 回退到卡片管理
     const firstTab = document.querySelector('.admin-tabs .tab[data-tab="items"]');
     if (firstTab) activateTab(firstTab);
@@ -2541,6 +2541,28 @@ function renderBackupList(el, list, type) {
   });
 }
 
+// loadClipStorageStats 备份页显示正文快照与整页截图的占用体积
+async function loadClipStorageStats() {
+  const hint = document.getElementById('clipStorageHint');
+  if (!hint || state.role !== 'admin') return;
+  try {
+    const s = await API.get(API_BASE + 'backup.php?action=stats');
+    hint.textContent =
+      '正文快照 ' + (s.snapshot_count || 0) + ' 条（' + formatSize(s.snapshot_bytes) + '） · ' +
+      '整页截图 ' + (s.screenshot_count || 0) + ' 张（' + formatSize(s.screenshot_bytes) + '） · ' +
+      '合计 ' + formatSize(s.total_bytes);
+  } catch (e) {
+    hint.textContent = '占用统计失败：' + e.message;
+  }
+}
+
+function formatSize(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1024 / 1024).toFixed(2) + ' MB';
+}
+
 async function loadBackupList() {
   const autoEl = document.getElementById('autoBackupList');
   const manualEl = document.getElementById('manualBackupList');
@@ -2549,6 +2571,7 @@ async function loadBackupList() {
     const res = await API.get(API_BASE + 'backup.php?action=list');
     renderBackupList(autoEl, res.auto || [], 'auto');
     renderBackupList(manualEl, res.manual || [], 'manual');
+    loadClipStorageStats();
   } catch (e) {
     autoEl.innerHTML = '';
     const err = document.createElement('div');
@@ -3314,6 +3337,12 @@ async function loadClipPage() {
     if (g.value !== (s.clip_default_group || '0')) g.value = '0';
     document.getElementById('s_clip_default_capture').value =
       (s.clip_default_capture === 'snapshot') ? 'snapshot' : 'card';
+    document.getElementById('s_clip_ai_enabled').checked = (s.clip_ai_enabled || '1') !== '0';
+    document.getElementById('s_clip_ai_provider').value = s.clip_ai_provider === 'api' ? 'api' : 'local';
+    document.getElementById('s_clip_ai_base_url').value = s.clip_ai_base_url || '';
+    document.getElementById('s_clip_ai_api_key').value = s.clip_ai_api_key || '';
+    document.getElementById('s_clip_ai_model').value = s.clip_ai_model || '';
+    document.getElementById('s_clip_image_domains').value = s.clip_image_domains || '';
   } catch (_) {
     /* 编辑者无站点设置读取权限时保持默认展示 */
   }
@@ -3351,6 +3380,12 @@ async function saveClipSettings() {
       clip_enabled: collectSetting('clip_enabled'),
       clip_default_group: collectSetting('clip_default_group'),
       clip_default_capture: collectSetting('clip_default_capture'),
+      clip_ai_enabled: collectSetting('clip_ai_enabled'),
+      clip_ai_provider: collectSetting('clip_ai_provider'),
+      clip_ai_base_url: collectSetting('clip_ai_base_url'),
+      clip_ai_api_key: collectSetting('clip_ai_api_key'),
+      clip_ai_model: collectSetting('clip_ai_model'),
+      clip_image_domains: collectSetting('clip_image_domains'),
     });
     toast('剪藏设置已保存', 'success');
   } catch (e) {

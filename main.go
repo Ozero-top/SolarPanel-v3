@@ -332,6 +332,7 @@ func main() {
 		v1.Get("/clips/search", clipHandler.Search)
 		v1.Get("/clips/{id}", clipHandler.Detail)
 		v1.Post("/clips/{id}/refetch", clipHandler.Refetch)
+		v1.Post("/clips/{id}/screenshot", clipHandler.Screenshot)
 		v1.Delete("/clips/{id}/content", clipHandler.DeleteContent)
 		v1.Get("/me", clipHandler.Me)
 		v1.Get("/groups", clipHandler.Groups)

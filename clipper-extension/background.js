@@ -174,6 +174,144 @@ chrome.commands.onCommand.addListener(async (command) => {
   await quickSave(tab, { url: tab.url });
 });
 
+/* ---------- 整页截图（P2）：滚动逐屏截图后在 OffscreenCanvas 拼接 ---------- */
+
+const SHOT_MAX_CSS_HEIGHT = 12000; // 超长页面截断，避免 canvas 与上传体积失控
+const SHOT_STEP_DELAY = 320;       // captureVisibleTab 每秒最多 2 次，留足间隔
+const SHOT_MAX_CANVAS = 16000;     // Chrome canvas 单边上限保护
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function dataUrlToBlob(dataUrl) {
+  const comma = dataUrl.indexOf(',');
+  const mimeMatch = /data:([^;]+)/.exec(dataUrl.slice(0, comma));
+  const binary = atob(dataUrl.slice(comma + 1));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mimeMatch ? mimeMatch[1] : 'image/png' });
+}
+
+async function shotMetrics(tabId) {
+  const [r] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const doc = document.documentElement;
+      const body = document.body;
+      return {
+        width: Math.max(1, window.innerWidth),
+        height: Math.max(1, Math.max(doc ? doc.scrollHeight : 0, body ? body.scrollHeight : 0)),
+        viewport: Math.max(1, window.innerHeight),
+        scrollY: window.scrollY || doc.scrollTop || 0,
+      };
+    },
+  });
+  return r && r.result;
+}
+
+async function shotScrollTo(tabId, top) {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (y) => window.scrollTo({ top: y, left: 0, behavior: 'instant' }),
+    args: [top],
+  });
+}
+
+async function uploadShot(cfg, itemId, blob) {
+  const res = await fetch(cfg.serverUrl + '/api/v1/clips/' + itemId + '/screenshot', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + cfg.token,
+      'Content-Type': blob.type || 'image/png',
+    },
+    body: blob,
+  });
+  let data = {};
+  try { data = await res.json(); } catch (_) { /* 非 JSON 响应 */ }
+  if (!res.ok) {
+    const err = new Error(data.msg || ('HTTP ' + res.status));
+    err.status = res.status;
+    throw err;
+  }
+  if (data && typeof data === 'object' && 'code' in data) {
+    if (data.code !== 0) throw new Error(data.msg || '截图上传失败');
+    return data.data;
+  }
+  return data;
+}
+
+/** 滚动拼接整页截图；任何环节失败都回退为当前可视区截图 */
+async function captureFullPage(itemId, tabId, windowId) {
+  if (!itemId) throw new Error('缺少卡片 ID');
+  const cfg = await getConfig();
+  if (!cfg.serverUrl || !cfg.token) throw new Error('请先在扩展选项中配置服务器地址与 Token');
+
+  let tab = { id: tabId, windowId };
+  if (!tab.id) {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    tab = (tabs && tabs[0]) || {};
+  }
+  if (!tab.id) throw new Error('找不到当前页面');
+  if (!tab.windowId) {
+    const t = await chrome.tabs.get(tab.id);
+    tab.windowId = t.windowId;
+  }
+
+  const metrics = await shotMetrics(tab.id);
+  const limit = Math.min(metrics.height, SHOT_MAX_CSS_HEIGHT);
+
+  try {
+    const canvas = { ctx: null, w: 0, h: 0 };
+    let scale = 1;
+    let drawScale = 1;
+    let y = 0;
+    while (y < limit) {
+      await shotScrollTo(tab.id, y);
+      await sleep(SHOT_STEP_DELAY);
+      const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+      const bmp = await createImageBitmap(dataUrlToBlob(dataUrl));
+      if (!canvas.ctx) {
+        scale = bmp.width / metrics.width;
+        let outW = bmp.width;
+        let outH = Math.max(1, Math.round(limit * scale));
+        if (outH > SHOT_MAX_CANVAS) {
+          outW = Math.max(1, Math.round(outW * (SHOT_MAX_CANVAS / outH)));
+          outH = SHOT_MAX_CANVAS;
+        }
+        canvas.w = outW;
+        canvas.h = outH;
+        canvas.ctx = new OffscreenCanvas(outW, outH).getContext('2d');
+        drawScale = outW / bmp.width;
+      }
+      canvas.ctx.drawImage(
+        bmp, 0,
+        Math.round(y * scale * drawScale),
+        Math.round(bmp.width * drawScale),
+        Math.round(bmp.height * drawScale),
+      );
+      bmp.close && bmp.close();
+      y += metrics.viewport;
+    }
+
+    const offscreen = canvas.ctx.canvas;
+    let blob = await offscreen.convertToBlob({ type: 'image/png' });
+    if (blob.size > 8 * 1024 * 1024) {
+      blob = await offscreen.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
+    }
+    await uploadShot(cfg, itemId, blob);
+    await shotScrollTo(tab.id, metrics.scrollY).catch(() => {});
+    return { ok: true, mode: 'full', bytes: blob.size, width: canvas.w, height: canvas.h };
+  } catch (err) {
+    // 回退：只截当前可视区，保证至少有一张截图
+    await shotScrollTo(tab.id, metrics.scrollY).catch(() => {});
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+    const blob = dataUrlToBlob(dataUrl);
+    await uploadShot(cfg, itemId, blob);
+    return { ok: true, mode: 'viewport', bytes: blob.size, warning: err.message };
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || !msg.type) return;
   if (msg.type === 'save') {
@@ -182,6 +320,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg.type === 'flush') {
     flushQueue().then(() => sendResponse({ ok: true }));
+    return true;
+  }
+  if (msg.type === 'screenshot') {
+    captureFullPage(msg.itemId, msg.tabId, msg.windowId)
+      .then(sendResponse)
+      .catch((e) => sendResponse({ error: e.message, status: e.status }));
     return true;
   }
   if (msg.type === 'test') {

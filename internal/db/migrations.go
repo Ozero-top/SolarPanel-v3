@@ -44,6 +44,45 @@ var migrations = []Migration{
 
 	// v6: 剪藏标签（P2）— item_tags 表，并把标签并入全文索引
 	{Version: 6, Name: "clip: item_tags + FTS tags", Fn: migrateV6ItemTags},
+
+	// v7: 剪藏增强（P2）— 摘要 / 自动标签 / 整页截图路径
+	{Version: 7, Name: "clip: summary + auto_tags + screenshot", Fn: migrateV7ClipExtras},
+}
+
+// migrateV7ClipExtras 为快照表补齐增强字段（幂等：列已存在时跳过）
+func migrateV7ClipExtras() error {
+	if DB == nil {
+		return nil
+	}
+	cols := []struct{ name, def string }{
+		{"summary", "TEXT NOT NULL DEFAULT ''"},
+		{"auto_tags", "TEXT NOT NULL DEFAULT ''"},
+		{"screenshot_path", "TEXT NOT NULL DEFAULT ''"},
+	}
+	existing := map[string]bool{}
+	rows, err := DB.Query(`PRAGMA table_info(clip_contents)`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, ctype string
+		var dflt any
+		if rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk) == nil {
+			existing[name] = true
+		}
+	}
+	rows.Close()
+	for _, c := range cols {
+		if existing[c.name] {
+			continue
+		}
+		if _, err := DB.Exec("ALTER TABLE clip_contents ADD COLUMN " + c.name + " " + c.def); err != nil {
+			return err
+		}
+	}
+	log.Println("[migrate] v7: 摘要 / 自动标签 / 截图字段已就绪")
+	return nil
 }
 
 // migrateV5ClipFTS 建立正文快照的 FTS5 索引并全量回填。

@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"solarpanel/internal/auth"
+	"solarpanel/internal/config"
 	"solarpanel/internal/db"
 	"solarpanel/internal/urlutil"
 )
@@ -30,6 +31,10 @@ type clipContentRow struct {
 	ContentHash string `json:"content_hash"`
 	WordCount   int    `json:"word_count"`
 	FetchError  string `json:"fetch_error"`
+	// P2 增强字段
+	Summary        string `json:"summary"`
+	AutoTags       string `json:"auto_tags"`
+	ScreenshotPath string `json:"screenshot_path,omitempty"`
 }
 
 // clipSearchHit 检索结果行
@@ -80,23 +85,30 @@ func clipCaptureMode(v string) string {
 
 // saveClipSnapshot 抓取正文并写入快照表 + FTS 索引，返回 content_hash 与失败原因
 func saveClipSnapshot(itemID int, urlKey, rawURL, source, title, coverPath string, page *clipPage) (string, string) {
-	if page == nil || page.FetchError != "" || page.HTML == "" {
+	if page == nil || page.FetchError != "" {
 		return "", "fetch_failed"
 	}
-	art := extractClipArticle(page.HTML, page.FinalURL)
-	if art.Error != "" {
+	art := clipArticleFromPage(page)
+	if art == nil || art.Error != "" {
 		return "", "extract_failed"
 	}
-	_, err := db.DB.Exec(`INSERT OR REPLACE INTO clip_contents
+	// UPSERT：重新保存时保留已上传的整页截图
+	_, err := db.DB.Exec(`INSERT INTO clip_contents
 		(item_id, url_key, url_original, source, excerpt, content_md, cover_path,
 		 fetched_at, http_status, content_hash, word_count, fetch_error)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,'')`,
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,'')
+		ON CONFLICT(item_id) DO UPDATE SET
+			url_key=excluded.url_key, url_original=excluded.url_original, source=excluded.source,
+			excerpt=excluded.excerpt, content_md=excluded.content_md, cover_path=excluded.cover_path,
+			fetched_at=excluded.fetched_at, http_status=excluded.http_status,
+			content_hash=excluded.content_hash, word_count=excluded.word_count, fetch_error=''`,
 		itemID, urlKey, rawURL, source, art.Excerpt, art.Markdown, coverPath,
 		db.NowStr(), page.HTTPStatus, art.Hash, art.WordCount)
 	if err != nil {
 		return "", "save_failed"
 	}
 	indexClipFTS(itemID, title, art.Excerpt, art.Markdown)
+	enrichClipSnapshot(itemID, title, art)
 	return art.Hash, ""
 }
 
@@ -118,13 +130,25 @@ func dropClipSnapshot(itemID int) {
 	}
 }
 
+// dropClipSnapshotWithFiles 删除快照记录，并清理其整页截图文件（删除卡片/撤销剪藏时调用）
+func dropClipSnapshotWithFiles(cfg *config.Config, itemID int) {
+	var shot string
+	db.DB.QueryRow(`SELECT screenshot_path FROM clip_contents WHERE item_id = ?`, itemID).Scan(&shot)
+	if shot != "" && cfg != nil {
+		removeClipFile(cfg, shot)
+	}
+	dropClipSnapshot(itemID)
+}
+
 func loadClipContent(itemID int) (*clipContentRow, error) {
 	var c clipContentRow
 	err := db.DB.QueryRow(`SELECT item_id, url_key, url_original, source, excerpt, content_md,
-		cover_path, fetched_at, http_status, content_hash, word_count, fetch_error
+		cover_path, fetched_at, http_status, content_hash, word_count, fetch_error,
+		summary, auto_tags, screenshot_path
 		FROM clip_contents WHERE item_id = ?`, itemID).Scan(
 		&c.ItemID, &c.URLKey, &c.URLOriginal, &c.Source, &c.Excerpt, &c.ContentMD,
-		&c.CoverPath, &c.FetchedAt, &c.HTTPStatus, &c.ContentHash, &c.WordCount, &c.FetchError)
+		&c.CoverPath, &c.FetchedAt, &c.HTTPStatus, &c.ContentHash, &c.WordCount, &c.FetchError,
+		&c.Summary, &c.AutoTags, &c.ScreenshotPath)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +172,10 @@ func (h *ClipHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	}
 	var group string
 	db.DB.QueryRow("SELECT title FROM item_groups WHERE id = ?", it.GroupID).Scan(&group)
-	resp := map[string]any{"item": it, "group": group, "has_snapshot": false, "content": nil, "tags": loadItemTags(id)}
+	resp := map[string]any{
+		"item": it, "group": group, "has_snapshot": false, "content": nil,
+		"tags": loadItemTags(id), "image_domains": clipImageDomains(),
+	}
 	if c, err := loadClipContent(id); err == nil {
 		resp["has_snapshot"] = c.ContentMD != ""
 		resp["content"] = c
@@ -190,9 +217,13 @@ func (h *ClipHandler) Refetch(w http.ResponseWriter, r *http.Request) {
 		OK(w, map[string]any{"changed": false, "warnings": []string{"fetch_failed"}, "message": page.FetchError})
 		return
 	}
-	art := extractClipArticle(page.HTML, page.FinalURL)
-	if art.Error != "" {
-		OK(w, map[string]any{"changed": false, "warnings": []string{"extract_failed"}, "message": art.Error})
+	art := clipArticleFromPage(page)
+	if art == nil || art.Error != "" {
+		msg := "正文提取失败"
+		if art != nil {
+			msg = art.Error
+		}
+		OK(w, map[string]any{"changed": false, "warnings": []string{"extract_failed"}, "message": msg})
 		return
 	}
 	changed := old == nil || old.ContentHash != art.Hash
@@ -200,10 +231,16 @@ func (h *ClipHandler) Refetch(w http.ResponseWriter, r *http.Request) {
 	if old != nil {
 		coverPath = old.CoverPath
 	}
-	_, err = db.DB.Exec(`INSERT OR REPLACE INTO clip_contents
+	// UPSERT：保留已上传的整页截图
+	_, err = db.DB.Exec(`INSERT INTO clip_contents
 		(item_id, url_key, url_original, source, excerpt, content_md, cover_path,
 		 fetched_at, http_status, content_hash, word_count, fetch_error)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,'')`,
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,'')
+		ON CONFLICT(item_id) DO UPDATE SET
+			url_key=excluded.url_key, url_original=excluded.url_original, source=excluded.source,
+			excerpt=excluded.excerpt, content_md=excluded.content_md, cover_path=excluded.cover_path,
+			fetched_at=excluded.fetched_at, http_status=excluded.http_status,
+			content_hash=excluded.content_hash, word_count=excluded.word_count, fetch_error=''`,
 		id, key, target, "refetch",
 		art.Excerpt, art.Markdown, coverPath, db.NowStr(), page.HTTPStatus, art.Hash, art.WordCount)
 	if err != nil {
@@ -211,6 +248,7 @@ func (h *ClipHandler) Refetch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	indexClipFTS(id, it.Title, art.Excerpt, art.Markdown)
+	enrichClipSnapshot(id, it.Title, art)
 	auth.AuditLog(w, r, "clip.refetch", fmt.Sprintf("item:%d", id), "success", clipActor(p), p.Role,
 		fmt.Sprintf("changed=%v words=%d", changed, art.WordCount))
 	OK(w, map[string]any{
@@ -236,6 +274,9 @@ func (h *ClipHandler) DeleteContent(w http.ResponseWriter, r *http.Request) {
 	if _, err := loadItem(id); err != nil {
 		Err(w, http.StatusNotFound, 1, "剪藏不存在")
 		return
+	}
+	if old, err := loadClipContent(id); err == nil && old.ScreenshotPath != "" {
+		removeClipFile(h.cfg, old.ScreenshotPath)
 	}
 	dropClipSnapshot(id)
 	auth.AuditLog(w, r, "clip.snapshot.delete", fmt.Sprintf("item:%d", id), "success", clipActor(p), p.Role, "")

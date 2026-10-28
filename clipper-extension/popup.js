@@ -41,10 +41,17 @@ async function init() {
   $('fUrl').title = state.url;
   $('fTitle').value = state.tab.title || '';
   $('fSnapshot').checked = !!cfg.snapshot;
+  $('fShot').checked = !!cfg.shot;
   $('fSnapshot').addEventListener('change', async () => {
     const data = await chrome.storage.local.get('spClipConfig');
     const next = data.spClipConfig || {};
     next.snapshot = $('fSnapshot').checked;
+    await chrome.storage.local.set({ spClipConfig: next });
+  });
+  $('fShot').addEventListener('change', async () => {
+    const data = await chrome.storage.local.get('spClipConfig');
+    const next = data.spClipConfig || {};
+    next.shot = $('fShot').checked;
     await chrome.storage.local.set({ spClipConfig: next });
   });
 
@@ -179,11 +186,32 @@ async function save(force) {
       return;
     }
     state.item = res.item;
-    setStatus('已保存到「' + (res.group || '默认分组') + '」' + (res.snapshot ? '（含正文快照）' : ''), 'ok');
+    const savedText = '已保存到「' + (res.group || '默认分组') + '」' + (res.snapshot ? '（含正文快照）' : '');
+    setStatus(savedText, 'ok');
     $('doneBox').classList.remove('hidden');
     $('openPage').href = state.url;
     $('saveBtn').classList.add('hidden');
     $('dupBox').classList.add('hidden');
+
+    // 整页截图：失败不影响保存结果，仅提示原因
+    if ($('fShot').checked && state.item && state.item.id) {
+      setStatus(savedText + '，正在生成整页截图…', 'ok');
+      try {
+        const shot = await chrome.runtime.sendMessage({
+          type: 'screenshot',
+          itemId: state.item.id,
+          tabId: state.tab && state.tab.id,
+          windowId: state.tab && state.tab.windowId,
+        });
+        if (shot && shot.ok) {
+          setStatus(savedText + (shot.mode === 'viewport' ? '（截图仅可视区）' : '（含整页截图）'), 'ok');
+        } else {
+          setStatus(savedText + '，截取失败：' + ((shot && shot.error) || '未知原因'), 'ok');
+        }
+      } catch (e) {
+        setStatus(savedText + '，截取失败：' + e.message, 'ok');
+      }
+    }
   } catch (e) {
     setStatus('保存失败：' + e.message, 'err');
     btn.disabled = false;

@@ -61,6 +61,7 @@ func maybeLogGuestVisit(w http.ResponseWriter, r *http.Request) {
 // sensitiveSettingKeys 不允许下发给非管理员的设置项
 var sensitiveSettingKeys = map[string]bool{
 	"guest_password_hash": true,
+	"clip_ai_api_key":     true,
 }
 
 type GroupWithItems struct {

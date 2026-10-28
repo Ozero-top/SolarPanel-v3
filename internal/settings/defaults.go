@@ -59,6 +59,13 @@ func Defaults() map[string]string {
 		"clip_enabled":           "1",
 		"clip_default_group":     "0",
 		"clip_default_capture":   "card",
+		// P2：摘要/自动标签与快照图片白名单
+		"clip_ai_enabled":    "1",
+		"clip_ai_provider":   "local",
+		"clip_ai_base_url":   "",
+		"clip_ai_api_key":    "",
+		"clip_ai_model":      "gpt-4o-mini",
+		"clip_image_domains": "",
 	}
 	defaults["search_engines"] = `[{"name":"百度","url":"https://www.baidu.com/s?wd=%s"},{"name":"Google","url":"https://www.google.com/search?q=%s"},{"name":"Bing","url":"https://www.bing.com/search?q=%s"},{"name":"DuckDuckGo","url":"https://duckduckgo.com/?q=%s"},{"name":"Yandex","url":"https://yandex.com/search/?text=%s"},{"name":"GitHub","url":"https://github.com/search?q=%s"},{"name":"搜狗","url":"https://www.sogou.com/web?query=%s"},{"name":"360搜索","url":"https://www.so.com/s?q=%s"},{"name":"神马","url":"https://m.sm.cn/s?q=%s"},{"name":"夸克","url":"https://www.quark.cn/s?q=%s"},{"name":"头条搜索","url":"https://so.toutiao.com/search?keyword=%s"},{"name":"中国搜索","url":"https://www.chinaso.com/search/all?q=%s"},{"name":"抖音","url":"https://www.douyin.com/search/%s"}]`
 	return defaults

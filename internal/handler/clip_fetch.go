@@ -16,11 +16,13 @@ import (
 
 const (
 	clipFetchMaxBytes    = 5 * 1024 * 1024
+	clipFetchMaxPDFBytes = 15 * 1024 * 1024
 	clipFetchTimeout     = 10 * time.Second
 	clipFetchMaxRedirect = 3
 )
 
-// clipPage 服务端抓取到的页面数据：P0 只用元数据，P1 追加整页 HTML 供正文提取
+// clipPage 服务端抓取到的页面数据：P0 只用元数据，P1 追加整页 HTML 供正文提取，
+// P2 支持 PDF：命中 PDF 时把原始字节放进 PDFData，由提取阶段转成文本快照。
 type clipPage struct {
 	FinalURL   *url.URL
 	Title      string
@@ -29,6 +31,8 @@ type clipPage struct {
 	CoverURL   string
 	IconCands  []string
 	HTML       string
+	PDFData    []byte
+	IsPDF      bool
 	HTTPStatus int
 	FetchError string
 }
@@ -67,7 +71,7 @@ func fetchClipPage(rawURL string) *clipPage {
 		return out
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36 SolarPanel-Clipper/1.0")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/pdf,application/xml;q=0.9,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
 
 	resp, err := client.Do(req)
@@ -83,6 +87,31 @@ func fetchClipPage(rawURL string) *clipPage {
 		return out
 	}
 	ct := strings.ToLower(resp.Header.Get("Content-Type"))
+	// PDF：下载原始字节，交给 PDF 文本提取；不再要求 HTML
+	isPDF := strings.Contains(ct, "pdf")
+	if !isPDF && out.FinalURL != nil {
+		isPDF = strings.HasSuffix(strings.ToLower(out.FinalURL.Path), ".pdf")
+	}
+	if isPDF {
+		if resp.ContentLength > clipFetchMaxPDFBytes {
+			out.FetchError = "PDF 超过 15MB"
+			return out
+		}
+		data, err := io.ReadAll(io.LimitReader(resp.Body, clipFetchMaxPDFBytes+1))
+		if err != nil {
+			out.FetchError = "读取 PDF 失败"
+			return out
+		}
+		if len(data) > clipFetchMaxPDFBytes {
+			out.FetchError = "PDF 超过 15MB"
+			return out
+		}
+		out.IsPDF = true
+		out.PDFData = data
+		out.HTTPStatus = resp.StatusCode
+		out.Title = pdfTitleFromURL(out.FinalURL)
+		return out
+	}
 	if ct != "" && !strings.Contains(ct, "html") && !strings.Contains(ct, "xml") {
 		out.FetchError = "目标不是 HTML 页面"
 		return out
@@ -109,6 +138,23 @@ func fetchClipPage(rawURL string) *clipPage {
 	out.Canonical = extractCanonical(html, out.FinalURL)
 	out.IconCands = extractIconLinks(html, out.FinalURL)
 	return out
+}
+
+// pdfTitleFromURL 从 PDF 地址推导标题（文件名去扩展名后把连字符转空格）
+func pdfTitleFromURL(u *url.URL) string {
+	if u == nil {
+		return ""
+	}
+	name := filepath.Base(u.Path)
+	name = strings.TrimSuffix(name, filepath.Ext(name))
+	if decoded, err := url.PathUnescape(name); err == nil {
+		name = decoded
+	}
+	name = strings.NewReplacer("-", " ", "_", " ").Replace(strings.TrimSpace(name))
+	if name == "" || name == "." || name == "/" {
+		return strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
+	}
+	return trimRunes(name, 200)
 }
 
 // extractCanonical 读取 <link rel="canonical">，只接受与最终页面同源的结果，

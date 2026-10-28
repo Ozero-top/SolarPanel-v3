@@ -7,6 +7,7 @@ const state = {
   id: '',
   item: null,
   content: null,
+  imageDomains: [],
 };
 
 document.addEventListener('DOMContentLoaded', init);
@@ -29,6 +30,7 @@ async function load() {
     const data = await API.get('/api/v1/clips/' + state.id);
     state.item = data.item;
     state.content = data.content;
+    state.imageDomains = Array.isArray(data.image_domains) ? data.image_domains : [];
     render(data);
   } catch (e) {
     if (/登录|401|未授权/.test(e.message || '')) {
@@ -71,12 +73,41 @@ function render(data) {
     tagsBox.appendChild(chip);
   });
 
+  // 摘要与自动标签（P2）：本地规则或外部 API 生成
+  const summaryEl = $('rd-summary');
+  const summary = c && c.summary ? String(c.summary).trim() : '';
+  summaryEl.textContent = summary;
+  summaryEl.classList.toggle('hidden', summary === '');
+
+  const aiBox = $('rd-aitags');
+  aiBox.textContent = '';
+  const autoTags = c && c.auto_tags ? String(c.auto_tags).split(',').map((t) => t.trim()).filter(Boolean) : [];
+  aiBox.classList.toggle('hidden', autoTags.length === 0);
+  autoTags.forEach((t) => {
+    const chip = document.createElement('span');
+    chip.className = 'rd-tag';
+    chip.textContent = t;
+    aiBox.appendChild(chip);
+  });
+
+  // 整页截图（P2）：扩展上传后在此展示
+  const shot = $('rd-shot');
+  const shotPath = c && c.screenshot_path ? safeUrl(c.screenshot_path) : '';
+  if (shotPath) {
+    $('rd-shot-img').src = shotPath;
+    $('rd-shot-link').href = shotPath;
+    shot.classList.remove('hidden');
+  } else {
+    shot.classList.add('hidden');
+    $('rd-shot-img').removeAttribute('src');
+  }
+
   const body = $('rd-body');
   body.textContent = '';
   if (!data.has_snapshot || !c || !c.content_md) {
     $('rd-empty').classList.remove('hidden');
-    $('rd-refetch').classList.add('hidden');
-    $('rd-delete').classList.add('hidden');
+    $('rd-refetch').classList.remove('hidden');
+    $('rd-delete').classList.toggle('hidden', !shotPath);
     return;
   }
   $('rd-empty').classList.add('hidden');
@@ -128,6 +159,10 @@ async function removeSnapshot() {
     $('rd-body').textContent = '';
     $('rd-refetch').classList.add('hidden');
     $('rd-delete').classList.add('hidden');
+    $('rd-shot').classList.add('hidden');
+    $('rd-shot-img').removeAttribute('src');
+    $('rd-summary').classList.add('hidden');
+    $('rd-aitags').classList.add('hidden');
     $('rd-empty').classList.remove('hidden');
     setMsg('已删除快照', 'ok');
   } catch (e) {
@@ -167,6 +202,22 @@ function safeUrl(raw) {
   }
 }
 
+// imageAllowed 快照图片域名白名单：空列表表示不限制；否则按主机名或其子域匹配
+function imageAllowed(raw) {
+  const domains = state.imageDomains;
+  if (!domains || domains.length === 0) return true;
+  let host = '';
+  try {
+    host = new URL(raw, location.origin).hostname.toLowerCase();
+  } catch (_) {
+    return false;
+  }
+  return domains.some((d) => {
+    const rule = String(d).toLowerCase();
+    return host === rule || host.endsWith('.' + rule);
+  });
+}
+
 function el(tag, cls) {
   const node = document.createElement(tag);
   if (cls) node.className = cls;
@@ -182,13 +233,21 @@ function inlineInto(parent, text) {
     if (m.index > last) parent.appendChild(document.createTextNode(text.slice(last, m.index)));
     if (m[1] !== undefined) {
       const src = safeUrl(m[2]);
-      if (src) {
+      if (src && imageAllowed(src)) {
         const img = el('img');
         img.src = src;
         img.alt = m[1] || '';
         img.loading = 'lazy';
         img.referrerPolicy = 'no-referrer';
         parent.appendChild(img);
+      } else if (src) {
+        // 白名单外的图片不自动加载，避免向第三方泄露阅读者信息，改为外链
+        const a = el('a');
+        a.href = src;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = m[1] ? '[图片] ' + m[1] : '[外链图片]';
+        parent.appendChild(a);
       } else {
         parent.appendChild(document.createTextNode(m[0]));
       }
