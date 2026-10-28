@@ -6,6 +6,7 @@
   --accent: #2563eb;
   --danger: #b91c1c;
   --ok: #15803d;
+  color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -16,6 +17,7 @@
     --accent: #4f8cff;
     --danger: #f87171;
     --ok: #4ade80;
+    color-scheme: dark;
   }
 }
 * { box-sizing: border-box; }
@@ -48,6 +50,12 @@ body {
 .field input:focus, .field select:focus, .field textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(79, 140, 255, .16);
+}
+/* 下拉弹层由浏览器绘制，默认白底且会继承页面文字色，
+   深色模式下会出现「白底浅字」；显式指定 option 配色保证可读 */
+.field select option, .row select option {
+  background-color: var(--bg);
+  color: var(--text);
 }
 .url {
   font-size: 12px;
