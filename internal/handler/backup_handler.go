@@ -646,20 +646,30 @@ func (h *BackupHandler) Create(w http.ResponseWriter, r *http.Request) {
 	OK(w, meta)
 }
 
-// resolveBackupFile 防目录穿越：只允许 data/backups/{auto|manual}/solarpanel-{kind}-*.json
+// resolveBackupFile 防目录穿越：只允许 data/backups/{auto|manual}/solarpanel-{kind}-*.json。
+// 文件名不直接拼路径，而是与目录实际条目精确比对后取目录内的真实名称，避免路径注入。
 func (h *BackupHandler) resolveBackupFile(kind, name string) (string, error) {
 	dir, ok := h.backupTypeDir(kind)
 	if !ok {
 		return "", fmt.Errorf("未知备份类型")
 	}
-	clean := filepath.Base(strings.TrimSpace(name))
-	if clean != strings.TrimSpace(name) || clean == "." || clean == "" {
+	want := strings.TrimSpace(name)
+	prefix := "solarpanel-" + kind + "-"
+	if want == "" || strings.ContainsAny(want, `/\`) ||
+		!strings.HasPrefix(want, prefix) || !strings.HasSuffix(want, ".json") {
 		return "", fmt.Errorf("备份文件名无效")
 	}
-	if !strings.HasPrefix(clean, "solarpanel-"+kind+"-") || !strings.HasSuffix(clean, ".json") {
-		return "", fmt.Errorf("备份文件名无效")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", fmt.Errorf("备份文件不存在")
 	}
-	return filepath.Join(dir, clean), nil
+	for _, e := range entries {
+		if e.IsDir() || e.Name() != want {
+			continue
+		}
+		return filepath.Join(dir, e.Name()), nil
+	}
+	return "", fmt.Errorf("备份文件不存在")
 }
 
 // Download 下载服务端备份
