@@ -19,48 +19,39 @@
 
 ## ✨ 特性
 
-- **零依赖单二进制** — Go + 纯 Go SQLite（`modernc.org/sqlite`），无 CGO、无外部数据库、无 PHP；三架构镜像约 14MB，单文件即可运行
-- **空库启动** — 首次启动仅建表 + 默认设置 + 管理员账号，不注入任何预置内容；「恢复初始状态」同样只清数据，不生成演示项
-- **两级分组导航** — 父分组折叠、子分组缩进；实时搜索按「卡片 → 子分组 → 父分组」三级命中，排序与显隐仅在同级生效
-- **十套主题** — 液态玻璃（默认）/ 柔和浮雕 / 工程蓝图 / 清透极简 / 柔和工具 / 动态极光 / IRIS 深空 / 铅笔手绘 / 复古怀旧 / 企业简洁；明暗模式、卡片样式与圆角留白可独立配置
-- **热点新闻聚合** — 24 个内置源（微博 / 知乎 / B站 / GitHub Trending / IT之家 / V2EX / 少数派 / 掘金 等）+ 自定义 RSS，支持勾选、排序与独立入口
-- **NAS 运行状态面板** — 主机名 / 内网 IP / CPU / 内存 / 存储池 / 网络 / 温度 / 容器；四种放置方式 + 近 10 分钟曲线 + 详情弹窗；兼容群晖 DSM、绿联 UGOS、飞牛 fnOS、威联通 QTS、极空间 ZOS、iStoreOS / OpenWrt / ImmortalWrt
-- **天气与壁纸** — 顶部时钟与天气组件；每日壁纸多源合并、失败重试、图库管理与上传；后台可按源随机预览 10 张再固定；内置壁纸只读不可删除，删除操作仅作用于自己上传的壁纸
-- **内外网自动切换** — 卡片可同时配置公网与内网地址，页面按访问者网段或后台配置的内网主机名自动选路，顶栏按钮可手动切换
-- **字体系统** — 页面字体与时钟/天气字体各 12 款免费开源设计字体，按需加载、互不干扰，清空即跟随系统
-- **搜索增强** — 多搜索引擎切换、搜索历史与常用搜索（置顶收藏）、快捷键 `/` 或 `Ctrl+K` 聚焦搜索框
-- **卡片与图标** — 图标上传、域名自动抓取 favicon、标题与描述自动获取；深色模式自动适配图标轮廓；右键菜单可新标签页 / 当前页打开、快速编辑或删除
-- **键盘快捷键** — `/`、`Ctrl+K` 聚焦搜索，`t` 切深浅色，`n` 新闻视图，`b`/`h` 导航站视图，`g` 分组目录，`?` 帮助，`Esc` 逐级退出
-- **favicon 三级缓存** — 内存 inflight 去重 → 磁盘 MD5 缓存 → 三源并发抓取（主站 / Google s2 / DuckDuckGo）；`ETag` + `immutable` 协商，二次访问 304
+- **零依赖单二进制** — Go + 纯 Go SQLite（`modernc.org/sqlite`），无 CGO、无外部数据库；三架构镜像约 14MB
+- **空库启动** — 首次启动只建表、写默认设置与管理账号，不注入演示内容；「恢复初始状态」同样只清数据
+- **两级分组导航** — 父分组折叠、子分组缩进；搜索按「卡片 → 子分组 → 父分组」三级命中
+- **十套主题** — 液态玻璃（默认）/ 柔和浮雕 / 工程蓝图 / 清透极简 / 柔和工具 / 动态极光 / IRIS 深空 / 铅笔手绘 / 复古怀旧 / 企业简洁；明暗模式、卡片样式与圆角留白独立配置
+- **热点新闻聚合** — 24 个内置源 + 自定义 RSS，支持勾选、排序与独立入口
+- **NAS 运行状态面板** — 主机名 / 内网 IP / CPU / 内存 / 存储池 / 网络 / 温度 / 容器；四种放置方式 + 近 10 分钟曲线 + 详情弹窗
+- **天气与壁纸** — 顶部时钟与天气；每日壁纸多源合并、失败重试、图库管理与上传
+- **内外网自动切换** — 卡片可同时配置公网与内网地址，按访问者网段自动选路，顶栏可手动切换
+- **字体与搜索** — 页面字体与时钟/天气字体各 12 款开源字体；多引擎切换、搜索历史与常用搜索、`/` 或 `Ctrl+K` 聚焦
+- **卡片与图标** — 图标上传、favicon 自动抓取、标题与描述自动获取；右键菜单可快速编辑或删除
+- **键盘快捷键** — `t` 深浅色，`n` 新闻，`b` / `h` 导航站，`g` 分组目录，`?` 帮助，`Esc` 逐级退出
+- **剪藏（Clipper）** — 扩展 / iOS 快捷指令 / Android PWA 分享 / 网页入口共用 `/api/v1/clips`；服务端抓取标题、图标与封面，支持正文快照、全文检索、PDF 文本快照、AI 摘要与自动标签、整页截图、标签与访问令牌
 - **安全** — Session + CSRF 双令牌、接口限流、四级角色权限、TOTP 双因子、受信设备与审计日志
-- **PWA** — Service Worker 离线缓存，可安装为应用；资源变更自动刷新缓存版本
-- **有序幂等迁移 + 旧库兼容** — `schema_versions` 记录已应用版本；启动时另按 `PRAGMA table_info` 检测并补齐旧库缺失字段，避免 `no such column` 直接 500
-- **备份与迁移** — JSON 一键导出/导入（含上传文件 base64），分组按 `parent_id` 排序并重建 ID 映射；支持 Chrome / Edge 书签 HTML 导入
+- **PWA** — Service Worker 离线缓存，可安装为应用，并提供 Android 分享目标
+- **备份与迁移** — JSON / HTML 双格式导出、自动与手动备份、Chrome / Edge 书签 HTML 导入
 
 ## 🏗 技术栈
 
 | 层 | 技术 |
 |---|---|
 | 后端 | Go 1.25 · [chi/v5](https://github.com/go-chi/chi) v5.4.0 · [modernc.org/sqlite](https://modernc.org/sqlite) v1.34.5 |
+| 剪藏解析 | go-readability（正文提取）· html-to-markdown · ledongthuc/pdf（PDF 文本）· SQLite FTS5（全文索引） |
 | 前端 | 原生 JS · CSS 变量主题系统 · PWA Service Worker |
-| 构建 | Node 24（生成主题 CSS + 注入 SHA1 资源戳） · Go embed |
+| 构建 | Node 24（生成主题 CSS、注入 SHA1 资源戳、打包扩展）· Go embed |
 | 部署 | Docker 三阶段构建 · Alpine 3.22 |
 
-直接依赖仅 3 个：
-
-```
-github.com/go-chi/chi/v5   — HTTP 路由 + 中间件
-golang.org/x/crypto        — bcrypt / sha256 / TOTP
-modernc.org/sqlite         — 纯 Go SQLite driver（零 CGO）
-```
+`go.mod` 直接依赖仅 3 个：`chi/v5`（路由）、`golang.org/x/crypto`（bcrypt / TOTP）、`modernc.org/sqlite`（纯 Go driver）；readability、html-to-markdown、pdf 等均为间接依赖。
 
 ## 🚀 快速开始
 
 ### 方式一：Docker（推荐）
 
 镜像 `ovitor/solarpanel-v3:latest`，支持 `linux/amd64` · `linux/arm64` · `linux/arm/v7`。
-
-#### docker run
 
 ```bash
 docker run -d \
@@ -76,131 +67,77 @@ docker run -d \
   ovitor/solarpanel-v3:latest
 ```
 
-> 后两个挂载仅用于 **NAS 运行状态面板**（读取宿主 /proc、/sys、存储池与容器数据）。不需要该功能时删掉 `-v /:/host:ro`、`-v /var/run/docker.sock:...` 与两个 `-e` 即可，面板会自动隐藏。
+> 后两个挂载仅供 **NAS 运行状态面板**（默认关闭，需在后台「站点设置 → NAS 监控」开启）。不需要时可删除 `-v /:/host:ro`、`-v /var/run/docker.sock:...` 与对应两个 `-e`。
 
-Windows PowerShell：
+Windows PowerShell 只需把 `$(pwd)` 换成 `${PWD}`。
 
-```powershell
-docker run -d --name solarpanel-v3 --restart unless-stopped -p 10086:10086 -v ${PWD}/data:/app/data -v /:/host:ro -v /var/run/docker.sock:/var/run/docker.sock -e SERVER_PORT=10086 -e NAS_HOST_ROOT=/host -e DOCKER_SOCKET=/var/run/docker.sock ovitor/solarpanel-v3:latest
-```
-
-#### 本地构建
-
-```bash
-git clone https://github.com/Ozero-top/SolarPanel-v3.git
-cd SolarPanel-v3
-docker build -t solarpanel-v3:local .
-docker run -d --name solarpanel-v3 -p 10086:10086 -v $(pwd)/data:/app/data solarpanel-v3:local
-```
-
-#### docker compose
+`docker compose`（`docker-compose.yml` 已在仓库中）：
 
 ```yaml
 services:
   solarpanel:
-    image: ovitor/solarpanel-v3:latest   # 本地构建改成 build: .
+    image: ovitor/solarpanel-v3:latest
     container_name: solarpanel-v3
     restart: unless-stopped
     ports:
       - "10086:10086"
-      # - "18443:18443"                  # HTTPS_PORT 非空时启用
     volumes:
       - ./data:/app/data
-      - /:/host:ro                              # NAS 监控：宿主 /proc、/sys、存储池
-      - /var/run/docker.sock:/var/run/docker.sock   # NAS 监控：容器列表与占用
+      - /:/host:ro                                   # NAS 监控：宿主 /proc、/sys、存储池
+      - /var/run/docker.sock:/var/run/docker.sock     # NAS 监控：容器列表
     environment:
       - TZ=Asia/Shanghai
       - SERVER_PORT=10086
       - NAS_HOST_ROOT=/host
       - DOCKER_SOCKET=/var/run/docker.sock
-      # - HTTPS_PORT=18443               # 启用内置自签名 HTTPS
-    # NAS 监控需要「整机网卡」口径时改用 host 网络（ports 映射会失效，直接访问 10086）：
-    # network_mode: host
 ```
 
 ```bash
-docker compose up -d          # 启动
+docker compose up -d          # 启动（首次可加 --build 本地构建）
 docker compose logs -f        # 查看日志
 docker compose down           # 停止
-docker compose up -d --build  # 重新构建
 ```
 
-启动后访问 <http://localhost:10086>。数据目录 `./data/` 自动创建，包含 `solarpanel.db` 与 `uploads/`。
+启动后访问 <http://localhost:10086>。数据目录 `./data/` 自动创建（`solarpanel.db`、`backups/`、`uploads/`），挂载到 `/app/data` 即持久化。
 
-> 镜像内**未声明 `VOLUME`**，挂载到 `/app/data` 即持久化；不挂载则重建容器后数据随之丢失。
+ARM / OpenWrt 系（iStoreOS · ImmortalWrt）安装 Docker 后沿用上面命令，只需把数据目录换成实际存储路径（如 `/mnt/sda1/docker/solarpanel/data` 或 `/overlay/docker/solarpanel/data`）；需要整机网速口径时改用 `--network host` 并去掉端口映射。
 
-#### ARM 设备 / OpenWrt 系（iStoreOS · ImmortalWrt）
-
-适用于 iStoreOS、ImmortalWrt 与带 Docker 的原生 OpenWrt（ARMv7 / ARM64），镜像会按设备架构自动匹配。先在「应用商店 / 软件包」中安装 Docker（iStoreOS 为「iStore 应用商店 → Docker」），再执行：
-
-```bash
-docker run -d --name solarpanel-v3 --restart unless-stopped \
-  -p 10086:10086 \
-  -v /volume1/docker/solarpanel/data:/app/data \
-  -v /:/host:ro \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -e NAS_HOST_ROOT=/host -e DOCKER_SOCKET=/var/run/docker.sock \
-  ovitor/solarpanel-v3:latest
-```
-
-- 数据目录按设备实际存储位置填写，例如 `/mnt/sda1/docker/solarpanel/data` 或 `/overlay/docker/solarpanel/data`
-- 面板会自动识别 OpenWrt 系系统名与 `/overlay` 可用容量；不需要容器列表时可去掉 `docker.sock` 挂载与 `DOCKER_SOCKET`
-- 需要整机网速口径时追加 `--network host` 并去掉 `-p 10086:10086`，直接访问 `http://设备IP:10086`
-- 低配设备（内存 ≤ 512MB）建议把后台「刷新间隔」调到 5~10 秒，减少采集开销
-
-### ⚠️ 关于端口 10086
-
-早期版本默认使用 `10080`，但该端口在 Chromium 的**受限端口列表**（`net/base/port_util.cc` 的 `kRestrictedPorts`，10080 属于 Amanda 备份服务）中，浏览器会直接以 `ERR_UNSAFE_PORT` 拦截，页面表现为「打不开」。因此默认端口改为 `10086`。
-
-若需换端口，修改 `SERVER_PORT` 与端口映射即可，但需避开 Chromium 受限端口（完整列表见 Chromium 源码 `net/base/port_util.cc` 中的 `kRestrictedPorts`）。
-
-### 📊 NAS 运行状态面板（可选）
-
-在后台 **站点设置 → 🖥️ NAS 监控** 开启后，主页展示宿主机与容器状态：
-
-| 放置方式 | 说明 |
-|---|---|
-| 右侧悬浮（默认） | 贴内容区右侧，可收起为竖条 |
-| 左侧悬浮 | 贴内容区左侧，与左侧分组目录互斥 |
-| 左右双侧 | 左主机指标 / 右容器列表，两侧同步收起 |
-| 卡片下方状态条 | 单行概览 + CPU 迷你曲线，整条可点开详情 |
-
-移动端（≤768px）统一自动使用状态条；任一形式都可通过「详情」打开完整弹窗（存储池、近 10 分钟网络曲线、容器端口 / CPU / 内存 / 网络 / 运行时长）。
-
-数据来源与限制：
-
-- 主机指标读取挂载的宿主 `/proc`、`/sys`、`/etc`：CPU、内存、负载、运行时长、存储池、温度
-- 容器指标通过 `/var/run/docker.sock` 读取（无 Docker 时只显示主机信息，不影响使用）
-- **系统识别**：群晖 DSM、绿联 UGOS、飞牛 fnOS、威联通 QTS、极空间 ZOS、iStoreOS / OpenWrt / ImmortalWrt，其余归为 Linux
-- **存储自动识别**：`/volume*`、`/vol*`、`/share/CACHEDEV*_DATA`、`/mnt/*`、`/media/*`、`/overlay`；特殊路径可在后台手填
-- **网络口径**：默认 bridge 网络下只能统计容器网卡，面板会标注「容器网卡」；需要整机速率请改用 `network_mode: host`
-- **温度**：物理机正常读取 thermal/hwmon；虚拟机（KVM/ESXi）不暴露传感器，面板显示「虚拟机」
-- 磁盘与温度依赖 `/:/host:ro` 挂载；未挂载时相应字段为空，不影响其他功能
+> **端口说明**：早期默认端口 `10080` 属于 Chromium 受限端口，浏览器会直接以 `ERR_UNSAFE_PORT` 拦截，因此改为 `10086`。换端口时同样需避开 Chromium 的 `kRestrictedPorts`。
 
 ### 方式二：单二进制
 
 ```bash
-# 交叉编译（产物为静态链接，无运行时依赖）
-CGO_ENABLED=0 GOOS=linux   go build -ldflags="-s -w" -o solarpanel .
-CGO_ENABLED=0 GOOS=darwin  go build -ldflags="-s -w" -o solarpanel .
-CGO_ENABLED=0 GOOS=windows go build -ldflags="-s -w" -o solarpanel.exe
-
-# 运行（当前工作目录下自动创建 data/）
-./solarpanel
+CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o solarpanel .   # 也可替换 GOOS 为 darwin / windows
+./solarpanel                                                        # 数据写入当前目录 data/
 ```
-
-> 程序以**当前工作目录**为数据根：`data/solarpanel.db`、`data/uploads/`。
 
 ### 方式三：源码开发
 
 ```bash
-# 1. 生成前端产物（Node 24+）
-node scripts/build-themes.js      # themes.json → themes.css + 主题白名单
-node scripts/build-frontend.js    # 注入 SHA1 资源戳 + 生成 sw.js 版本
-
-# 2. 后端直接跑（前端已 //go:embed all:frontend）
-go run .
+node scripts/build-themes.js      # themes.json → themes.css
+node scripts/build-frontend.js    # 注入 SHA1 资源戳 + sw.js 版本
+go run .                          # 前端通过 //go:embed 打包进二进制
 ```
+
+### NAS 运行状态面板（可选）
+
+后台 **站点设置 → 🖥️ NAS 监控** 开启后，主页展示主机与容器状态，可选择「右侧悬浮 / 左侧悬浮 / 左右双侧 / 卡片下方状态条」，移动端统一使用状态条，均可打开详情弹窗。
+
+- 主机指标读取挂载的宿主机 `/proc`、`/sys`、`/etc`：CPU、内存、负载、存储池、温度
+- 容器指标来自 `/var/run/docker.sock`，无 Docker 时仅显示主机信息
+- 自动识别群晖 DSM、绿联 UGOS、飞牛 fnOS、威联通 QTS、极空间 ZOS、iStoreOS / OpenWrt；存储自动识别 `/volume*`、`/vol*`、`/share/CACHEDEV*_DATA`、`/mnt/*`、`/media/*`、`/overlay`
+- bridge 网络下只统计容器网卡；需要整机速率请用 `network_mode: host`
+- 磁盘与温度依赖 `/:/host:ro` 挂载，未挂载时相应字段为空
+
+### 一键发版
+
+`scripts/release.ps1` 会同步版本号 → 构建校验 → 提交推送 → 打 tag → 创建 GitHub Release（附扩展 zip 与 `SHA256SUMS.txt`）→ 推送多架构镜像。
+
+```powershell
+.\scripts\release.ps1 3.3.9
+```
+
+发版前在 `updates.md` 顶部写好对应版本小节，并保持工作区干净、当前分支为 `main`。
 
 ## ⚙️ 环境变量
 
@@ -209,81 +146,78 @@ go run .
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `SERVER_PORT` | `10086` | HTTP 监听端口 |
-| `NAS_HOST_ROOT` | `/host`（不存在则留空） | NAS 监控读取的宿主机根目录；容器内由 `-v /:/host:ro` 提供，单二进制运行留空即读本机 |
-| `DOCKER_SOCKET` | `/var/run/docker.sock` | Docker 守护进程 socket，用于容器列表与占用 |
-| `HTTPS_PORT` | （空，不启用） | HTTPS 端口，设置后自动生成自签名证书并同时监听 |
-| `CERT_FILE` | `data/cert.pem` | HTTPS 证书路径 |
-| `KEY_FILE` | `data/key.pem` | HTTPS 私钥路径 |
+| `NAS_HOST_ROOT` | `/host`（目录不存在则留空） | NAS 监控读取的宿主机根目录 |
+| `DOCKER_SOCKET` | `/var/run/docker.sock` | Docker socket，用于容器列表 |
+| `HTTPS_PORT` | （空，不启用） | 设置后自动生成自签名证书并同时监听 |
+| `CERT_FILE` / `KEY_FILE` | `data/cert.pem` / `data/key.pem` | HTTPS 证书与私钥路径 |
 
-数据库路径、上传目录、Session 有效期（24h）、Cookie 名（`sp_session` / `csrf_token`）在 `internal/config/config.go` 中固定，不通过环境变量覆盖。
+数据库、上传与备份目录、Session 有效期、Cookie 名均在 `internal/config/config.go` 中固定；剪藏与备份等业务开关都在后台设置中。
 
 ## 🔑 默认账号与角色
 
 | 角色 | 权限 |
 |---|---|
-| `admin` | 全部功能，含用户管理、审计清理、备份恢复 |
-| `editor` | 内容管理（分组 / 卡片 / 上传 / 导入），不可管理用户 |
+| `admin` | 全部功能，含用户管理与系统备份 |
+| `editor` | 内容管理（分组 / 卡片 / 上传 / 书签导入 / 剪藏与令牌） |
 | `viewer` | 只读，可查看后台不可修改 |
-| `guest` | 访客，仅主页展示；后台开启「访客访问」后凭访客密码进入 |
+| `guest` | 访客，仅主页展示；后台开启「访客访问」后凭密码进入 |
 
 - 初始管理员：`admin` / `admin123`，**首次登录后请立即修改密码**
-- 支持 TOTP 双因子（`auth.php?action=2fa_setup / 2fa_enable / 2fa_disable`）与受信设备管理
-- 系统保证至少保留一个 `admin`，不允许降级/删除最后一个管理员
+- 支持 TOTP 双因子与受信设备，系统保证至少保留一个 `admin`
+- 剪藏接口仅 `admin` / `editor` 可用
 
 ## 📁 项目结构
 
 ```
 SolarPanel/
-├── main.go                      # 入口：DB 初始化 + 路由注册 + HTTP/HTTPS 服务 + 预置壁纸落地
-├── go.mod / go.sum
+├── main.go                      # 入口：DB 初始化 + 路由注册 + HTTP/HTTPS 服务
 ├── Dockerfile                   # 三阶段：Node 前端 → Go builder → Alpine 运行时
 ├── docker-compose.yml
+├── clipper-extension/           # Chrome / Edge 剪藏扩展源码（MV3）
 ├── scripts/
-│   ├── build-themes.js          # themes.json → themes.css + 主题白名单
-│   └── build-frontend.js        # SHA1 资源戳注入 · sw.js 版本号
-├── frontend/                    # 前端源码（构建产物 embed 进二进制）
-│   ├── themes.json              # 主题配置唯一事实源
-│   ├── index.html / admin.html / login.html / sw.js
-│   ├── uploads/weather/         # 7 张预置天气壁纸（首次启动复制到 data/uploads/weather）
-│   └── assets/
-│       ├── css/                 # common.css · index.css · themes.css · auth-admin.css
-│       └── js/
-│           ├── api.js           # APP_VERSION + APP_CHANGELOG + 请求封装
-│           ├── index.js         # 主页逻辑（public.php → render）
-│           ├── admin.js         # 后台管理
-│           └── login.js
+│   ├── build-themes.js          # themes.json → themes.css
+│   ├── build-frontend.js        # SHA1 资源戳 · sw.js 版本号
+│   ├── build-clipper.js         # 扩展打包 → dist/*.zip + SHA256SUMS.txt
+│   └── release.ps1              # 一键发版
+├── frontend/                    # 前端源码（embed 进二进制）
+│   ├── themes.json              # 主题唯一事实源
+│   ├── index.html / admin.html / login.html
+│   ├── clip.html / clip-read.html / offline.html / manifest.json / sw.js
+│   ├── uploads/weather/         # 预置天气壁纸
+│   └── assets/{css,js}/         # common、index、themes、admin、clip 等
 ├── internal/
-│   ├── config/config.go         # 环境变量 → Config
-│   ├── settings/defaults.go     # 设置默认值唯一事实源
-│   ├── auth/                    # Session · CSRF · RateLimit · Audit · TOTP · RequireLogin
-│   ├── db/
-│   │   ├── db.go                # DSN/连接池 · DDL · 旧库补列 · 默认设置/管理员初始化 · 孤儿分组清理
-│   │   └── migrations.go        # schema_versions 有序幂等迁移
-│   ├── handler/                 # 各业务 handler（见「路由一览」）
-│   └── nas/                     # NAS 采集：宿主 /proc、/sys、存储池、Docker API、系统识别
-├── presets/                     # 示例备份数据（仅仓库提供，不参与构建与镜像）
-│   └── nav-cards-backup.json    # 通用导航卡片：10 个分组 / 150 张卡片
+│   ├── config/                  # 环境变量 → Config
+│   ├── settings/                # 设置默认值唯一事实源
+│   ├── auth/                    # Session · CSRF · RateLimit · Audit · TOTP · Token
+│   ├── db/                      # DSN / DDL / 旧库补列 / 有序迁移
+│   ├── handler/                 # 业务 handler（含 clip_handler / clip_content / clip_token 等）
+│   ├── urlutil/                 # 链接规范化与查重键
+│   └── nas/                     # NAS 采集：/proc、/sys、存储池、Docker API
+├── presets/                     # 示例备份（不参与构建与镜像）
+├── dist/                        # 扩展打包产物（.gitignore 排除）
 └── data/                        # 运行时数据（自动创建，勿提交）
-    ├── solarpanel.db            # SQLite 数据库
-    └── uploads/                 # icons / logos / wallpapers / favicon / weather
+    ├── solarpanel.db
+    ├── backups/auto|manual/     # 各保留 5 份
+    └── uploads/                 # icons / logos / wallpapers / favicon / weather / clips/shots
 ```
 
 ## 🗄️ 数据库
 
-- **类型**：SQLite（WAL 模式），`modernc.org/sqlite` 纯 Go driver
-- **连接池**：`SetMaxOpenConns(15)`；`journal_mode=WAL` · `synchronous=NORMAL` · `busy_timeout=15000` · `foreign_keys=ON` · `cache_size=-20000` · `temp_store=MEMORY`
-  - 这些 PRAGMA 通过 DSN 的 `_pragma=` 参数下发，**每条连接独立生效**；若只在启动时 `DB.Exec` 一次，池内其余连接仍是默认值（`busy_timeout=0`），并发下会直接 `SQLITE_BUSY` 导致接口 500
-  - 启动日志会打印实际生效的 `journal_mode`；若显示 `delete` 而非 `wal`，说明数据目录所在文件系统（SMB / NFS 等网络盘）不支持 WAL
-- **表**：`users` · `settings` · `item_groups` · `items` · `custom_feeds` · `audit_logs` · `schema_versions` · `rate_limits` · `trusted_devices`
-- **迁移**：`schema_versions` 记录已应用版本；新增 DDL/DML 追加到 `migrations` 列表末尾，`Version` 必须严格递增且不得修改历史项
-- **旧库补列**：`CREATE TABLE IF NOT EXISTS` 对已存在的表不生效，迁移也只覆盖少数几列。启动时会执行 `ensureColumns()`，按 `PRAGMA table_info` 比对 `items` / `item_groups` / `users` / `settings` / `audit_logs` / `custom_feeds` 的期望列，缺失即 `ALTER TABLE ADD COLUMN` 补齐（幂等、保留原有数据）；补列会打印 `[db] 旧库补列 表.列 ✅`
-- **初始化**：空库只写入 `internal/settings/defaults.go` 的默认设置与 `admin/admin123`
-- **重置**：后台「恢复初始状态」= 恢复默认设置 + 清空分组/卡片 + 清空用户上传（保留 `uploads/weather` 预置壁纸），**不会重新生成任何演示内容**
-- **孤儿分组清理**：启动时若 `parent_id` 指向不存在的分组，自动重置为 `0`（顶级）
+- **SQLite（WAL 模式）**，`modernc.org/sqlite` 纯 Go driver，连接池 `SetMaxOpenConns(15)`
+- PRAGMA 通过 DSN 的 `_pragma=` 下发，每条连接独立生效（`journal_mode=WAL` · `synchronous=NORMAL` · `busy_timeout=15000` · `foreign_keys=ON`）；启动日志打印实际 `journal_mode`，非 `wal` 说明数据目录所在文件系统（SMB / NFS 等）不支持
+- **表**：
+  - 导航与系统：`users` · `settings` · `item_groups` · `items` · `custom_feeds` · `audit_logs` · `schema_versions` · `rate_limits` · `trusted_devices`
+  - 剪藏：`api_tokens`（`token_plain` 明文便于再复制，校验用 `token_hash`）· `clip_requests`（24 小时幂等）· `clip_contents`（正文快照，含 `summary` / `auto_tags` / `screenshot_path`）· `item_tags` · `clip_fts`（FTS5 虚表）
+- **迁移**：`schema_versions` 记录已应用版本，当前 v1–v8；新增条目追加到末尾，`Version` 严格递增且不得修改历史项
+- **全文索引**：`clip_fts` 优先 trigram（中文可用），不支持时回退 `unicode61`；`EnsureClipFTS()` 启动时比对并重建；检索词少于 3 个字符退回 `LIKE`
+- **旧库兼容**：`ensureColumns()` 按 `PRAGMA table_info` 补齐缺失列，避免 `no such column` 直接 500
+- **启动自愈**：`BackfillURLKeys()` 补算查重键、`EnsureClipFTS()` 校验索引、孤儿分组重置为顶级
+- **定时任务**：审计日志清理、剪藏幂等记录清理（每小时）、自动备份
+- **重置**：后台「恢复初始状态」清空分组 / 卡片 / RSS / 剪藏快照 / 标签 / 令牌与用户上传（保留 `uploads/weather`），不生成演示内容
 
 ## 🎨 主题定制
 
-主题唯一事实源为 `frontend/themes.json`，当前十套：`liquid-glass`（默认，仅浅色）、`soft`、`blueprint`、`clarity`、`soft-utility`、`aurora`、`iris`、`sketch-style`、`retro-vintage` 与 `corporate-clean`。
+主题唯一事实源为 `frontend/themes.json`，当前十套：`liquid-glass`（默认）、`soft`、`blueprint`、`clarity`、`soft-utility`、`aurora`、`iris`、`sketch-style`、`retro-vintage`、`corporate-clean`。
 
 ```json
 {
@@ -296,172 +230,165 @@ SolarPanel/
 }
 ```
 
-新增主题后执行 `node scripts/build-themes.js`，自动同步：
-
-- `frontend/assets/css/themes.css`（主题样式）
-- `api.js` 中的主题白名单
-- `settings_handler.go` 的取值白名单 `settingValueWhitelist`（需手动追加主题名）
-
-默认明暗模式由设置项 `default_theme`（`light` / `dark`）控制，主题风格由 `theme_style` 控制。
+新增主题后执行 `node scripts/build-themes.js`，自动同步 `themes.css`、`api.js` 的 `SP_STYLES` 白名单与 `admin.html` 下拉；另需把主题名加入 `settings_handler.go` 的 `settingValueWhitelist`。默认明暗模式由 `default_theme` 控制，风格由 `theme_style` 控制。
 
 ## 🔌 路由一览
 
-所有接口挂在 `/api/` 下，历史原因保留 `.php` 后缀。
+导航接口挂在 `/api/` 下（历史原因保留 `.php` 后缀），剪藏接口为 `/api/v1/`。响应统一为 `{"code": 0, "data": ..., "msg": ""}`，`code != 0` 表示业务失败。
 
 ### 公共路由（无需登录）
 
-| 方法 | 路径 | 限流 | 说明 |
-|---|---|---|---|
-| GET | `/api/public.php` | 60/min | 主页数据：设置 + 分组 + 卡片 + 站点信息 |
-| GET | `/api/install.php` | — | 首次安装状态 |
-| POST | `/api/install.php` | — | 执行首次安装 |
-| GET | `/api/weather.php` | 10/min | 天气数据 |
-| GET / POST | `/api/news.php` | 30/min | 新闻聚合调度 |
-| GET | `/api/news/meta` | 30/min | 新闻源元信息列表 |
-| GET | `/api/news/all` | — | 全部源聚合结果 |
-| GET | `/api/news/source` | — | 单源新闻 |
-| POST | `/api/wallpaper.php` | 10/min | 每日壁纸调度 |
-| GET / POST | `/api/auth.php` | — | 登录 / 登出 / 双因子 / 受信设备 / 访客登录 |
-| GET | `/api/favicon.php?host=xxx` | 120/min | 站点图标代理（三源抓取 · 磁盘缓存 · ETag 协商） |
-| GET | `/api/nas.php` | 240/min | NAS 主机与容器状态（需后台开启；访客可见性由设置控制） |
-| GET | `/api/version.php` | 30/min | 版本检查：返回当前 / 最新版本与是否有更新；`?refresh=1` 跳过缓存（后台「立即检查」用） |
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/public.php` | 主页数据：设置 + 分组 + 卡片 + 站点信息（60/min） |
+| GET / POST | `/api/install.php` | 安装状态 / 默认管理员提示 |
+| GET | `/api/weather.php` | 天气数据（30/min） |
+| GET / POST | `/api/news.php` · `/api/news/meta` · `/api/news/all` · `/api/news/source` | 新闻聚合与源数据（30/min） |
+| GET / POST | `/api/wallpaper.php` | 每日壁纸调度（`daily` / `preview` / `pin` / `unpin`，30/min） |
+| GET / POST | `/api/auth.php` | 登录 / 双因子 / 访客登录 / 登出 / 受信设备 |
+| GET | `/api/favicon.php?host=xxx` | 图标代理（三源抓取 · 磁盘缓存 · ETag，120/min） |
+| GET | `/api/nas.php` | NAS 主机与容器状态（需后台开启，240/min） |
+| GET | `/api/version.php` | 版本检查（`?refresh=1` 跳过缓存，30/min） |
 
-### 登录后路由（`RequireLogin` + CSRF）
+### 剪藏 API v1（Bearer Token 或登录会话）
 
-| 方法 | 路径 | `action` | 说明 |
-|---|---|---|---|
-| GET / POST | `/api/settings.php` | `list` / `save` | 设置读取与保存 |
-| GET / POST | `/api/groups.php` | `list` `edit` `delete` `sort` `sort_batch` `visible` | 分组 CRUD、排序、显示隐藏 |
-| GET / POST | `/api/items.php` | `list` `edit` `delete` `sort` `sort_batch` `toggle_hidden` `favicon` `fetch_meta` | 卡片 CRUD、排序、隐藏、抓图标、抓标题 |
-| POST | `/api/upload.php` | `type=icon\|logo\|wallpaper` | 图标 5MB / Logo 5MB / 壁纸 10MB |
-| GET / POST | `/api/gallery.php` | GET 列表 · POST `delete` | 壁纸图库（用户 `wallpapers` + 预置 `weather`）；预置项只读，删除仅对用户上传生效 |
-| GET / POST | `/api/backup.php` | `export` / `import` / `reset` | 备份导出、导入、恢复初始状态 |
-| GET / POST | `/api/user.php` | `list` `create` `update` `delete` `change_password` `set_role` `set_password` | 用户管理 |
-| GET / POST | `/api/audit.php` | `list` / `clear` | 审计日志 |
-| GET / POST | `/api/feeds.php` | `list` `save` `delete` `toggle` | 自定义 RSS 源 |
-| POST | `/api/import.php` | `bookmarks` | 浏览器书签 HTML 导入 |
+CORS 允许 `*`，`OPTIONS` 直接返回 204；IP 限流 120/min，Bearer 另有 60/min 的令牌限流。Bearer 请求不走 Cookie / CSRF，会话写操作需带 `X-CSRF-Token`。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/v1/clips` | 新建剪藏；`url` 必填，可选 `title` / `note` / `group_id` / `capture` / `force` / `client_id` |
+| DELETE | `/api/v1/clips` | 撤销剪藏（`{"id":N}`），仅本人或管理员 |
+| GET | `/api/v1/clips/search?q=&limit=&offset=` | 正文快照全文检索 |
+| GET | `/api/v1/clips/{id}` | 卡片详情 + 快照 + 标签 |
+| POST | `/api/v1/clips/{id}/refetch` | 重新抓取正文 |
+| POST | `/api/v1/clips/{id}/screenshot` | 上传整页截图（≤15MB） |
+| DELETE | `/api/v1/clips/{id}/content` | 删除快照与截图（保留卡片） |
+| GET | `/api/v1/me` · `/api/v1/groups` | 当前身份 / 可见分组 |
+| POST | `/api/v1/preview` | 只抓元数据不写库 |
+| GET / POST / DELETE | `/api/v1/tokens` | 令牌列表（含明文）/ 创建 / 吊销（物理删除） |
+
+### 登录后路由（`RequireLogin`，写操作校验 CSRF）
+
+| 方法 | 路径 | `action` |
+|---|---|---|
+| GET / POST | `/api/settings.php` | `list` / `save`（`save` 仅 `admin`） |
+| GET / POST | `/api/groups.php` | `list` `edit` `delete` `sort` `sort_batch` `visible` |
+| GET / POST | `/api/items.php` | `list` `edit` `delete` `sort` `sort_batch` `toggle_hidden` `favicon` `fetch_meta` |
+| POST | `/api/upload.php` | `type=icon\|logo\|wallpaper`（5MB / 5MB / 10MB） |
+| GET / POST | `/api/gallery.php` | 列表 / `delete`（预置项只读） |
+| GET / POST | `/api/backup.php` | `export` `import` `reset` `create` `restore` `delete` 等（仅 `admin`） |
+| GET / POST | `/api/user.php` | 用户管理（`change_password` 本人可用，其余仅 `admin`） |
+| GET / POST | `/api/audit.php` | `list` / `clear`（仅 `admin`） |
+| GET / POST | `/api/feeds.php` | `list` `save` `delete` `toggle` |
+| POST | `/api/import.php` | 浏览器书签导入（`merge` / `overwrite`）/ JSON 导入 |
 
 ### 页面与静态资源
 
 | 路径 | 说明 |
 |---|---|
-| `GET /` | 主页（`frontend/index.html`） |
-| `GET /login.html` | 登录页；已登录非 guest 会被重定向到 `/admin.html` |
-| `GET /admin.html` | 后台页；未登录重定向到 `/login.html`，guest 角色禁止访问 |
-| `GET /favicon.ico` | 站点图标 |
-| `/uploads/*` · `/frontend/uploads/*` | 用户上传目录（磁盘直读） |
-| 其他路径 | embed 静态资源兜底（`/assets/...`） |
-
-响应统一格式：`{"code": 0, "data": ..., "msg": ""}`，`code != 0` 表示业务失败。
+| `GET /` | 主页 |
+| `GET /login.html` · `GET /admin.html` | 登录页 / 后台页（按登录态互相重定向） |
+| `GET /clip` · `GET /clip-share` | 剪藏网页入口 / Android PWA 分享目标 |
+| `GET /read/{id}` | 正文快照阅读页（需登录） |
+| `/uploads/*` | 用户上传目录（CSP `sandbox` 限制脚本） |
+| 其他路径 | embed 静态资源兜底，后台与登录页保持登录保护 |
 
 ## 🛠️ 后台功能
 
-后台 6 个主模块：
-
 | 模块 | 能力 |
 |---|---|
-| **设置** | 站点信息（标题 / Logo / 公告 / 备案 / 内外网访问）、外观与卡片（主题 + 明暗 + 卡片样式 + 布局留白 + 页面字体 + 时钟天气字体 + 壁纸）、导航与搜索（顶栏开关 + 搜索栏 + 搜索引擎清单与默认引擎）、访问控制（访客密码）、热点新闻（开关 + 24 源勾选排序 + 自定义 RSS）、NAS 监控（开关 / 放置方式 / 刷新间隔 / 访客可见 / 自定义存储路径 / 弹窗不透明度） |
-| **卡片** | 新增/编辑/删除、拖拽排序、显示隐藏、图标上传或自动抓取、标题自动抓取 |
-| **分组** | 两级分组 CRUD、拖拽排序、显示隐藏、图标与描述 |
-| **账号** | 修改本人密码、TOTP 双因子、受信设备管理；管理员可增删用户与改角色 |
-| **备份** | 导出 JSON、导入 JSON、恢复初始状态；书签 HTML 导入 |
-| **审计** | 操作日志分页查看、按需清空（保留策略由 `auth.AuditCleanup` 每小时执行） |
+| **站点设置** | 六个分区：站点信息、外观与卡片（主题 / 明暗 / 字体 / 壁纸）、导航与搜索、访问控制、热点新闻、NAS 监控 |
+| **卡片** | CRUD、拖拽排序、显隐、图标上传或自动抓取、标题自动获取、标签维护（≤20 个） |
+| **分组** | 两级分组 CRUD、排序、显隐、图标与描述；页面底部为浏览器书签导入 |
+| **账号** | 修改密码、TOTP 双因子、受信设备；管理员可增删用户与改角色 |
+| **系统备份**（仅管理员） | JSON / HTML 导出与导入、恢复初始状态、自动与手动备份（各保留 5 份） |
+| **剪藏与接入** | 五个分区：基础设置 / 摘要与图片 / 快照检索 / 令牌与地址 / 各端接入 |
+| **审计日志** | 分页查看与清空 |
 
-前端体验：后台保存后，已打开的主页通过 `localStorage` 的 storage 事件自动拉新数据重渲染，无需手动刷新。
+后台保存后，已打开的主页通过 `storage` 事件自动重渲染。剪藏在后台标注「尚未经过完整测试」，问题可通过 GitHub Issues 反馈。
 
 ## 💾 备份格式
 
-`GET /api/backup.php?action=export` 返回：
+`GET /api/backup.php?action=export&format=json`（默认）返回：
 
 ```json
 {
   "version": "1.0",
-  "time": "2026-10-23 19:34:00",
+  "time": "2026-10-29 12:00:00",
   "settings": [{ "id": 1, "config_name": "site_title", "config_value": "SolarPanel" }],
-  "groups": [{ "id": 1, "parent_id": 0, "title": "...", "icon": "...", "description": "...", "sort": 1, "is_visible": 1, "user_id": 1, "created_at": "" }],
-  "items": [{ "id": 1, "group_id": 1, "title": "...", "url": "...", "lan_url": "", "description": "...", "icon_type": "image", "icon_value": "...", "icon_bg": "", "open_method": 2, "sort": 1, "is_hidden": 0, "user_id": 1, "created_at": "" }],
+  "groups": [{ "id": 1, "parent_id": 0, "title": "...", "icon": "...", "description": "...", "sort": 1, "is_visible": 1, "user_id": 1 }],
+  "items": [{ "id": 1, "group_id": 1, "title": "...", "url": "...", "lan_url": "", "description": "...", "icon_type": "image", "icon_value": "...", "open_method": 2, "sort": 1, "is_hidden": 0 }],
+  "feeds": [{ "id": 1, "title": "...", "url": "...", "sort": 1, "enabled": 1 }],
+  "url_keys": { "1": "example.com/article" },
+  "tokens": [{ "id": 1, "user_id": 1, "name": "...", "token_hash": "...", "token_plain": "...", "scopes": "clip:write", "expires_at": "" }],
+  "clip_contents": [{ "item_id": 1, "url_key": "...", "excerpt": "...", "content_md": "...", "summary": "...", "auto_tags": "a,b" }],
+  "item_tags": [{ "item_id": 1, "tag": "..." }],
   "files": { "wallpapers/xxx.jpg": "<base64>" }
 }
 ```
 
-- `files` 的键是**相对 `data/uploads` 的路径**；`weather/` 下的预置壁纸不导出；单个文件超过 20MB 跳过
-- 默认以 JSON 下载，导入同时兼容「base64 包裹的 JSON」与纯 JSON
+- `format=html` 导出 Netscape 书签格式，仅含可见分组与未隐藏卡片
+- `files` 为相对 `data/uploads` 的路径，单个文件超过 20MB 跳过；导入时跳过 `weather/` 前缀，保留预置壁纸
+- 导入同时兼容纯 JSON 与 base64 包裹的 JSON，上限 128MB
 
-导入规则：
+导入规则：`version` 仅作记录；导入为**整体替换**（用户账号不受影响）；分组按 `parent_id` 顺序落库并建立 ID 映射，父分组缺失的子分组降级为顶级；卡片 `group_id`、快照与标签的 `item_id` 均按映射重写，映射失败则跳过；`url_key` 缺失时按 URL 现算；导入后重建全文索引。
 
-1. `version` 仅作记录，不做严格校验；缺失的 `settings` / `groups` / `items` 视为空集
-2. 导入是**整体替换**：先清空 `items` / `item_groups` / `settings`，再按备份重建；用户账号与已有上传文件不受影响
-3. 分组先按 `parent_id` 升序处理，保证父分组先落库，再建立 `旧 ID → 新 ID` 映射；找不到父分组映射的子分组降级为顶级
-4. 卡片的 `group_id` 经映射重写；所属分组映射不存在的卡片会被**直接跳过**
-5. `files` 写入前校验路径（拒绝 `..`、限制在 `uploads` 内），`.svg` 会先做安全清洗，同名覆盖
+备份文件位于 `data/backups/auto/` 与 `data/backups/manual/`，各保留最新 5 份。
 
 ## 🧲 浏览器扩展（剪藏）
 
-Chrome / Edge 扩展源码位于 `clipper-extension/`，打包产物在 [Releases](https://github.com/Ozero-top/SolarPanel-v3/releases/latest) 的 `solarpanel-clipper-v1.0.0.zip`（也可运行 `node scripts/build-clipper.js` 自行生成到 `dist/`）。
+源码位于 `clipper-extension/`（MV3，仅申请 `activeTab` / `scripting` / `contextMenus` / `storage`），打包产物在 [Releases](https://github.com/Ozero-top/SolarPanel-v3/releases/latest)（`solarpanel-clipper-v1.0.0.zip` 与 `SHA256SUMS.txt`），也可运行 `node scripts/build-clipper.js` 生成到 `dist/`。
 
-**安装**
+**安装**：解压 zip 到固定目录 → 打开 `chrome://extensions` 或 `edge://extensions` → 开启「开发者模式」→「加载已解压的扩展程序」。
 
-1. 下载并解压 `solarpanel-clipper-v1.0.0.zip`，得到 `solarpanel-clipper` 文件夹
-2. 打开 `chrome://extensions` 或 `edge://extensions`，开启右上角「开发者模式」
-3. 点击「加载已解压的扩展程序」，选择该文件夹
+**配置**：后台「剪藏与接入 → 令牌与地址」生成 Token → 扩展「打开设置」填写站点地址、Token 与默认分组 → 可勾选「同时保存正文快照」「同时保存整页截图」。
 
-**配置**
+**使用**：
 
-1. 后台 → **剪藏与接入 → 令牌与地址**，生成一个 Token（列表中可随时复制）
-2. 点击扩展图标 →「打开设置」，填写站点地址（如 `http://192.168.1.10:10086`）与 Token
-3. 按需开启正文快照、整页截图，选择默认分组后保存
+- 点击图标确认标题 / 分组 / 备注后保存；勾选截图时自动滚动逐屏拼接，失败降级为可视区截图
+- 右键菜单可保存页面 / 链接 / 选中文本；快捷键 `Alt+Shift+S` 保存当前页
+- 断网时最多缓存 50 条，下次启动自动重试；重复链接可选择打开已有卡片或「仍要另存」
+- 错误码：401 Token 失效 / 403 无权限或剪藏已关闭 / 429 请求过于频繁
 
-**使用**
+Token 仅保存在本机 `chrome.storage.local`，扩展不收集、不上报数据。Firefox 仅代码兼容，未签名扩展重启后失效。
 
-- 点击工具栏扩展图标，确认标题 / 分组后点「保存」；勾选整页截图时会自动滚动拼接长图，失败自动降级为可视区截图
-- 右键菜单可保存当前页面 / 链接 / 选中文本
-- 快捷键 `Alt+Shift+S` 快速保存当前页面
-- 断网时保存会进入本地队列，恢复网络后自动补发
+## 📱 其他剪藏入口
+
+| 入口 | 说明 |
+|---|---|
+| 网页快速添加 `/clip` | 粘贴链接自动补全标题并选择分组，断网写入 IndexedDB 队列 |
+| Android 系统分享 | Chrome 打开本站并「添加到主屏幕」后出现在分享面板（HTTP 局域网通常不支持） |
+| iOS 快捷指令 | `POST /api/v1/clips`，请求头 `Authorization: Bearer <Token>`，请求体 `{"url":"...","title":"..."}` |
+| 书签小工具 | 后台「各端接入」提供书签代码，点击打开 `/clip` |
+| 阅读页 `/read/{id}` | 查看正文快照、摘要、标签与截图，可重抓或删除（需登录） |
 
 ## 🧩 示例数据（可选导入）
 
-`presets/nav-cards-backup.json` 是一份**通用导航站配置备份**，包含 **10 个分组 / 150 张卡片**（AI 工具、视频、社交、开发、云盘等常用站点），可用于快速建站或演示：
-
-1. 后台 → **系统备份 → 导入配置**，选择该文件
-2. 导入为整体替换，会覆盖当前分组 / 卡片 / 设置，操作前请先导出自己的备份
-3. 文件不含账号、访客密码与上传图片，导入后用户账号不受影响
-4. 导入后可按需修改分组名称、卡片地址与图标
-
-> `presets/` 仅随仓库提供，已通过 `.dockerignore` 排除，不参与 Docker 构建，也不会打入镜像。
+`presets/nav-cards-backup.json` 为通用导航站备份（10 个分组 / 150 张卡片），可在 **系统备份 → 导入配置** 中整体替换当前配置；文件不含账号与图片，用户账号不受影响。该目录不参与 Docker 构建与镜像。
 
 ## 🧪 开发注意事项
 
-- **WAL 快照隔离**：`DB.Exec` 归还连接池后再 `DB.QueryRow` 可能落到另一条连接，读不到刚写入的数据。写后读**必须放在同一个 `db.Tx` 内**（`groups_handler` 的保存与 `items_handler` 的 `toggle_hidden` 已按此实现）
-- **嵌套查询死锁**：SQLite 连接池较小时，`rows.Next()` 遍历期间再发起 `QueryRow` 会阻塞。代码统一先收集结果并 `rows.Close()` 后再查
-- **列与 Scan 必须一一对应**：`scanItemGroup` 有 9 个目标（含 `parent_id`），SELECT 少一列会让 `Scan` 报错并被误读为「记录不存在」
-- **`schema_versions` 是 OTA 关键表**，禁止手动删除；历史迁移条目不可修改
-- **新增列必须同步三处**：`schemaDDL`、`expectedColumns`（旧库补列）与 `migrations` 追加项；只改建表语句对已部署的旧库无效
-- **迁移要校验结果**：`ALTER TABLE ... ADD COLUMN` 遇到「列已存在」会报错，不要把该错误当成成功并打标，否则会出现「日志显示已迁移、实际缺列」的假象
-- **SQLite PRAGMA 走 DSN**：`DB.Exec("PRAGMA ...")` 只影响连接池中的一条连接，新增连接仍用默认值；需要全局生效的参数一律通过 `buildDSN()` 的 `_pragma=` 传入
-- **设置默认值只改 `internal/settings/defaults.go`**，`db.go` 初始化与 `backup_handler.go` 重置必须同源，避免两处漂移
-- **新增主题**只改 `frontend/themes.json` 并跑 `build-themes.js`，不要手改 `themes.css`
-- **前端资源变更**后必须跑 `build-frontend.js`，否则浏览器仍命中旧 SHA1 缓存
-- **Docker 重建**：`docker compose down && docker compose up -d --build`；若镜像未更新，加 `--no-cache` 排除 buildx 缓存干扰
+- **写后读放同一事务**：`DB.Exec` 归还连接后再 `QueryRow` 可能落到另一条连接，读不到刚写入的数据
+- **避免嵌套查询死锁**：`rows.Next()` 遍历期间不要发起新的查询，先收集结果并 `rows.Close()`
+- **列与 Scan 一一对应**：SELECT 少一列会让 `Scan` 报错并被误读为「记录不存在」
+- **`schema_versions` 禁止手动删除**，历史迁移条目不可修改
+- **新增列同步三处**：`schemaDDL`、`expectedColumns`、`migrations`；`ALTER TABLE` 报「列已存在」不能当作成功
+- **PRAGMA 走 DSN**：`DB.Exec("PRAGMA ...")` 只影响一条连接，全局参数一律由 `buildDSN()` 下发
+- **FTS5 同步**：增删快照都要更新 `clip_fts`，改索引列结构需删表重建（启动时由 `EnsureClipFTS()` 兜底）
+- **默认值只改 `internal/settings/defaults.go`**；新增主题只改 `themes.json` 并跑 `build-themes.js`，另需更新 `settingValueWhitelist`
+- **前端资源变更后跑 `build-frontend.js`**，扩展变更后跑 `build-clipper.js` 并同步 `manifest.json` 版本
 
 ## 📋 更新日志
 
-完整变更明细见 [updates.md](./updates.md)。维护约定：每次升版只更新 `updates.md` 与 `frontend/assets/js/api.js` 的 `APP_VERSION` / `APP_CHANGELOG`，README 不再维护版本条目。
+完整变更见 [updates.md](./updates.md)。每次升版更新 `updates.md` 与 `frontend/assets/js/api.js` 的 `APP_VERSION` / `APP_CHANGELOG`，README 只保留顶部版本徽章。
 
-## ⬆️ 从 V2.1 系列升级到 V3
+## ⬆️ 从 V2.1 升级到 V3
 
-V3 不自动迁移 V2.1 的数据库，请按「先导出、后导入」的顺序升级：
+1. 在 V2.1 后台「系统备份 → 导出配置」保存备份
+2. 部署 V3（建议使用新数据目录），用 `admin` / `admin123` 登录
+3. 在 V3 后台「系统备份 → 导入配置」选择备份文件恢复
 
-1. 在 **V2.1 系列后台 → 系统备份 → 导出配置**，保存导出的备份文件
-2. 部署 V3（建议使用新的数据目录），首次启动为空库，使用 `admin` / `admin123` 登录
-3. 在 **V3 后台 → 系统备份 → 导入配置**，选择第 1 步的备份文件完成恢复
-
-注意事项：
-
-- 导入为**整体替换**：V3 现有的分组、卡片与设置会被备份内容覆盖
-- 备份中的上传文件（图标 / Logo / 壁纸）随备份一起导入，无需单独拷贝 `uploads`
-- 升级后立即修改默认管理员密码；旧版浏览器缓存建议强制刷新一次
-
-> 直接让 V3 复用旧数据目录时，启动会尝试补齐旧库缺失字段以兼容读取；但旧版字段语义可能不同（例如隐藏标记、图标字段命名），**推荐仍按上面的「导出 → 导入」流程升级**，以保证分组、卡片与设置完整还原。
+导入为整体替换，上传文件随备份一并导入。直接复用旧数据目录虽会补齐缺失字段，但旧字段语义可能不同，仍建议按上述流程升级。
 
 ## 📝 License
 
