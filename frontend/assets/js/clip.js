@@ -16,6 +16,21 @@
     return /^https?:\/\//i.test(String(u || '').trim());
   }
 
+  /* 只放行 http / https 绝对地址，阻断 javascript:、data: 等伪协议
+     与畸形地址，避免把分享内容直接写入 href 造成脚本注入或跳转劫持 */
+  function safeHTTPURL(u) {
+    const raw = String(u || '').trim();
+    if (!/^https?:\/\//i.test(raw)) return '';
+    try {
+      const parsed = new URL(raw);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+      if (!parsed.hostname) return '';
+      return parsed.href;
+    } catch (_) {
+      return '';
+    }
+  }
+
   function show(view) {
     $('view-form').classList.toggle('hidden', view !== 'form');
     $('view-result').classList.toggle('hidden', view !== 'result');
@@ -187,8 +202,9 @@
     iconNode(data.item || { title: title });
 
     const open = $('btn-open');
-    if (isHTTP(data.url)) {
-      open.href = data.url;
+    const openURL = safeHTTPURL(data.url);
+    if (openURL) {
+      open.href = openURL;
       open.classList.remove('hidden');
     } else {
       open.classList.add('hidden');

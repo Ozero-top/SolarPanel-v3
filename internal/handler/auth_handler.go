@@ -400,6 +400,7 @@ func randomToken(n int) string {
 }
 
 func clearTrustedDeviceCookie(w http.ResponseWriter, secure bool) {
+	// codeql[go/cookie-secure-not-set] Secure 由 auth.IsHTTPS 按部署协议动态决定
 	http.SetCookie(w, &http.Cookie{
 		Name: trustedDeviceCookie, Value: "", Path: "/",
 		HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1,
@@ -460,6 +461,7 @@ func saveTrustedDevice(uid uint, r *http.Request, w http.ResponseWriter) error {
 	db.DB.Exec("INSERT INTO trusted_devices (user_id, token_hash, device_name, ip_snippet, user_agent, created_at, last_used_at, expires_at) VALUES (?,?,?,?,?,?,?,?)",
 		uid, hashHex, deviceName, ipShort, ua, db.NowStr(), db.NowStr(), expires)
 
+	// codeql[go/cookie-secure-not-set] Secure 由 auth.IsHTTPS 按部署协议动态决定
 	http.SetCookie(w, &http.Cookie{
 		Name: trustedDeviceCookie, Value: token, Path: "/", HttpOnly: true,
 		SameSite: http.SameSiteLaxMode, MaxAge: trustedDeviceMaxAge,

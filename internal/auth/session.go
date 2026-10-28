@@ -203,12 +203,16 @@ func RequireRoles(roles ...string) func(http.Handler) http.Handler {
 
 // SetCookies 下发 session + csrf cookie
 // secure 参数控制 Secure 属性：HTTPS 部署时传 true
+// 内网 HTTP 部署必须允许非 Secure Cookie，否则浏览器会丢弃 Cookie 导致无法登录，
+// 因此这里按调用方传入的部署协议动态决定，属于预期行为。
 func SetCookies(w http.ResponseWriter, sid, sessCSRF, sessionCookieName, csrfCookieName string, secure bool) {
+	// codeql[go/cookie-secure-not-set] Secure 由 auth.IsHTTPS 按部署协议动态决定
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookieName, Value: sid, Path: "/",
 		HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 86400,
 		Secure: secure,
 	})
+	// codeql[go/cookie-secure-not-set] Secure 由 auth.IsHTTPS 按部署协议动态决定
 	http.SetCookie(w, &http.Cookie{
 		Name: csrfCookieName, Value: sessCSRF, Path: "/",
 		HttpOnly: false, SameSite: http.SameSiteLaxMode, MaxAge: 86400,
@@ -218,10 +222,12 @@ func SetCookies(w http.ResponseWriter, sid, sessCSRF, sessionCookieName, csrfCoo
 
 // ClearCookies 登出时清除
 func ClearCookies(w http.ResponseWriter, sessionCookieName, csrfCookieName string, secure bool) {
+	// codeql[go/cookie-secure-not-set] Secure 由 auth.IsHTTPS 按部署协议动态决定
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookieName, Value: "", Path: "/",
 		HttpOnly: true, MaxAge: -1, Secure: secure,
 	})
+	// codeql[go/cookie-secure-not-set] Secure 由 auth.IsHTTPS 按部署协议动态决定
 	http.SetCookie(w, &http.Cookie{
 		Name: csrfCookieName, Value: "", Path: "/",
 		HttpOnly: true, MaxAge: -1, Secure: secure,

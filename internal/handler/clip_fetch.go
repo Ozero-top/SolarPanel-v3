@@ -74,6 +74,10 @@ func fetchClipPage(rawURL string) *clipPage {
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/pdf,application/xml;q=0.9,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
 
+	// 请求地址已在上方完成 scheme 白名单校验与内网地址拦截，
+	// 跳转由 CheckRedirect 逐跳复检，建连由 safeHTTPTransport 校验解析后的真实 IP，
+	// 因此这里放行可控 URL 属于预期行为（用户主动剪藏指定网页）。
+	// codeql[go/request-forgery]
 	resp, err := client.Do(req)
 	if err != nil {
 		out.FetchError = "无法访问目标站点：" + err.Error()
