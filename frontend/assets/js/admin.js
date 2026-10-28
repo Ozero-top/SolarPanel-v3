@@ -2926,6 +2926,7 @@ function bindImportBookmarks() {
   const fileInput = document.getElementById('bookmarksFile');
   const preview = document.getElementById('bookmarksPreview');
   const applyBtn = document.getElementById('applyBookmarksBtn');
+  const modeSel = document.getElementById('bookmarksMode');
   if (!openBtn) return;
 
   openBtn.addEventListener('click', () => fileInput.click());
@@ -2941,16 +2942,28 @@ function bindImportBookmarks() {
       preview.textContent = `✅ ${data.total} 条 / ${data.groups.length} 个分组 可导入`;
       applyBtn.hidden = false;
       applyBtn.onclick = async () => {
-        // 导入：后端解析好了分组，前端只需要把 data.groups 提交即可
-        // 这里前端直接用 applyBookmarksData 函数；先让用户确认
-        if (!await uiConfirm(`将导入 ${data.groups.length} 个分组、${data.total} 张卡片到数据库，是否继续？`)) return;
+        const mode = modeSel ? modeSel.value : 'merge';
+        const tip = mode === 'overwrite'
+          ? `覆盖导入会先删除现有的全部分组和卡片，再导入 ${data.total} 条链接，是否继续？`
+          : `将增量导入 ${data.groups.length} 个分组、${data.total} 张卡片，已有链接不会重复，是否继续？`;
+        if (!await uiConfirm(tip, { danger: mode === 'overwrite' })) return;
+        applyBtn.disabled = true;
         try {
-          await API.post(API_BASE + 'import.php?action=apply', { groups: data.groups });
-          toast('导入成功！请刷新主页查看', 'success');
+          // 后端不缓存解析结果，确认后重新上传同一文件执行写入
+          const form2 = new FormData();
+          form2.append('file', f);
+          form2.append('mode', mode);
+          const r = await API.postForm(API_BASE + 'import.php?action=import', form2);
+          const prefix = r.mode === 'overwrite' ? '覆盖导入完成' : '导入完成';
+          toast(`${prefix}：新增 ${r.imported} 张，跳过重复 ${r.skipped} 张，新建 ${r.groups_created} 个分组`, 'success');
+          preview.textContent = `✅ 已导入 ${r.imported} 张卡片到 ${data.groups.length} 个分组`;
           applyBtn.hidden = true;
-          preview.textContent = '';
           fileInput.value = '';
-        } catch (e) { toast(e.message, 'error'); }
+        } catch (e) {
+          toast(e.message, 'error');
+        } finally {
+          applyBtn.disabled = false;
+        }
       };
     } catch (e) {
       preview.textContent = '❌ 解析失败：' + e.message;

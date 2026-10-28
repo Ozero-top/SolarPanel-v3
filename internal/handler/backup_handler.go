@@ -224,7 +224,6 @@ func (h *BackupHandler) collectPayload(includeFiles bool) (backupPayload, error)
 	}
 
 	files := make(map[string]string)
-	skipDirs := map[string]bool{"weather": true}
 
 	err = filepath.Walk(h.cfg.UploadDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -238,10 +237,6 @@ func (h *BackupHandler) collectPayload(includeFiles bool) (backupPayload, error)
 			return nil
 		}
 		rel = filepath.ToSlash(rel)
-		topDir := strings.SplitN(rel, "/", 2)[0]
-		if skipDirs[topDir] {
-			return nil
-		}
 		if info.Size() > backupMaxFileSize {
 			log.Printf("[backup] 跳过过大文件: %s (%d bytes)", rel, info.Size())
 			return nil
@@ -584,7 +579,7 @@ func (h *BackupHandler) pruneBackups(kind string) {
 	}
 }
 
-// createBackup 生成一份服务端备份（不含图片文件），并清理超出保留数量的旧备份
+// createBackup 生成一份服务端备份（含全部分组、卡片、设置与上传资源），并清理超出保留数量的旧备份
 func (h *BackupHandler) createBackup(kind string) (backupFileMeta, error) {
 	var meta backupFileMeta
 	dir, ok := h.backupTypeDir(kind)
@@ -595,7 +590,7 @@ func (h *BackupHandler) createBackup(kind string) (backupFileMeta, error) {
 		return meta, err
 	}
 
-	payload, err := h.collectPayload(false)
+	payload, err := h.collectPayload(true)
 	if err != nil {
 		return meta, err
 	}

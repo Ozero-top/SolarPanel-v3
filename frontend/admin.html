@@ -636,8 +636,12 @@
       <!-- ============ 书签导入 ============ -->
       <div class="account-card" style="margin-top:20px">
         <div class="account-card-title">📥 浏览器书签导入</div>
-        <div class="form-hint" style="margin-bottom:10px">从 Chrome / Edge / Firefox / Safari 导出的 bookmarks.html 导入，按分组自动创建卡片；http / https 链接有效。</div>
-        <div style="display:flex;gap:8px;align-items:center">
+        <div class="form-hint" style="margin-bottom:10px">从 Chrome / Edge / Firefox / Safari 导出的 bookmarks.html 导入，按分组自动创建卡片；http / https 链接有效。<br>增量导入保留现有数据，已有链接不重复；覆盖导入会先删除全部分组和卡片，再导入本次文件。</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select class="select" id="bookmarksMode" style="max-width:190px">
+            <option value="merge">增量导入（保留现有）</option>
+            <option value="overwrite">覆盖导入（清空现有）</option>
+          </select>
           <input type="file" id="bookmarksFile" accept=".html" hidden>
           <button class="btn" type="button" id="openBookmarksBtn">📂 选择 bookmarks.html</button>
           <span id="bookmarksPreview" style="font-size:13px;color:var(--text-muted)"></span>
@@ -1087,7 +1091,7 @@
   </div>
 
   <script src="assets/js/qrcode.min.js"></script>
-  <script src="assets/js/api.js?v=d80f4fd7"></script>
-  <script src="assets/js/admin.js?v=ac2341ec"></script>
+  <script src="assets/js/api.js?v=d69b7a11"></script>
+  <script src="assets/js/admin.js?v=e6092ec7"></script>
 </body>
 </html>
