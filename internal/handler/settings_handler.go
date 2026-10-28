@@ -40,6 +40,7 @@ var allowedSettingKeys = map[string]struct{}{
 var settingValueWhitelist = map[string]map[string]bool{
 	"theme_style":          {"soft": true, "blueprint": true, "clarity": true, "soft-utility": true, "aurora": true, "iris": true, "sketch-style": true, "retro-vintage": true, "corporate-clean": true, "liquid-glass": true},
 	"card_style":           {"nav": true, "navapp": true},
+	"default_lan_mode":     {"auto": true, "public": true, "lan": true},
 	"nas_show":             {"0": true, "1": true},
 	"nas_guest":            {"0": true, "1": true},
 	"update_check":         {"0": true, "1": true},

@@ -3,8 +3,19 @@
  */
 
 /* ================= 应用版本与更新日志（每次更新只需改这里） ================= */
-const APP_VERSION = 'v3.3.8';
+const APP_VERSION = 'v3.3.9';
 const APP_CHANGELOG = [
+  { ver: 'v3.3.9', date: '2026-10-29', items: [
+    '✂️ 剪藏与接入拆分为二级导航：基础设置 / 摘要与图片 / 快照检索 / 令牌与地址 / 各端接入',
+    '🔑 令牌完整显示并可一键复制，吊销后立即从列表中永久删除',
+    '📇 新增卡片自动排到所在分组末尾，修改分组时同样追加到新组末尾',
+    '🖱️ 排序模式与拖拽交互增强：落点高亮、拖到分组末尾不再错乱，并新增位移动画',
+    '🌐 内网地址同样自动获取标题 / 描述 / 图标，地址缺协议时自动补全 http://',
+    '🧭 打开方式默认自动识别，内网 / 公网判定支持通配域名与反向代理场景',
+    '🏷️ 卡片未填描述时不再显示网址；英文文字图标自动取首字母，最多可自定义 2 个字母',
+    '📥 浏览器书签导入移至分组管理页底部；后台页脚新增项目地址与作者博客',
+    '🐛 修复整页截图因 captureVisibleTab 配额导致的拼接失败（截图间隔调整为 550ms）',
+  ]},
   { ver: 'v3.3.8', date: '2026-10-28', items: [
     '💾 系统备份新增自动备份：默认关闭，可按 1 / 3 / 5 / 7 / 9 天间隔自动备份，也可随时手动备份',
     '🗂️ 自动备份与手动备份各最多保留 5 份，超出后自动删除最早的备份',
@@ -253,13 +264,21 @@ function faviconUrl(url) {
 
 /* ================= 文字图标工具（卡片 icon_type=text 专用） ================= */
 
-/** 智能截断：含中文取前 4 码点，纯英文/数字/符号取前 12 码点 */
-function smartIconText(title) {
+/** 智能截断：含中文取前 4 码点；纯英文/数字/符号默认只取首字母（自动转大写），
+ *  手动填写时可放宽到 2 个字符并保留原始大小写
+ *  @param {string} title
+ *  @param {number} [enMax]  英文最多取几个字符（1~2），默认 1
+ *  @param {boolean} [upper] 英文首字母是否转大写，默认 true
+ */
+function smartIconText(title, enMax, upper) {
   if (!title) return '';
-  const chars = Array.from(String(title).trim());
+  const chars = Array.from(String(title).trim()).filter(c => !/\s/.test(c));
   if (!chars.length) return '';
   const hasCN = chars.some(c => /[\u3400-\u9fff]/.test(c));
-  return chars.slice(0, hasCN ? 4 : 12).join('');
+  if (hasCN) return chars.slice(0, 4).join('');
+  const n = Math.max(1, Math.min(2, enMax || 1));
+  const out = chars.slice(0, n).join('');
+  return upper === false ? out : out.charAt(0).toUpperCase() + out.slice(1);
 }
 
 /** 判断中文布局还是英文布局（含任何中文 → cn；全英文/数字/符号 → en） */
@@ -280,17 +299,20 @@ function textLayout(text) {
  */
 function renderTextIcon(el, text, baseSize, boxWidth) {
   el.innerHTML = '';
-  el.classList.remove('icon-grid-cn', 'icon-wrap-en');
+  el.classList.remove('icon-grid-cn', 'icon-wrap-en', 'icon-wrap-en-short');
   if (!text) { el.textContent = '?'; return; }
 
   const chars = Array.from(text);
   const layout = textLayout(text);
-  el.classList.add(layout === 'cn' ? 'icon-grid-cn' : 'icon-wrap-en');
+  // 英文 1~2 个字母走单行居中，不再用 4 列网格（否则字母会偏左）
+  const shortEn = layout === 'en' && chars.length <= 2;
+  el.classList.add(layout === 'cn' ? 'icon-grid-cn' : (shortEn ? 'icon-wrap-en-short' : 'icon-wrap-en'));
 
   let innerW;
   if (boxWidth) {
-    // padding 与 .icon-grid-cn(5px) / .icon-wrap-en(4px) 的 CSS 一致
-    innerW = Math.max(10, boxWidth - (layout === 'cn' ? 10 : 8));
+    // padding 与 .icon-grid-cn(5px) / .icon-wrap-en(4px) / 短英文(2px) 的 CSS 一致
+    const pad = layout === 'cn' ? 10 : (shortEn ? 4 : 8);
+    innerW = Math.max(10, boxWidth - pad);
   } else {
     // ★ 关键：读真实 padding，算内容区实际可用宽度
     const cs = getComputedStyle(el);
@@ -302,6 +324,9 @@ function renderTextIcon(el, text, baseSize, boxWidth) {
   if (layout === 'cn') {
     // 中文 2 列 grid，每格 glyph ≈ innerW/2 → font-size ≈ 0.82 × 格子宽
     size = Math.floor((innerW / 2) * 0.82);
+  } else if (shortEn) {
+    // 1~2 个字母横向居中：按字符数平分可用宽度
+    size = Math.floor((innerW / chars.length) * 0.9);
   } else {
     // 英文 4 列 grid，每格 glyph ≈ innerW/4 → font-size ≈ 1.35 × 格子宽
     // 英文字母（M/W）宽度 ≈ 0.7 × fontSize，需留足空间避免溢出

@@ -1079,8 +1079,17 @@
   grid-template-columns: 1fr 1fr 1fr 1fr !important;
   gap: 0 !important;
 }
+/* 英文 1~2 个字母：单行居中 */
+.icon-wrap-en-short {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0 !important;
+  line-height: 1 !important;
+}
 .icon-grid-cn .child-text,
-.icon-wrap-en .child-text {
+.icon-wrap-en .child-text,
+.icon-wrap-en-short .child-text {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -1107,6 +1116,14 @@
   padding: 3px !important;
   font-weight: 500 !important;
   letter-spacing: -0.3px !important;
+}
+.icon-preview.icon-wrap-en-short {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 2px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
 }
 
 /* Cloud Float: hover 上浮 + 阴影扩散带彩色光晕，Pillow Press: active 按入枕面 */
@@ -1231,6 +1248,17 @@
   padding: 4px !important;
   font-weight: 500 !important;
   letter-spacing: -0.3px !important;
+}
+/* 英文 1~2 个字母：单行居中（避免落在 4 列网格里偏左） */
+.card .icon.icon-wrap-en-short {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0 !important;
+  padding: 2px !important;
+  line-height: 1 !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
 }
 
 .card .info {
@@ -1826,9 +1854,15 @@
   white-space: nowrap;
 }
 
-/* 当前排序分组高亮：卡片整卡可抓 */
+/* 当前排序分组高亮：整组虚线框 + 卡片可抓，进入排序一眼可见 */
+.group.sorting {
+  outline: 2px dashed var(--accent);
+  outline-offset: 5px;
+  border-radius: 14px;
+}
 .group.sorting .card {
   cursor: grab;
+  transition: transform .18s ease, box-shadow .18s ease, opacity .18s ease;
 }
 .group.sorting .card:active {
   cursor: grabbing;
@@ -1837,16 +1871,41 @@
   transform: none; /* 拖拽时关闭上浮，避免抖动干扰 */
 }
 .group.sorting .card.dragging {
-  opacity: 0.4;
+  opacity: 0.35;
+  transform: scale(0.94) rotate(-1.2deg);
+  border-color: var(--accent);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, .28), 0 0 0 2px var(--accent);
 }
-/* 落点指示：accent 内描边 + 左/右侧定位条 */
+/* 排序模式提示文案 */
+.sort-hint {
+  font-size: 12px;
+  color: var(--accent);
+  background: var(--accent-soft, rgba(9, 105, 218, .1));
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  animation: sortHintPulse 1.6s ease-in-out infinite;
+}
+@keyframes sortHintPulse {
+  0%, 100% { opacity: .65; }
+  50% { opacity: 1; }
+}
+/* 落点指示：accent 内描边 + 左/右侧定位条 + 外发光 */
 .card.drag-over-before {
   border-color: var(--accent);
-  box-shadow: var(--raised), inset 4px 0 0 var(--accent);
+  box-shadow: var(--raised), inset 5px 0 0 var(--accent), 0 0 0 2px var(--accent);
+  transform: translateX(2px);
 }
 .card.drag-over-after {
   border-color: var(--accent);
-  box-shadow: var(--raised), inset -4px 0 0 var(--accent);
+  box-shadow: var(--raised), inset -5px 0 0 var(--accent), 0 0 0 2px var(--accent);
+  transform: translateX(-2px);
+}
+/* 拖到卡片区末尾：整块卡片容器虚线高亮，明确“追加到最后” */
+.cards.drag-over-end {
+  outline: 2px dashed var(--accent);
+  outline-offset: 6px;
+  border-radius: 12px;
 }
 
 @media (max-width: 640px) {

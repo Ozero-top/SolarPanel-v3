@@ -32,23 +32,34 @@ const isAppCardStyle = () => cardStyle() === 'navapp';
 
 /** 判断当前浏览器访问的 hostname 是否在内网 / 本地环境（default_lan_mode=auto 时用）
  *  @param {string} [lanHostnames] 管理员配置的内网域名/主机名（逗号分隔）
+ *  说明：NAS 内网也可能通过反向代理的公网域名访问，此时把该域名填进 lanHostnames 即可判定为内网。
  */
 function isLikelyLAN(lanHostnames) {
-  const h = location.hostname.toLowerCase();
+  const h = (location.hostname || '').toLowerCase();
   if (!h) return false;
-  // 管理员配置的自定义内网域名列表优先匹配
+  // 管理员配置项归一化：去协议/路径/端口，*.example.com 与 .example.com 等价
+  const norm = (s) => String(s || '').trim().toLowerCase()
+    .replace(/^[a-z]+:\/\//, '')
+    .replace(/\/.*$/, '')
+    .replace(/:\d+$/, '')
+    .replace(/^\*\./, '.')
+    .replace(/\.$/, '');
   if (lanHostnames) {
-    const list = lanHostnames.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    const list = String(lanHostnames).split(/[,，;\s]+/).map(norm).filter(Boolean);
+    // 精确匹配（含其子域），或后缀通配（.example.com 匹配所有子域）
     if (list.includes(h)) return true;
-    // 支持后缀匹配（如 ozero.top 匹配 test.ozero.top）
     for (const pat of list) {
-      if (pat.startsWith('.') && h.endsWith(pat)) return true;
+      if (pat.startsWith('.')) {
+        if (h === pat.slice(1) || h.endsWith(pat)) return true; // 根域 + 所有子域
+      } else if (h.endsWith('.' + pat)) {
+        return true; // 精确域名同时匹配其子域
+      }
     }
   }
   // 内置判断：localhost / 私网域名
   if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.lan') || h.endsWith('.home') || h.endsWith('.intranet')) return true;
-  // IPv6 本地链路 / ULA
-  if (h.startsWith('fe8:') || h.startsWith('fc') || h.startsWith('fd')) return true;
+  // IPv6 本地链路 / ULA（仅 IPv6 字面量，避免误伤以 fc/fd 开头的域名）
+  if (h.includes(':') && (h.startsWith('fe80:') || h.startsWith('fc') || h.startsWith('fd'))) return true;
   // IPv4 私网
   const parts = h.split('.').map(Number);
   if (parts.length === 4) {
@@ -310,11 +321,12 @@ function renderBase() {
   if (!isNaN(sw) && sw > 200) document.getElementById('searchBox').style.maxWidth = sw + 'px';
   if (weatherOn) renderWeather(s.weather_city || '');
 
-  // 地址模式：localStorage 优先（访客自定义），否则用后台默认
+  // 地址模式：localStorage 优先（访客自定义），否则用后台默认（缺省视为自动识别）
   const savedLan = localStorage.getItem('sp_lan_mode');
+  const lanModeSetting = String(s.default_lan_mode || 'auto').toLowerCase();
   state.lanMode = savedLan !== null
     ? savedLan === 'lan'
-    : (s.default_lan_mode === 'lan' || (s.default_lan_mode === 'auto' && isLikelyLAN(s.lan_hostnames)));
+    : (lanModeSetting === 'lan' || (lanModeSetting === 'auto' && isLikelyLAN(s.lan_hostnames)));
   updateLanBtn();
 
   // 管理入口：guest 角色跳登录页（需管理员账号），其他已登录角色直达后台
@@ -650,6 +662,11 @@ function renderGroupCard(container, g, styleApp, idx, skipIntro, isChild) {
     const sortWrap = document.createElement('span');
     sortWrap.className = 'group-sort';
     if (state.sortingGroupId === g.id) {
+      // 排序模式提示：明确告知可拖拽，避免用户感知不到进入排序状态
+      const hint = document.createElement('span');
+      hint.className = 'sort-hint';
+      hint.textContent = '拖拽卡片调整顺序';
+      sortWrap.appendChild(hint);
       const saveBtn = document.createElement('button');
       saveBtn.type = 'button';
       saveBtn.className = 'btn btn-sm btn-save-order' + (state.sortDirty ? '' : ' disabled');
@@ -1416,24 +1433,16 @@ function buildCard(item, styleApp) {
     if (iconState.done) return;
     iconState.done = true;
     icon.classList.remove('has-img');
-    // 文字型：手动文字优先 → 空则 fallback title
-    let raw = '';
-    if (item.icon_type === 'text') {
-      if (item.icon_value && !isImageUrlLike(item.icon_value)) {
-        raw = item.icon_value;
-      } else {
-        raw = item.title || '?';
-      }
-    } else {
-      raw = item.title || '?';
-    }
+    // 文字型：手动文字优先（允许 2 个字母）→ 空则回退标题（英文只取大写首字母）
+    const manual = item.icon_type === 'text' && item.icon_value && !isImageUrlLike(item.icon_value);
+    const raw = manual ? item.icon_value : (item.title || '?');
     const bgVal = item.icon_bg || stringColor(item.title);
     icon.style.background = bgVal;
     // 背景透明度为 0 时改用主色文字，避免白字消失在透明底上
     const bgParsed = parseBgColor(bgVal);
     icon.classList.toggle('icon-bg-clear', !!bgParsed && bgParsed.alpha === 0);
     // 卡片图标盒尺寸固定（普通 52 / app 58），传入宽度免 getComputedStyle 强制布局
-    renderTextIcon(icon, smartIconText(raw), 21, styleApp ? 58 : 52);
+    renderTextIcon(icon, smartIconText(raw, manual ? 2 : 1, !manual), 21, styleApp ? 58 : 52);
   };
   if (item.icon_type === 'image' && item.icon_value) {
     const img = document.createElement('img');
@@ -1479,10 +1488,14 @@ function buildCard(item, styleApp) {
   t.className = 't';
   t.textContent = item.title;
   info.appendChild(t);
-  const d = document.createElement('div');
-  d.className = 'd';
-  d.textContent = item.description || item.url;
-  info.appendChild(d);
+  // 描述为空时不回退显示地址（避免内外网地址挤压标题）
+  const descText = String(item.description || '').trim();
+  if (descText) {
+    const d = document.createElement('div');
+    d.className = 'd';
+    d.textContent = descText;
+    info.appendChild(d);
+  }
   a.appendChild(info);
 
   // 内网地址标识
@@ -1759,6 +1772,7 @@ function bindSortMode() {
   const clearDrag = () => {
     wrap.querySelectorAll('.card.dragging, .card.drag-over-before, .card.drag-over-after')
       .forEach(c => c.classList.remove('dragging', 'drag-over-before', 'drag-over-after'));
+    wrap.querySelectorAll('.cards.drag-over-end').forEach(c => c.classList.remove('drag-over-end'));
     if (dragCard) { dragCard.draggable = false; dragCard = null; }
   };
   wrap.addEventListener('mousedown', e => {
@@ -1778,30 +1792,37 @@ function bindSortMode() {
   });
   wrap.addEventListener('dragover', e => {
     if (state.sortingGroupId === null || !dragCard) return;
-    const card = e.target.closest('.card');
-    wrap.querySelectorAll('.card.drag-over-before, .card.drag-over-after')
-      .forEach(c => c.classList.remove('drag-over-before', 'drag-over-after'));
-    // 仅允许当前排序分组内排序
-    if (!card || card === dragCard || card.parentElement !== dragCard.parentElement) return;
+    const container = cardContainerOf(dragCard);
+    if (!container) return;
+    clearDropMarkers(wrap);
+    const sec = container.closest('.group');
+    // 仅允许当前排序分组内排序（含卡片区尾部的空白落点）
+    if (!sec || !sec.contains(e.target)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    const ref = cardInsertRef(card.parentElement, e.clientX, e.clientY, dragCard);
+    const ref = cardInsertRef(container, e.clientX, e.clientY, dragCard);
     if (ref) {
       ref.classList.add('drag-over-before');
     } else {
-      const cards = card.parentElement.querySelectorAll('.card');
+      const cards = Array.prototype.filter.call(container.querySelectorAll('.card'), c => c !== dragCard);
       const last = cards[cards.length - 1];
-      if (last && last !== dragCard) last.classList.add('drag-over-after');
+      if (last) last.classList.add('drag-over-after');
+      container.classList.add('drag-over-end'); // 末尾落点整块高亮
     }
   });
   wrap.addEventListener('drop', e => {
     if (state.sortingGroupId === null || !dragCard) return;
-    const container = dragCard.parentElement;
-    if (e.target.closest('.cards') !== container) { clearDrag(); return; }
+    const container = cardContainerOf(dragCard);
+    if (!container) { clearDrag(); return; }
+    const sec = container.closest('.group');
+    // 落在分组卡片区（含尾部空白）都算有效，避免拖到最后一格旁被丢弃
+    if (!sec || !sec.contains(e.target)) { clearDrag(); return; }
     e.preventDefault();
     const ref = cardInsertRef(container, e.clientX, e.clientY, dragCard);
+    const before = snapshotCards(container);
     if (ref) container.insertBefore(dragCard, ref);
     else container.appendChild(dragCard);
+    playCardReflow(before, container);
     state.sortDirty = true;
     updateSortSaveBtn();
     clearDrag();
@@ -1822,6 +1843,42 @@ function cardInsertRef(container, x, y, ignore) {
     if (y < cy - r.height * 0.25 || (Math.abs(y - cy) <= r.height * 0.25 && x < cx)) return c;
   }
   return null;
+}
+
+/** 取卡片所在的 .cards 容器（拖拽只在本容器内排序） */
+function cardContainerOf(card) {
+  const p = card && card.parentElement;
+  return p && p.classList.contains('cards') ? p : null;
+}
+
+/** 清理拖拽落点提示 */
+function clearDropMarkers(root) {
+  root.querySelectorAll('.card.drag-over-before, .card.drag-over-after')
+    .forEach(c => c.classList.remove('drag-over-before', 'drag-over-after'));
+  root.querySelectorAll('.cards.drag-over-end').forEach(c => c.classList.remove('drag-over-end'));
+}
+
+/** 记录插入前各卡片位置（FLIP 动画用） */
+function snapshotCards(container) {
+  const map = new Map();
+  container.querySelectorAll('.card').forEach(c => map.set(c, c.getBoundingClientRect()));
+  return map;
+}
+
+/** 插入后按位置差播放位移动画，让顺序变化肉眼可见 */
+function playCardReflow(before, container) {
+  container.querySelectorAll('.card').forEach(c => {
+    const prev = before.get(c);
+    if (!prev || typeof c.animate !== 'function') return;
+    const now = c.getBoundingClientRect();
+    const dx = prev.left - now.left;
+    const dy = prev.top - now.top;
+    if (!dx && !dy) return;
+    c.animate(
+      [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
+      { duration: 240, easing: 'cubic-bezier(.2,.8,.2,1)' },
+    );
+  });
 }
 
 /** 开启某分组的排序；若另一分组正排序且有改动，先弹守卫 */
@@ -2612,11 +2669,16 @@ function ensureQuickAddModal() {
               <option value="3">弹层内嵌打开</option>
             </select>
           </div>
-          <div class="form-item" style="display:flex;align-items:center;margin-top:6px">
+        </div>
+        <div class="form-row" style="align-items:center;margin-top:12px">
+          <div class="form-item" style="display:flex;align-items:center">
             <label style="display:flex;align-items:center;gap:8px;margin-bottom:0;cursor:pointer">
               <input type="checkbox" id="qa_hidden" value="1">
               <span>设为隐藏（访客和只读用户不可见）</span>
             </label>
+          </div>
+          <div class="form-item" style="flex:0 0 auto;display:flex;align-items:center">
+            <button class="btn btn-sm" type="button" id="qa_fetchMeta">自动获取信息</button>
           </div>
         </div>
         <div class="form-item">
@@ -2624,13 +2686,11 @@ function ensureQuickAddModal() {
           <input class="input" id="qa_title" type="text" maxlength="50" required>
         </div>
         <div class="form-item">
-          <label>地址（鼠标点击此处可自动获取标题/描述/图标）
-            <button class="btn btn-sm" type="button" id="qa_fetchMeta" style="float:right">自动获取信息</button>
-          </label>
+          <label>地址</label>
           <input class="input" id="qa_url" type="text" placeholder="https://…">
         </div>
         <div class="form-item">
-          <label>内网地址（可选，用于主页「内网模式」）</label>
+          <label>内网地址（可选，用于主页「内网模式」；失焦或回车自动获取）</label>
           <input class="input" id="qa_lan" type="text" placeholder="http://192.168.x.x:port">
         </div>
         <div class="form-item">
@@ -2655,7 +2715,7 @@ function ensureQuickAddModal() {
           </div>
           <div class="form-item" style="margin-top:10px" id="qa_textWrap">
             <label>手动文字（留空自动取卡片标题）</label>
-            <input class="input" id="qa_iconText" type="text" maxlength="12" placeholder="支持中文 4 字 / 英文 12 字母">
+            <input class="input" id="qa_iconText" type="text" maxlength="4" placeholder="支持中文 4 字 / 英文 2 个字母">
           </div>
           <div class="form-item" style="margin-top:10px" id="qa_bgWrap">
             <label>图标背景色</label>
@@ -2707,10 +2767,43 @@ function ensureQuickAddModal() {
   document.getElementById('qa_alpha').addEventListener('input', syncQAColorPanel);
 
   // fetch_meta
-  document.getElementById('qa_fetchMeta').addEventListener('click', fetchQAMeta);
+  document.getElementById('qa_fetchMeta').addEventListener('click', () => {
+    const mainEl = document.getElementById('qa_url');
+    const lanEl = document.getElementById('qa_lan');
+    const main = normalizeFetchUrl(mainEl.value);
+    const lan = normalizeFetchUrl(lanEl.value);
+    if (main && mainEl.value.trim() !== main) mainEl.value = main;
+    if (lan && lanEl.value.trim() !== lan) lanEl.value = lan;
+    fetchQAMeta(false, main || lan);
+  });
   // 地址失焦 / 粘贴完成后，若标题为空则自动获取
   document.getElementById('qa_url').addEventListener('change', () => fetchQAMeta(true));
   document.getElementById('qa_url').addEventListener('paste', () => setTimeout(() => fetchQAMeta(true), 30));
+  // 内网地址同样支持自动获取：输入完整地址后失焦 / 回车 / 点「自动获取信息」均可
+  // 使用内网地址抓取时不受标题是否已有内容限制，便于先填内网地址的场景
+  let qaLastLanUrl = '';
+  const qaFetchLanMeta = () => {
+    const el = document.getElementById('qa_lan');
+    const lan = normalizeFetchUrl(el.value);
+    if (!isFetchableUrl(lan)) return;
+    if (el.value.trim() !== lan) el.value = lan; // 补全 http:// 后回填
+    if (lan === qaLastLanUrl) return;
+    qaLastLanUrl = lan;
+    fetchQAMeta(false, lan);
+  };
+  document.getElementById('qa_lan').addEventListener('change', qaFetchLanMeta);
+  document.getElementById('qa_lan').addEventListener('paste', () => setTimeout(qaFetchLanMeta, 30));
+  document.getElementById('qa_lan').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    qaFetchLanMeta();
+  });
+  document.getElementById('qa_url').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const url = document.getElementById('qa_url').value.trim();
+    if (isFetchableUrl(url)) fetchQAMeta(false, url);
+  });
 
   // 提交
   document.getElementById('qaForm').addEventListener('submit', async e => {
@@ -2736,8 +2829,8 @@ function ensureQuickAddModal() {
         open_method: Number(document.getElementById('qa_open').value),
         is_hidden: document.getElementById('qa_hidden').checked ? 1 : 0,
         title: document.getElementById('qa_title').value.trim(),
-        url: document.getElementById('qa_url').value.trim(),
-        lan_url: document.getElementById('qa_lan').value.trim(),
+        url: normalizeFetchUrl(document.getElementById('qa_url').value),
+        lan_url: normalizeFetchUrl(document.getElementById('qa_lan').value),
         description: document.getElementById('qa_desc').value.trim(),
         icon_type: itype,
         icon_value: iconValue,
@@ -2825,10 +2918,11 @@ function updateQAIconPreview() {
       preview.innerHTML = '<span>?</span>';
     }
   } else {
+    // 文字型：手动输入最多 2 个字符，否则取标题（英文只取大写首字母）
     preview.style.background = bg || '#0969da';
-    const raw = (document.getElementById('qa_iconText').value.trim())
-                ? document.getElementById('qa_iconText').value : (title || '?');
-    renderTextIcon(preview, smartIconText(raw), 18);
+    const typed = document.getElementById('qa_iconText').value.trim();
+    const raw = typed || (title || '?');
+    renderTextIcon(preview, smartIconText(raw, typed ? 2 : 1, !typed), 18);
   }
 }
 
@@ -2876,15 +2970,38 @@ function parseBgColor(bg) {
   return null;
 }
 
+/** 补全协议：只输入域名 / IP 时默认补 http://，已带协议或 // 开头则原样返回 */
+function normalizeFetchUrl(s) {
+  s = String(s || '').trim();
+  if (!s) return '';
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) return s;
+  if (s.startsWith('//')) return 'http:' + s;
+  return 'http://' + s;
+}
+
+/** 是否为可抓取的完整 http(s) 地址 */
+function isFetchableUrl(s) {
+  try {
+    const u = new URL(s);
+    return (u.protocol === 'http:' || u.protocol === 'https:') && !!u.hostname;
+  } catch (_) {
+    return false;
+  }
+}
+
 /** fetch_meta — 自动填充 title/description；favicon 无图标时交给站点图标代理 */
 let qaLastMetaUrl = ''; // 自动模式去重：同一地址只抓一次
 let qaMetaBusy = false;
-async function fetchQAMeta(auto) {
+async function fetchQAMeta(auto, overrideUrl) {
   auto = auto === true;
   if (qaMetaBusy) return;
-  const url = document.getElementById('qa_url').value.trim();
-  if (!url || !/^https?:\/\//i.test(url)) {
-    if (!auto) toast('请先填写以 http:// 或 https:// 开头的地址', 'error');
+  const url = normalizeFetchUrl(overrideUrl || document.getElementById('qa_url').value || '');
+  if (!overrideUrl) {
+    const el = document.getElementById('qa_url');
+    if (el.value.trim() && el.value.trim() !== url) el.value = url; // 补全协议后回填
+  }
+  if (!url || !isFetchableUrl(url)) {
+    if (!auto) toast('请填写有效地址（可只输入域名，会自动补全 http://）', 'error');
     return;
   }
   // 自动模式：标题已有内容或该地址已抓过 → 跳过，避免失焦/粘贴重复请求
@@ -2928,6 +3045,8 @@ async function fetchQAMeta(auto) {
     if (!auto) {
       if (got.length) {
         toast('已自动获取：' + got.join('、') + (res.cached ? '（缓存）' : '') + warnTxt, res.warn ? 'info' : 'success');
+      } else if (res.title || res.description) {
+        toast('标题/描述已有内容，已保留原值；如需更新请先清空对应输入框' + warnTxt, 'info');
       } else {
         toast('未获取到可填充的字段' + (warnTxt || '（站点无信息）'), 'info');
       }
@@ -2942,8 +3061,8 @@ async function fetchQAMeta(auto) {
 
 /** 获取站点图标（items.php?action=favicon）—— 写入 qa_icon 并自动切到 image 类型 */
 async function fetchQAFavicon() {
-  const url = document.getElementById('qa_url').value.trim();
-  if (!url) { toast('请先填写卡片地址', 'error'); return; }
+  const url = normalizeFetchUrl(document.getElementById('qa_url').value || document.getElementById('qa_lan').value);
+  if (!url) { toast('请先填写卡片地址或内网地址', 'error'); return; }
   const btn = document.getElementById('qa_useFavicon');
   btn.disabled = true; btn.textContent = '获取中…';
   try {

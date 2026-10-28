@@ -88,6 +88,22 @@
         <tbody id="groupsTbody"></tbody>
       </table>
       <div class="form-hint" style="margin-top:8px">提示：拖动行首 ⠿ 可调整分组顺序（即主页分组排列顺序），点击「保存排序」生效。</div>
+
+      <!-- ============ 书签导入（按分组批量建卡，放在分组管理页底部） ============ -->
+      <div class="account-card" style="margin-top:20px">
+        <div class="account-card-title">📥 浏览器书签导入</div>
+        <div class="form-hint" style="margin-bottom:10px">从 Chrome / Edge / Firefox / Safari 导出的 bookmarks.html 导入，按分组自动创建卡片；http / https 链接有效。<br>增量导入保留现有数据，已有链接不重复；覆盖导入会先删除全部分组和卡片，再导入本次文件。</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select class="select" id="bookmarksMode" style="max-width:190px">
+            <option value="merge">增量导入（保留现有）</option>
+            <option value="overwrite">覆盖导入（清空现有）</option>
+          </select>
+          <input type="file" id="bookmarksFile" accept=".html" hidden>
+          <button class="btn" type="button" id="openBookmarksBtn">📂 选择 bookmarks.html</button>
+          <span id="bookmarksPreview" style="font-size:13px;color:var(--text-muted)"></span>
+          <button class="btn btn-primary" type="button" id="applyBookmarksBtn" hidden>➡️ 导入到数据库</button>
+        </div>
+      </div>
     </section>
 
     <!-- ============ 站点设置（分区独立保存） ============ -->
@@ -190,9 +206,9 @@
           <div class="form-item">
             <label>卡片打开地址模式</label>
             <select class="select" id="s_default_lan_mode">
+              <option value="auto">🌐 自动识别（默认，按当前访问网络自动切换）</option>
               <option value="public">外网地址模式（始终打开卡片公网域名）</option>
               <option value="lan">内网地址模式（始终打开卡片内网 IP）</option>
-              <option value="auto">🌐 自动识别（按当前访问网络自动切换）</option>
             </select>
             <div class="form-hint">每张卡片可单独填「内网地址」（编辑卡片 → 内网地址）。此设置决定点卡片时打开哪一个。</div>
           </div>
@@ -201,7 +217,8 @@
             <input type="text" class="input" id="s_lan_hostnames" placeholder="如 home.local, nas, 192.168.1.10">
             <div class="form-hint">
               仅 auto 模式生效。填写你在内网访问面板时用的域名或 IP，多个用英文逗号分隔。<br>
-              支持<strong>精确匹配</strong>（如 <code>test.yourdomain.com</code>）和<strong>后缀通配</strong>（如 <code>.yourdomain.com</code> 匹配所有子域名）。<br>
+              支持<strong>精确匹配</strong>（如 <code>test.yourdomain.com</code>，同时匹配其子域）和<strong>后缀通配</strong>（如 <code>.yourdomain.com</code> 或 <code>*.yourdomain.com</code>）。<br>
+              <strong>NAS / Docker 反代场景</strong>：如果内网也是通过反代出来的公网域名访问，把该域名填进来即可判定为内网（浏览器无法仅凭域名区分内外网）。<br>
               内置已识别 <code>localhost</code>、<code>.local/.lan/.home</code>、私网 IP 段（<code>10.x.x.x</code>、<code>192.168.x.x</code>、<code>172.16-31.x.x</code>），这些不用填。
             </div>
           </div>
@@ -634,22 +651,6 @@
         <div id="trustedDevicesBody">加载中…</div>
       </div>
 
-      <!-- ============ 书签导入 ============ -->
-      <div class="account-card" style="margin-top:20px">
-        <div class="account-card-title">📥 浏览器书签导入</div>
-        <div class="form-hint" style="margin-bottom:10px">从 Chrome / Edge / Firefox / Safari 导出的 bookmarks.html 导入，按分组自动创建卡片；http / https 链接有效。<br>增量导入保留现有数据，已有链接不重复；覆盖导入会先删除全部分组和卡片，再导入本次文件。</div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <select class="select" id="bookmarksMode" style="max-width:190px">
-            <option value="merge">增量导入（保留现有）</option>
-            <option value="overwrite">覆盖导入（清空现有）</option>
-          </select>
-          <input type="file" id="bookmarksFile" accept=".html" hidden>
-          <button class="btn" type="button" id="openBookmarksBtn">📂 选择 bookmarks.html</button>
-          <span id="bookmarksPreview" style="font-size:13px;color:var(--text-muted)"></span>
-          <button class="btn btn-primary" type="button" id="applyBookmarksBtn" hidden>➡️ 导入到数据库</button>
-        </div>
-      </div>
-
       <div style="margin-top:36px" id="userManageBlock">
         <div class="panel-head">
           <h2>用户管理（新增 / 删除用户，重置密码，分配权限组）</h2>
@@ -826,9 +827,25 @@
 
     <!-- ============ 剪藏与接入 ============ -->
     <section class="admin-panel glass" id="tab-clip" hidden>
-      <div class="panel-head"><h2>✂️ 剪藏与接入</h2></div>
+      <div class="panel-head">
+        <h2>✂️ 剪藏与接入</h2>
+        <button class="btn btn-primary btn-sm" type="button" id="saveClipSettingsBtn">保存设置</button>
+      </div>
+      <div class="form-hint" style="margin:0 0 10px">
+        ⚠️ 该功能尚未经过完整测试，使用中遇到任何问题，请到
+        <a href="https://github.com/Ozero-top/SolarPanel-v3/issues" target="_blank" rel="noopener noreferrer">GitHub Issues</a>
+        提交反馈。
+      </div>
+      <nav class="settings-subnav" id="clipSubnav" aria-label="剪藏与接入分类">
+        <button class="subtab active" type="button" data-subpane="basic">🧩 基础设置</button>
+        <button class="subtab" type="button" data-subpane="enhance">✨ 摘要与图片</button>
+        <button class="subtab" type="button" data-subpane="search">🔍 快照检索</button>
+        <button class="subtab" type="button" data-subpane="token">🔑 令牌与地址</button>
+        <button class="subtab" type="button" data-subpane="clients">🔌 各端接入</button>
+      </nav>
       <div class="backup-actions">
 
+        <div class="subpane" data-pane="basic">
         <div class="backup-row">
           <div class="backup-info">
             <b>剪藏开关</b>
@@ -838,7 +855,6 @@
             <label class="form-hint" style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
               <input type="checkbox" id="s_clip_enabled"> 启用剪藏
             </label>
-            <button class="btn btn-primary" type="button" id="saveClipSettingsBtn">保存设置</button>
           </div>
         </div>
 
@@ -864,24 +880,37 @@
             </select>
           </div>
         </div>
+        </div>
 
-        <div class="backup-row">
+        <div class="subpane" data-pane="enhance" hidden>
+        <div class="backup-row backup-row-stack">
           <div class="backup-info">
             <b>摘要与自动标签</b>
             <span>保存正文快照时自动生成摘要与标签。默认使用本地词频规则；选择「外部 API」并填写 OpenAI 兼容接口后改用外部模型，调用失败会自动回退本地规则。</span>
           </div>
-          <div class="backup-row-actions" style="flex-direction:column;align-items:stretch;gap:8px;min-width:280px">
+          <div class="backup-row-actions clip-ai-actions">
             <label class="form-hint" style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
               <input type="checkbox" id="s_clip_ai_enabled"> 启用摘要与自动标签
             </label>
             <select class="select" id="s_clip_ai_provider">
-              <option value="local">本地规则（默认）</option>
-              <option value="api">外部 API</option>
+              <option value="local">本地规则（默认，不联网）</option>
+              <option value="api">外部 API（OpenAI 兼容）</option>
             </select>
-            <input class="input" id="s_clip_ai_base_url" placeholder="接口地址，如 https://api.openai.com/v1">
-            <input class="input" id="s_clip_ai_api_key" type="password" placeholder="API Key（仅管理员可见）">
-            <input class="input" id="s_clip_ai_model" placeholder="模型，如 gpt-4o-mini">
-            <span class="form-hint">外部接口需兼容 /chat/completions，超时 20 秒。</span>
+            <div class="clip-ai-api" id="clipAiApiFields" hidden>
+              <div class="form-item">
+                <label for="s_clip_ai_base_url">接口地址</label>
+                <input class="input" id="s_clip_ai_base_url" placeholder="https://api.openai.com/v1">
+              </div>
+              <div class="form-item">
+                <label for="s_clip_ai_api_key">API Key</label>
+                <input class="input" id="s_clip_ai_api_key" type="password" placeholder="仅管理员可见">
+              </div>
+              <div class="form-item">
+                <label for="s_clip_ai_model">模型</label>
+                <input class="input" id="s_clip_ai_model" placeholder="gpt-4o-mini">
+              </div>
+              <span class="form-hint">需兼容 /chat/completions，超时 20 秒；调用失败自动回退本地规则。</span>
+            </div>
           </div>
         </div>
 
@@ -894,8 +923,10 @@
             <input class="input" id="s_clip_image_domains" placeholder="example.com, cdn.example.com" style="width:280px">
           </div>
         </div>
+        </div>
 
-        <div class="backup-row" style="margin-top:18px">
+        <div class="subpane" data-pane="search" hidden>
+        <div class="backup-row">
           <div class="backup-info">
             <b>正文快照检索</b>
             <span>只检索已保存正文的剪藏；中文两个字也能查，英文按关键词匹配，多个关键词用空格分隔。</span>
@@ -921,8 +952,10 @@
           </table>
           <div class="form-hint" id="clipSearchEmpty" hidden>没有匹配的快照内容。</div>
         </div>
+        </div>
 
-        <div class="backup-row" style="margin-top:18px">
+        <div class="subpane" data-pane="token" hidden>
+        <div class="backup-row">
           <div class="backup-info">
             <b>个人访问令牌（Token）</b>
             <span>桌面扩展、iOS 快捷指令与脚本使用 Bearer Token 调用 <code>/api/v1/clips</code>。Token 只在创建时显示一次，服务端仅保存 SHA-256 哈希，可随时吊销。</span>
@@ -955,6 +988,7 @@
               <th style="width:150px">权限</th>
               <th style="width:130px">有效期</th>
               <th style="width:140px">最近使用</th>
+              <th>令牌</th>
               <th style="width:90px">状态</th>
               <th style="width:90px">操作</th>
             </tr>
@@ -973,7 +1007,9 @@
             <button class="btn" type="button" id="copyServerAddrBtn">复制</button>
           </div>
         </div>
+        </div>
 
+        <div class="subpane" data-pane="clients" hidden>
         <div class="backup-row">
           <div class="backup-info">
             <b>Chrome / Edge 扩展（zip 侧载）</b>
@@ -1010,8 +1046,16 @@
         </div>
 
         <div class="form-hint">Firefox 仅代码兼容：未签名扩展只能用 about:debugging 临时载入，重启浏览器后失效；Firefox 用户建议使用书签小工具或网页快速添加。</div>
+        </div>
       </div>
     </section>
+
+    <!-- 页脚：项目地址与作者博客 -->
+    <footer class="admin-footer">
+      <span>项目地址：<a href="https://github.com/Ozero-top/SolarPanel-v3" target="_blank" rel="noopener noreferrer">GitHub · SolarPanel-v3</a></span>
+      <span class="admin-footer-dot">·</span>
+      <span>作者博客：<a href="https://www.ozero.top" target="_blank" rel="noopener noreferrer">www.ozero.top</a></span>
+    </footer>
 
   </div>
 
@@ -1051,11 +1095,16 @@
               <option value="3">弹层内嵌打开</option>
             </select>
           </div>
-          <div class="form-item form-item-inline">
+        </div>
+        <div class="form-row" style="align-items:center;margin-top:12px">
+          <div class="form-item" style="display:flex;align-items:center">
             <label style="display:flex;align-items:center;gap:8px;margin-bottom:0">
               <input type="checkbox" id="i_hidden" value="1">
               <span>设为隐藏（访客和只读用户不可见）</span>
             </label>
+          </div>
+          <div class="form-item" style="flex:0 0 auto;display:flex;align-items:center">
+            <button class="btn btn-sm" type="button" id="i_fetchMeta">自动获取信息</button>
           </div>
         </div>
         <div class="form-item">
@@ -1063,13 +1112,11 @@
           <input class="input" id="i_title" type="text" maxlength="50" required>
         </div>
         <div class="form-item">
-          <label>地址（鼠标点击此处可自动获取标题/描述/图标）
-            <button class="btn btn-sm" type="button" id="i_fetchMeta" style="float:right">自动获取信息</button>
-          </label>
+          <label>地址</label>
           <input class="input" id="i_url" type="text" placeholder="https://…">
         </div>
         <div class="form-item">
-          <label>内网地址（可选，用于主页「内网模式」）</label>
+          <label>内网地址（可选，用于主页「内网模式」；失焦或回车自动获取）</label>
           <input class="input" id="i_lan" type="text" placeholder="http://192.168.x.x:port">
         </div>
         <div class="form-item">
@@ -1099,7 +1146,7 @@
           <!-- 文字图标手动输入（type=text 时显示） -->
           <div class="form-item" style="margin-top:10px" id="i_textWrap">
             <label>手动文字（留空自动取卡片标题）</label>
-            <input class="input" id="i_iconText" type="text" maxlength="12" placeholder="支持中文 4 字 / 英文 12 字母">
+            <input class="input" id="i_iconText" type="text" maxlength="4" placeholder="支持中文 4 字 / 英文 2 个字母">
           </div>
           <!-- 颜色面板（text/image 都可设置；favicon 时隐藏） -->
           <div class="form-item" style="margin-top:10px" id="i_bgWrap">

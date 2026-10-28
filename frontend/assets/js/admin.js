@@ -3,6 +3,25 @@
  */
 const API_BASE = '/api/';
 
+/** 补全协议：只输入域名 / IP 时默认补 http://，已带协议或 // 开头则原样返回 */
+function normalizeFetchUrl(s) {
+  s = String(s || '').trim();
+  if (!s) return '';
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) return s;
+  if (s.startsWith('//')) return 'http:' + s;
+  return 'http://' + s;
+}
+
+/** 是否为可抓取的完整 http(s) 地址（自动获取信息前的轻量校验） */
+function isFetchableUrl(s) {
+  try {
+    const u = new URL(s);
+    return (u.protocol === 'http:' || u.protocol === 'https:') && !!u.hostname;
+  } catch (_) {
+    return false;
+  }
+}
+
 const state = {
   groups: [],
   items: [],
@@ -939,24 +958,26 @@ function iconFor(item) {
     if (fu) return '<img src="' + esc(fu) + '" alt="" referrerpolicy="no-referrer">';
   }
 
-  // 文字型：手动文字优先 → 空则 fallback title
-  const raw = (item.icon_type === 'text' && item.icon_value
-               && !isImageUrlLike(item.icon_value))
-              ? item.icon_value : (item.title || '?');
-  const txt = smartIconText(raw);
+  // 文字型：手动文字优先（最多 2 个字符）→ 空则回退标题（英文只取大写首字母）
+  const manual = !!(item.icon_type === 'text' && item.icon_value && !isImageUrlLike(item.icon_value));
+  const raw = manual ? item.icon_value : (item.title || '?');
+  const txt = smartIconText(raw, manual ? 2 : 1, !manual);
   const layout = textLayout(txt);
   const chars = Array.from(txt);
+  const shortEn = layout === 'en' && chars.length <= 2;
 
   // 后台表格图标容器约 26px（style="width:34px;height:34px" 但有 padding？实际 render 内测）
   let fontSize;
   if (layout === 'cn')
     fontSize = Math.min(14, Math.floor((26 / 2) * 0.92));
+  else if (shortEn)
+    fontSize = Math.min(14, Math.floor((26 / Math.max(1, chars.length)) * 0.9));
   else
     fontSize = Math.min(14, Math.floor((26 / 4) * 1.75));
   fontSize = Math.max(7, fontSize);
 
   const bg = item.icon_bg ? 'background:' + esc(item.icon_bg) + ';' : '';
-  const cls = layout === 'cn' ? 'icon-grid-cn' : 'icon-wrap-en';
+  const cls = layout === 'cn' ? 'icon-grid-cn' : (shortEn ? 'icon-wrap-en-short' : 'icon-wrap-en');
   const inner = chars.map(c => '<span class="child-text">' + esc(c) + '</span>').join('');
   return '<span class="' + cls + '" style="' + bg + 'font-size:' + fontSize + 'px;">' + inner + '</span>';
 }
@@ -1071,11 +1092,11 @@ function updateIconPreview() {
     const fu = faviconUrl(url);
     preview.innerHTML = fu ? '<img src="' + esc(fu) + '" alt="" referrerpolicy="no-referrer">' : '<span>?</span>';
   } else {
-    // 文字型
+    // 文字型：输入了手动文字时最多 2 个字符，否则取标题（英文只取大写首字母）
     preview.style.background = bg || '#0969da';
-    const raw = (document.getElementById('i_iconText').value.trim())
-                ? document.getElementById('i_iconText').value : (title || '?');
-    renderTextIcon(preview, smartIconText(raw), 18);
+    const typed = document.getElementById('i_iconText').value.trim();
+    const raw = typed || (title || '?');
+    renderTextIcon(preview, smartIconText(raw, typed ? 2 : 1, !typed), 18);
   }
 }
 
@@ -1231,11 +1252,15 @@ function bindItems() {
   // ============ fetchMeta（三态分支 + 自动降级 text）============
   let metaBusy = false;
   let lastMetaUrl = ''; // 自动模式去重：同一地址只抓一次
-  const fetchMeta = async (auto) => {
+  const fetchMeta = async (auto, overrideUrl) => {
     if (metaBusy) return;
-    const url = document.getElementById('i_url').value.trim();
-    if (!url || !/^https?:\/\//i.test(url)) {
-      if (!auto) toast('请先填写以 http:// 或 https:// 开头的地址', 'error');
+    const url = normalizeFetchUrl(overrideUrl || document.getElementById('i_url').value || '');
+    if (!overrideUrl) {
+      const el = document.getElementById('i_url');
+      if (el.value.trim() && el.value.trim() !== url) el.value = url; // 补全协议后回填
+    }
+    if (!url || !isFetchableUrl(url)) {
+      if (!auto) toast('请填写有效地址（可只输入域名，会自动补全 http://）', 'error');
       return;
     }
     if (auto && url === lastMetaUrl) return;
@@ -1284,6 +1309,8 @@ function bindItems() {
       if (!auto) {
         if (got.length) {
           toast('已自动获取：' + got.join('、') + (res.cached ? '（缓存）' : '') + warnTxt, res.warn ? 'info' : 'success');
+        } else if (res.title || res.description) {
+          toast('标题/描述已有内容，已保留原值；如需更新请先清空对应输入框' + warnTxt, 'info');
         } else {
           toast('未获取到可填充的字段' + (warnTxt || '（站点无信息）'), 'info');
         }
@@ -1296,18 +1323,53 @@ function bindItems() {
       btn.textContent = '自动获取信息';
     }
   };
-  document.getElementById('i_fetchMeta').onclick = () => fetchMeta(false);
+  document.getElementById('i_fetchMeta').onclick = () => {
+    const mainEl = document.getElementById('i_url');
+    const lanEl = document.getElementById('i_lan');
+    const main = normalizeFetchUrl(mainEl.value);
+    const lan = normalizeFetchUrl(lanEl.value);
+    if (main && mainEl.value.trim() !== main) mainEl.value = main;
+    if (lan && lanEl.value.trim() !== lan) lanEl.value = lan;
+    fetchMeta(false, main || lan);
+  };
   // 地址失焦 / 粘贴完成后，若标题为空则自动获取（同一地址不重复请求）
   const autoFetchIfEmpty = () => {
     if (!document.getElementById('i_title').value.trim()) fetchMeta(true);
   };
   document.getElementById('i_url').addEventListener('change', autoFetchIfEmpty);
   document.getElementById('i_url').addEventListener('paste', () => setTimeout(autoFetchIfEmpty, 30));
+  // 内网地址同样支持自动获取：输入完整地址后失焦 / 回车 / 点「自动获取信息」均可
+  // 用内网地址抓取时不限制标题是否已有内容，便于先填内网地址的场景
+  let lastLanUrl = '';
+  const fetchLanMeta = () => {
+    const el = document.getElementById('i_lan');
+    const lan = normalizeFetchUrl(el.value);
+    if (!isFetchableUrl(lan)) return;
+    if (el.value.trim() !== lan) el.value = lan; // 补全 http:// 后回填
+    if (lan === lastLanUrl) return;
+    lastLanUrl = lan;
+    fetchMeta(false, lan);
+  };
+  document.getElementById('i_lan').addEventListener('change', fetchLanMeta);
+  document.getElementById('i_lan').addEventListener('paste', () => setTimeout(fetchLanMeta, 30));
+  document.getElementById('i_lan').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    fetchLanMeta();
+  });
+  document.getElementById('i_url').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const el = document.getElementById('i_url');
+    const url = normalizeFetchUrl(el.value);
+    if (el.value.trim() !== url) el.value = url;
+    if (isFetchableUrl(url)) fetchMeta(false, url);
+  });
 
   document.getElementById('i_useFavicon').onclick = async () => {
-    const url = document.getElementById('i_url').value.trim();
+    const url = normalizeFetchUrl(document.getElementById('i_url').value || document.getElementById('i_lan').value);
     if (!url) {
-      toast('请先填写卡片地址', 'error');
+      toast('请先填写卡片地址或内网地址', 'error');
       return;
     }
     const btn = document.getElementById('i_useFavicon');
@@ -1359,8 +1421,8 @@ function bindItems() {
         open_method: Number(document.getElementById('i_open').value),
         is_hidden: document.getElementById('i_hidden').checked ? 1 : 0,
         title: document.getElementById('i_title').value.trim(),
-        url: document.getElementById('i_url').value.trim(),
-        lan_url: document.getElementById('i_lan').value.trim(),
+        url: normalizeFetchUrl(document.getElementById('i_url').value),
+        lan_url: normalizeFetchUrl(document.getElementById('i_lan').value),
         description: document.getElementById('i_desc').value.trim(),
         tags: document.getElementById('i_tags').value.split(/[,，;；\s]+/).map(t => t.trim()).filter(Boolean),
         icon_type: itype,
@@ -2227,9 +2289,16 @@ function bindThemeSubnav() {
   bindPaneNav('themeSubnav', '#sf-theme', 'sp_theme_pane');
 }
 
+function bindClipSubnav() {
+  // 剪藏与接入：基础设置 / 摘要与图片 / 快照检索 / 令牌与地址 / 各端接入
+  bindPaneNav('clipSubnav', '#tab-clip', 'sp_clip_pane');
+}
+
 function bindSettings() {
   // 外观与卡片内部二级导航（主题 / 布局 / 字体 / 时钟 / 壁纸）
   bindThemeSubnav();
+  // 剪藏与接入内部二级导航
+  bindClipSubnav();
   // 字体下拉：整页 + 时钟，填充 12 款字体并绑定预览
   ensurePageFontOptions();
   ensureClockFontOptions();
@@ -3294,6 +3363,8 @@ function bindClip() {
     copyClipText(document.getElementById('bookmarkletCode').value, document.getElementById('copyBookmarkletBtn')));
   document.getElementById('saveClipSettingsBtn').addEventListener('click', saveClipSettings);
   document.getElementById('createTokenBtn').addEventListener('click', createClipToken);
+  // AI 供应商切换：仅「外部 API」时展开接口地址/Key/模型，避免本地规则时显示无关输入框
+  document.getElementById('s_clip_ai_provider').addEventListener('change', syncClipAiFields);
 
   // 正文快照检索
   document.getElementById('clipSearchBtn').addEventListener('click', runClipSearch);
@@ -3305,15 +3376,20 @@ function bindClip() {
   });
 
   document.getElementById('tokensTbody').addEventListener('click', async (e) => {
+    const copyBtn = e.target.closest('button[data-copy-token]');
+    if (copyBtn) {
+      copyClipText(copyBtn.dataset.copyToken, copyBtn);
+      return;
+    }
     const btn = e.target.closest('button[data-revoke]');
     if (!btn) return;
     const id = parseInt(btn.dataset.revoke, 10);
-    const ok = await uiConfirm('吊销后该 Token 立即失效，扩展与快捷指令需要重新配置。确定吊销？', { danger: true, okText: '吊销' });
+    const ok = await uiConfirm('删除后该 Token 立即失效且不可恢复，扩展与快捷指令需要重新配置。确定删除？', { danger: true, okText: '删除' });
     if (!ok) return;
     btn.disabled = true;
     try {
-      await API.request('/api/v1/tokens', { method: 'DELETE', body: { id } });
-      toast('Token 已吊销', 'success');
+      await API.request('/api/v1/tokens', { method: 'DELETE', data: { id } });
+      toast('Token 已删除', 'success');
       loadClipTokens();
     } catch (err) {
       toast(err.message, 'error');
@@ -3343,10 +3419,19 @@ async function loadClipPage() {
     document.getElementById('s_clip_ai_api_key').value = s.clip_ai_api_key || '';
     document.getElementById('s_clip_ai_model').value = s.clip_ai_model || '';
     document.getElementById('s_clip_image_domains').value = s.clip_image_domains || '';
+    syncClipAiFields();
   } catch (_) {
     /* 编辑者无站点设置读取权限时保持默认展示 */
   }
   loadClipTokens();
+}
+
+/** AI 供应商为「外部 API」时才展开接口配置，本地规则时不显示无关输入框 */
+function syncClipAiFields() {
+  const sel = document.getElementById('s_clip_ai_provider');
+  const box = document.getElementById('clipAiApiFields');
+  if (!sel || !box) return;
+  box.hidden = sel.value !== 'api';
 }
 
 function buildClipGroupOptions() {
@@ -3498,7 +3583,7 @@ async function createClipToken() {
     document.getElementById('tokenRevealBox').style.display = 'block';
     input.value = '';
     loadClipTokens();
-    toast('Token 已生成，请立即复制保存', 'success');
+    toast('Token 已生成，列表中可随时复制', 'success');
   } catch (e) {
     toast(e.message, 'error');
   } finally {
@@ -3515,14 +3600,19 @@ async function loadClipTokens() {
     tbody.innerHTML = '';
     (list || []).forEach(t => {
       const stateInfo = clipTokenState(t);
+      const tokenCell = t.token
+        ? '<code class="token-text" title="' + esc(t.token) + '">' + esc(t.token) + '</code>' +
+          '<button class="btn btn-sm" type="button" data-copy-token="' + esc(t.token) + '">复制</button>'
+        : '<span class="form-hint" style="margin:0">旧令牌未保存明文，建议重新生成</span>';
       const tr = document.createElement('tr');
-      tr.innerHTML = '<td>' + esc(t.name) + '<div class="form-hint" style="margin:0;font-family:ui-monospace,Consolas,monospace">' + esc(t.prefix) + '</div></td>' +
+      tr.innerHTML = '<td>' + esc(t.name) + '</td>' +
         '<td>' + esc(t.owner || '') + '</td>' +
         '<td>' + esc(t.scopes || '') + '</td>' +
         '<td>' + (t.expires_at ? esc(t.expires_at.slice(0, 10)) : '永久') + '</td>' +
         '<td>' + (t.last_used_at ? esc(t.last_used_at.slice(0, 16)) : '从未') + '</td>' +
+        '<td class="token-cell">' + tokenCell + '</td>' +
         '<td><span class="' + stateInfo.cls + '">' + stateInfo.label + '</span></td>' +
-        '<td>' + (t.revoked_at ? '—' : '<button class="btn btn-sm" type="button" data-revoke="' + t.id + '">吊销</button>') + '</td>';
+        '<td><button class="btn btn-sm" type="button" data-revoke="' + t.id + '">吊销</button></td>';
       tbody.appendChild(tr);
     });
     hint.hidden = (list || []).length > 0;

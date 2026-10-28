@@ -61,20 +61,39 @@ function rewriteHtml(src, hashes) {
   });
 }
 
-/** sw.js CACHE_NAME 自增：sp-cache-v21 → sp-cache-v22 */
-function bumpCacheName(content) {
+/** 递归收集前端源码文件（排除 sw.js 自身，避免自引用） */
+function collectSourceFiles(dir, out = []) {
+  for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fp = path.join(dir, ent.name);
+    if (ent.isDirectory()) collectSourceFiles(fp, out);
+    else if (ent.name !== 'sw.js' && /\.(html|js|json|css)$/.test(ent.name)) out.push(fp);
+  }
+  return out;
+}
+
+/** 缓存名戳：内容变了才变，重复构建（如 Docker 每次重新 COPY）不会失效 */
+function contentStamp() {
+  const h = crypto.createHash('sha1');
+  for (const fp of collectSourceFiles(FE).sort()) {
+    h.update(path.relative(FE, fp));
+    h.update(fs.readFileSync(fp));
+  }
+  return h.digest('hex').slice(0, 8);
+}
+
+function bumpCacheName(content, stamp) {
   return content
     .replace(CACHE_NAME_RE, (m, old) => {
-      const n = parseInt((old.match(/v(\d+)$/) || [,'0'])[1], 10) + 1;
-      const name = old.replace(/v\d+$/, `v${n}`);
+      const name = 'sp-cache-' + stamp;
+      if (name === old) return m;
       console.log(`[sw] CACHE_NAME: ${old} → ${name}`);
-      return m.replace(old, name);
+      return `const CACHE_NAME = '${name}'`;
     })
     .replace(RUNTIME_CACHE_RE, (m, old) => {
-      const n = parseInt((old.match(/v(\d+)$/) || [,'0'])[1], 10) + 1;
-      const name = old.replace(/v\d+$/, `v${n}`);
+      const name = 'sp-runtime-' + stamp;
+      if (name === old) return m;
       console.log(`[sw] RUNTIME_CACHE: ${old} → ${name}`);
-      return m.replace(old, name);
+      return `const RUNTIME_CACHE = '${name}'`;
     });
 }
 
@@ -98,11 +117,11 @@ function main() {
     }
   }
 
-  // 2. sw.js 版本号自增（每次 build 都 bump，确保旧缓存被淘汰）
+  // 2. sw.js 缓存名 = 前端内容 hash（内容变化必定更新，重复构建不会原地自增）
   const swJs = path.join(FE, 'sw.js');
   if (fs.existsSync(swJs)) {
     const raw = fs.readFileSync(swJs, 'utf8');
-    const out = bumpCacheName(raw);
+    const out = bumpCacheName(raw, contentStamp());
     if (out !== raw) fs.writeFileSync(swJs, out, 'utf8');
   }
 

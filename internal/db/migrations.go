@@ -47,6 +47,41 @@ var migrations = []Migration{
 
 	// v7: 剪藏增强（P2）— 摘要 / 自动标签 / 整页截图路径
 	{Version: 7, Name: "clip: summary + auto_tags + screenshot", Fn: migrateV7ClipExtras},
+
+	// v8: 令牌明文可再复制 + 已吊销令牌物理清理
+	{Version: 8, Name: "clip: api_tokens.token_plain", Fn: migrateV8TokenPlain},
+}
+
+// migrateV8TokenPlain 为令牌表补明文列（后台可再次复制），并删除已吊销记录
+func migrateV8TokenPlain() error {
+	if DB == nil {
+		return nil
+	}
+	has := false
+	rows, err := DB.Query(`PRAGMA table_info(api_tokens)`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, ctype string
+		var dflt any
+		if rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk) == nil && name == "token_plain" {
+			has = true
+		}
+	}
+	rows.Close()
+	if !has {
+		if _, err := DB.Exec(`ALTER TABLE api_tokens ADD COLUMN token_plain TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	// 吊销即无效，历史吊销记录没有保留价值，直接物理删除
+	if _, err := DB.Exec(`DELETE FROM api_tokens WHERE revoked_at <> '' OR revoked_at IS NULL`); err != nil {
+		return err
+	}
+	log.Println("[migrate] v8: 令牌明文列已就绪，已清理历史吊销令牌")
+	return nil
 }
 
 // migrateV7ClipExtras 为快照表补齐增强字段（幂等：列已存在时跳过）

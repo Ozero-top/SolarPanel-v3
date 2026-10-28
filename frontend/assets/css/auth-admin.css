@@ -158,8 +158,17 @@
   grid-template-columns: 1fr 1fr 1fr 1fr !important;
   gap: 0 !important;
 }
+/* 英文 1~2 个字母：单行居中 */
+.icon-wrap-en-short {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0 !important;
+  line-height: 1 !important;
+}
 .icon-grid-cn .child-text,
-.icon-wrap-en .child-text {
+.icon-wrap-en .child-text,
+.icon-wrap-en-short .child-text {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -768,6 +777,65 @@ tr.row-hidden > td {
   flex-shrink: 0;
   white-space: nowrap;
 }
+/* 说明文字在上、表单控件横排在下（适合说明较长、控件较多的设置项） */
+.backup-row-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+.backup-row-stack .backup-row-actions {
+  justify-content: flex-start;
+}
+/* 摘要与自动标签：开关 + 供应商同行，外部 API 配置在下一条横排 */
+.backup-row-actions.clip-ai-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  max-width: none;
+}
+.clip-ai-api {
+  flex: 1 1 100%;
+  display: flex;
+  flex-flow: row wrap;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: var(--surface-2, rgba(127, 127, 127, .06));
+}
+.clip-ai-api[hidden] {
+  display: none;
+}
+.clip-ai-api .form-item {
+  flex: 1 1 200px;
+  margin: 0;
+}
+.clip-ai-api .form-hint {
+  flex: 1 1 100%;
+  margin: 0;
+}
+.clip-ai-api .form-item > label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+/* 令牌列表：完整明文 + 一键复制 */
+.token-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.token-text {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+  word-break: break-all;
+}
 
 .backup-info {
   display: flex;
@@ -1023,6 +1091,10 @@ tr.drag-over-bottom td {
   .backup-row {
     flex-direction: column;
     align-items: stretch;
+  }
+  .clip-ai-actions {
+    min-width: 0;
+    max-width: none;
   }
 }
 
@@ -1441,3 +1513,18 @@ tr.drag-over-bottom td {
   .gic-emoji { font-size: 17px; }
   .gic-name { font-size: 10.5px; }
 }
+
+/* ===== 后台页脚：项目地址与作者博客 ===== */
+.admin-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin: 26px 0 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.admin-footer a { color: inherit; text-decoration: none; }
+.admin-footer a:hover { color: var(--primary, #2563eb); text-decoration: underline; }
+.admin-footer-dot { opacity: .5; }

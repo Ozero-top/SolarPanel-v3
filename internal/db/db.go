@@ -291,13 +291,14 @@ var schemaDDL = []string{
 		expires_at TEXT NOT NULL
 	)`,
 
-	// 剪藏：个人访问令牌（只存 SHA-256，不存明文）
+	// 剪藏：个人访问令牌（保存明文便于后台再次复制，另存 SHA-256 用于校验）
 	`CREATE TABLE IF NOT EXISTS api_tokens (
 		id            INTEGER PRIMARY KEY AUTOINCREMENT,
 		user_id       INTEGER NOT NULL,
 		name          TEXT NOT NULL,
 		token_hash    TEXT NOT NULL UNIQUE,
 		token_prefix  TEXT NOT NULL,
+		token_plain   TEXT NOT NULL DEFAULT '',
 		scopes        TEXT NOT NULL DEFAULT 'clip:write',
 		expires_at    TEXT NOT NULL DEFAULT '',
 		last_used_at  TEXT NOT NULL DEFAULT '',

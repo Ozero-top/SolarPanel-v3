@@ -19,6 +19,7 @@ type apiTokenView struct {
 	Owner      string `json:"owner"`
 	Name       string `json:"name"`
 	Prefix     string `json:"prefix"`
+	Token      string `json:"token"`
 	Scopes     string `json:"scopes"`
 	ExpiresAt  string `json:"expires_at"`
 	LastUsedAt string `json:"last_used_at"`
@@ -50,15 +51,16 @@ func (h *ClipTokenHandler) List(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	q := `SELECT t.id, t.user_id, COALESCE(NULLIF(u.name,''), u.username), t.name, t.token_prefix,
+	q := `SELECT t.id, t.user_id, COALESCE(NULLIF(u.name,''), u.username), t.name, t.token_prefix, t.token_plain,
 			t.scopes, t.expires_at, t.last_used_at, t.revoked_at, t.created_at
 		FROM api_tokens t LEFT JOIN users u ON u.id = t.user_id`
 	args := []any{}
+	where := " WHERE t.revoked_at = ''"
 	if sess.Role != "admin" {
-		q += " WHERE t.user_id = ?"
+		where += " AND t.user_id = ?"
 		args = append(args, sess.UID)
 	}
-	q += " ORDER BY t.id DESC"
+	q += where + " ORDER BY t.id DESC"
 
 	rows, err := db.DB.Query(q, args...)
 	if err != nil {
@@ -69,7 +71,7 @@ func (h *ClipTokenHandler) List(w http.ResponseWriter, r *http.Request) {
 	list := []apiTokenView{}
 	for rows.Next() {
 		var t apiTokenView
-		if err := rows.Scan(&t.ID, &t.UserID, &t.Owner, &t.Name, &t.Prefix, &t.Scopes,
+		if err := rows.Scan(&t.ID, &t.UserID, &t.Owner, &t.Name, &t.Prefix, &t.Token, &t.Scopes,
 			&t.ExpiresAt, &t.LastUsedAt, &t.RevokedAt, &t.CreatedAt); err == nil {
 			list = append(list, t)
 		}
@@ -125,9 +127,9 @@ func (h *ClipTokenHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Err(w, http.StatusInternalServerError, 1, "生成 Token 失败")
 		return
 	}
-	res, err := db.DB.Exec(`INSERT INTO api_tokens (user_id, name, token_hash, token_prefix, scopes, expires_at, last_used_at, revoked_at, created_at)
-		VALUES (?,?,?,?,?,?,'','',?)`,
-		sess.UID, name, hash, prefix, auth.JoinScopes(scopes), expiresAt, db.NowStr())
+	res, err := db.DB.Exec(`INSERT INTO api_tokens (user_id, name, token_hash, token_prefix, token_plain, scopes, expires_at, last_used_at, revoked_at, created_at)
+		VALUES (?,?,?,?,?,?,?,'','',?)`,
+		sess.UID, name, hash, prefix, plain, auth.JoinScopes(scopes), expiresAt, db.NowStr())
 	if err != nil {
 		Err(w, http.StatusInternalServerError, 1, "保存 Token 失败")
 		return
@@ -165,7 +167,8 @@ func (h *ClipTokenHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if _, err := db.DB.Exec("UPDATE api_tokens SET revoked_at = ? WHERE id = ? AND revoked_at = ''", db.NowStr(), body.ID); err != nil {
+	// 吊销即物理删除：不可用，也无需在列表中保留记录
+	if _, err := db.DB.Exec("DELETE FROM api_tokens WHERE id = ?", body.ID); err != nil {
 		Fail(w, "吊销失败")
 		return
 	}

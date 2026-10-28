@@ -177,7 +177,7 @@ chrome.commands.onCommand.addListener(async (command) => {
 /* ---------- 整页截图（P2）：滚动逐屏截图后在 OffscreenCanvas 拼接 ---------- */
 
 const SHOT_MAX_CSS_HEIGHT = 12000; // 超长页面截断，避免 canvas 与上传体积失控
-const SHOT_STEP_DELAY = 320;       // captureVisibleTab 每秒最多 2 次，留足间隔
+const SHOT_STEP_DELAY = 550;       // captureVisibleTab 配额 2 次/秒，间隔需大于 500ms
 const SHOT_MAX_CANVAS = 16000;     // Chrome canvas 单边上限保护
 
 function sleep(ms) {

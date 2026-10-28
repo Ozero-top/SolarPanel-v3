@@ -106,10 +106,12 @@ var (
 	reSvgBadScheme = regexp.MustCompile(`(?is)((?:xlink:)?href\s*=\s*["']\s*)(?:javascript|vbscript|data:text/html)[^"']*`)
 )
 
+// 仅拦截本机回环、链路本地（含云元数据 169.254.169.254）与 0.0.0.0/8；
+// RFC1918 内网段允许访问，便于自建 NAS / 内网服务自动获取标题、描述与图标。
 var privateCIDRs []*net.IPNet
 
 func init() {
-	cidrs := []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "0.0.0.0/8", "169.254.0.0/16"}
+	cidrs := []string{"127.0.0.0/8", "0.0.0.0/8", "169.254.0.0/16"}
 	for _, c := range cidrs {
 		_, n, err := net.ParseCIDR(c)
 		if err == nil {
@@ -837,7 +839,8 @@ func (h *ItemsHandler) FetchMeta(w http.ResponseWriter, r *http.Request) {
 	}
 	host := strings.ToLower(u.Hostname())
 	if isPrivateHost(host) {
-		Fail(w, "禁止访问内网地址")
+		// 允许 192.168 / 10 / 172.16 等内网地址；仅拦截本机回环与链路本地
+		Fail(w, "禁止访问本机回环或链路本地地址")
 		return
 	}
 
@@ -990,7 +993,7 @@ func (h *ItemsHandler) Edit(w http.ResponseWriter, r *http.Request) {
 		IconValue   string    `json:"icon_value"`
 		IconBG      string    `json:"icon_bg"`
 		OpenMethod  int       `json:"open_method"`
-		Sort        int       `json:"sort"`
+		Sort        *int      `json:"sort"`
 		IsHidden    int       `json:"is_hidden"`
 		Tags        *[]string `json:"tags"`
 	}
@@ -1035,8 +1038,11 @@ func (h *ItemsHandler) Edit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if body.ID == 0 {
+		// 新卡片固定追加到分组末尾：旧客户端不传 sort，避免默认 0 插到最前面
+		var nextSort int
+		db.DB.QueryRow("SELECT COALESCE(MAX(sort), -1) + 1 FROM items WHERE group_id = ?", body.GroupID).Scan(&nextSort)
 		res, err := db.DB.Exec("INSERT INTO items (group_id, title, url, lan_url, description, icon_type, icon_value, icon_bg, open_method, sort, is_hidden, url_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-			body.GroupID, body.Title, body.URL, body.LanURL, body.Description, body.IconType, body.IconValue, body.IconBG, body.OpenMethod, body.Sort, body.IsHidden, urlutil.Key(body.URL))
+			body.GroupID, body.Title, body.URL, body.LanURL, body.Description, body.IconType, body.IconValue, body.IconBG, body.OpenMethod, nextSort, body.IsHidden, urlutil.Key(body.URL))
 		if err != nil {
 			Fail(w, "创建失败")
 			return
@@ -1050,8 +1056,23 @@ func (h *ItemsHandler) Edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 编辑：未显式传 sort 时保留原顺序；换了分组则追加到新分组末尾
+	sortVal := 0
+	var curGroupID uint
+	if err := db.DB.QueryRow("SELECT group_id, sort FROM items WHERE id=?", body.ID).Scan(&curGroupID, &sortVal); err != nil {
+		Fail(w, "卡片不存在")
+		return
+	}
+	if body.Sort != nil {
+		sortVal = *body.Sort
+	} else if curGroupID != body.GroupID {
+		var nextSort int
+		db.DB.QueryRow("SELECT COALESCE(MAX(sort), -1) + 1 FROM items WHERE group_id = ?", body.GroupID).Scan(&nextSort)
+		sortVal = nextSort
+	}
+
 	_, err := db.DB.Exec("UPDATE items SET group_id=?, title=?, url=?, lan_url=?, description=?, icon_type=?, icon_value=?, icon_bg=?, open_method=?, sort=?, is_hidden=?, url_key=? WHERE id=?",
-		body.GroupID, body.Title, body.URL, body.LanURL, body.Description, body.IconType, body.IconValue, body.IconBG, body.OpenMethod, body.Sort, body.IsHidden, urlutil.Key(body.URL), body.ID)
+		body.GroupID, body.Title, body.URL, body.LanURL, body.Description, body.IconType, body.IconValue, body.IconBG, body.OpenMethod, sortVal, body.IsHidden, urlutil.Key(body.URL), body.ID)
 	if err != nil {
 		Fail(w, "保存失败")
 		return

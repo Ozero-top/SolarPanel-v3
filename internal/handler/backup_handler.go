@@ -58,6 +58,7 @@ type backupTokenRow struct {
 	Name        string `json:"name"`
 	TokenHash   string `json:"token_hash"`
 	TokenPrefix string `json:"token_prefix"`
+	TokenPlain  string `json:"token_plain"`
 	Scopes      string `json:"scopes"`
 	ExpiresAt   string `json:"expires_at"`
 	LastUsedAt  string `json:"last_used_at"`
@@ -312,11 +313,11 @@ func (h *BackupHandler) collectPayload(includeFiles bool) (backupPayload, error)
 		keyQ.Close()
 	}
 
-	if tokenQ, err := db.DB.Query(`SELECT id, user_id, name, token_hash, token_prefix, scopes, expires_at, last_used_at, revoked_at, created_at
+	if tokenQ, err := db.DB.Query(`SELECT id, user_id, name, token_hash, token_prefix, token_plain, scopes, expires_at, last_used_at, revoked_at, created_at
 		FROM api_tokens ORDER BY id ASC`); err == nil {
 		for tokenQ.Next() {
 			var t backupTokenRow
-			if tokenQ.Scan(&t.ID, &t.UserID, &t.Name, &t.TokenHash, &t.TokenPrefix, &t.Scopes,
+			if tokenQ.Scan(&t.ID, &t.UserID, &t.Name, &t.TokenHash, &t.TokenPrefix, &t.TokenPlain, &t.Scopes,
 				&t.ExpiresAt, &t.LastUsedAt, &t.RevokedAt, &t.CreatedAt) == nil {
 				payload.Tokens = append(payload.Tokens, t)
 			}
@@ -564,9 +565,9 @@ func (h *BackupHandler) applyPayload(payload backupPayload) (map[string]int, err
 	}
 
 	for _, t := range payload.Tokens {
-		tx.Exec(`INSERT INTO api_tokens (user_id, name, token_hash, token_prefix, scopes, expires_at, last_used_at, revoked_at, created_at)
-			VALUES (?,?,?,?,?,?,?,?,?)`,
-			t.UserID, t.Name, t.TokenHash, t.TokenPrefix, t.Scopes, t.ExpiresAt, t.LastUsedAt, t.RevokedAt, t.CreatedAt)
+		tx.Exec(`INSERT INTO api_tokens (user_id, name, token_hash, token_prefix, token_plain, scopes, expires_at, last_used_at, revoked_at, created_at)
+			VALUES (?,?,?,?,?,?,?,?,?,?)`,
+			t.UserID, t.Name, t.TokenHash, t.TokenPrefix, t.TokenPlain, t.Scopes, t.ExpiresAt, t.LastUsedAt, t.RevokedAt, t.CreatedAt)
 	}
 
 	for _, c := range payload.ClipContents {

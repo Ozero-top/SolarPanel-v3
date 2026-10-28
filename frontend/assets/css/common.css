@@ -468,8 +468,17 @@ input[type='checkbox'] {
   grid-template-columns: 1fr 1fr 1fr 1fr;
   gap: 0;
 }
+/* 英文 1~2 个字母：单行居中 */
+.icon-wrap-en-short {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  line-height: 1;
+}
 .icon-grid-cn .child-text,
-.icon-wrap-en .child-text {
+.icon-wrap-en .child-text,
+.icon-wrap-en-short .child-text {
   display: flex;
   align-items: center;
   justify-content: center;
