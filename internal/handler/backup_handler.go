@@ -19,6 +19,7 @@ import (
 	"solarpanel/internal/config"
 	"solarpanel/internal/db"
 	"solarpanel/internal/settings"
+	"solarpanel/internal/urlutil"
 )
 
 type BackupHandler struct {
@@ -37,6 +38,40 @@ type backupPayload struct {
 	Items    []ItemRow         `json:"items"`
 	Feeds    []CustomFeedRow   `json:"feeds"`
 	Files    map[string]string `json:"files"`
+	// 剪藏：old item id -> url_key，保证恢复后查重可用
+	URLKeys      map[string]string   `json:"url_keys,omitempty"`
+	Tokens       []backupTokenRow    `json:"tokens,omitempty"`
+	ClipContents []backupClipContent `json:"clip_contents,omitempty"`
+}
+
+// backupTokenRow 个人访问令牌（只含哈希，不含明文）
+type backupTokenRow struct {
+	ID          int    `json:"id"`
+	UserID      int    `json:"user_id"`
+	Name        string `json:"name"`
+	TokenHash   string `json:"token_hash"`
+	TokenPrefix string `json:"token_prefix"`
+	Scopes      string `json:"scopes"`
+	ExpiresAt   string `json:"expires_at"`
+	LastUsedAt  string `json:"last_used_at"`
+	RevokedAt   string `json:"revoked_at"`
+	CreatedAt   string `json:"created_at"`
+}
+
+// backupClipContent 正文快照（P0 无数据，保持口径一致）
+type backupClipContent struct {
+	ItemID      int    `json:"item_id"`
+	URLKey      string `json:"url_key"`
+	URLOriginal string `json:"url_original"`
+	Source      string `json:"source"`
+	Excerpt     string `json:"excerpt"`
+	ContentMD   string `json:"content_md"`
+	CoverPath   string `json:"cover_path"`
+	FetchedAt   string `json:"fetched_at"`
+	HTTPStatus  int    `json:"http_status"`
+	ContentHash string `json:"content_hash"`
+	WordCount   int    `json:"word_count"`
+	FetchError  string `json:"fetch_error"`
 }
 
 const (
@@ -216,6 +251,43 @@ func (h *BackupHandler) collectPayload(includeFiles bool) (backupPayload, error)
 	}
 	feedQ.Close()
 
+	// 剪藏查重键（按旧 id 记录，恢复时配合新 id 映射写回）
+	payload.URLKeys = map[string]string{}
+	if keyQ, err := db.DB.Query("SELECT id, url_key FROM items"); err == nil {
+		for keyQ.Next() {
+			var id int
+			var key string
+			if keyQ.Scan(&id, &key) == nil && key != "" {
+				payload.URLKeys[strconv.Itoa(id)] = key
+			}
+		}
+		keyQ.Close()
+	}
+
+	if tokenQ, err := db.DB.Query(`SELECT id, user_id, name, token_hash, token_prefix, scopes, expires_at, last_used_at, revoked_at, created_at
+		FROM api_tokens ORDER BY id ASC`); err == nil {
+		for tokenQ.Next() {
+			var t backupTokenRow
+			if tokenQ.Scan(&t.ID, &t.UserID, &t.Name, &t.TokenHash, &t.TokenPrefix, &t.Scopes,
+				&t.ExpiresAt, &t.LastUsedAt, &t.RevokedAt, &t.CreatedAt) == nil {
+				payload.Tokens = append(payload.Tokens, t)
+			}
+		}
+		tokenQ.Close()
+	}
+
+	if contentQ, err := db.DB.Query(`SELECT item_id, url_key, url_original, source, excerpt, content_md, cover_path,
+			fetched_at, http_status, content_hash, word_count, fetch_error FROM clip_contents ORDER BY item_id ASC`); err == nil {
+		for contentQ.Next() {
+			var c backupClipContent
+			if contentQ.Scan(&c.ItemID, &c.URLKey, &c.URLOriginal, &c.Source, &c.Excerpt, &c.ContentMD, &c.CoverPath,
+				&c.FetchedAt, &c.HTTPStatus, &c.ContentHash, &c.WordCount, &c.FetchError) == nil {
+				payload.ClipContents = append(payload.ClipContents, c)
+			}
+		}
+		contentQ.Close()
+	}
+
 	payload.Version = "1.0"
 	payload.Time = time.Now().Format("2006-01-02 15:04:05")
 
@@ -366,6 +438,9 @@ func (h *BackupHandler) applyPayload(payload backupPayload) (map[string]int, err
 	}
 	defer tx.Rollback()
 
+	tx.Exec("DELETE FROM clip_contents")
+	tx.Exec("DELETE FROM clip_requests")
+	tx.Exec("DELETE FROM api_tokens")
 	tx.Exec("DELETE FROM items")
 	tx.Exec("DELETE FROM item_groups")
 	tx.Exec("DELETE FROM custom_feeds")
@@ -384,6 +459,7 @@ func (h *BackupHandler) applyPayload(payload backupPayload) (map[string]int, err
 	})
 
 	var groupIDMap = make(map[int64]int64)
+	var itemIDMap = make(map[int64]int64)
 	for _, g := range payload.Groups {
 		// 重映射 parent_id：备份中的老父分组 id 重新插入后变成新 id，必须通过 groupIDMap 转换
 		// 备份里 groups 按 parent_id ASC 排序，父分组先处理，此时 groupIDMap 一定已有父分组映射
@@ -412,8 +488,35 @@ func (h *BackupHandler) applyPayload(payload backupPayload) (map[string]int, err
 		if !ok {
 			continue
 		}
-		tx.Exec("INSERT INTO items (group_id, title, url, lan_url, description, icon_type, icon_value, icon_bg, open_method, sort, is_hidden, user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-			newGroupID, it.Title, it.URL, it.LanURL, it.Description, it.IconType, it.IconValue, it.IconBG, it.OpenMethod, it.Sort, it.IsHidden, 1)
+		// url_key 优先取备份记录，旧备份没有时按 URL 现算，保证恢复后查重可用
+		key := payload.URLKeys[strconv.Itoa(it.ID)]
+		if key == "" {
+			key = urlutil.Key(it.URL)
+		}
+		res, err := tx.Exec("INSERT INTO items (group_id, title, url, lan_url, description, icon_type, icon_value, icon_bg, open_method, sort, is_hidden, user_id, url_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+			newGroupID, it.Title, it.URL, it.LanURL, it.Description, it.IconType, it.IconValue, it.IconBG, it.OpenMethod, it.Sort, it.IsHidden, 1, key)
+		if err == nil {
+			if newID, e := res.LastInsertId(); e == nil {
+				itemIDMap[int64(it.ID)] = newID
+			}
+		}
+	}
+
+	for _, t := range payload.Tokens {
+		tx.Exec(`INSERT INTO api_tokens (user_id, name, token_hash, token_prefix, scopes, expires_at, last_used_at, revoked_at, created_at)
+			VALUES (?,?,?,?,?,?,?,?,?)`,
+			t.UserID, t.Name, t.TokenHash, t.TokenPrefix, t.Scopes, t.ExpiresAt, t.LastUsedAt, t.RevokedAt, t.CreatedAt)
+	}
+
+	for _, c := range payload.ClipContents {
+		newID, ok := itemIDMap[int64(c.ItemID)]
+		if !ok {
+			continue
+		}
+		tx.Exec(`INSERT OR REPLACE INTO clip_contents (item_id, url_key, url_original, source, excerpt, content_md, cover_path,
+				fetched_at, http_status, content_hash, word_count, fetch_error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+			newID, c.URLKey, c.URLOriginal, c.Source, c.Excerpt, c.ContentMD, c.CoverPath,
+			c.FetchedAt, c.HTTPStatus, c.ContentHash, c.WordCount, c.FetchError)
 	}
 
 	for _, f := range payload.Feeds {
@@ -491,6 +594,9 @@ func (h *BackupHandler) Reset(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
+	tx.Exec("DELETE FROM clip_contents")
+	tx.Exec("DELETE FROM clip_requests")
+	tx.Exec("DELETE FROM api_tokens")
 	tx.Exec("DELETE FROM items")
 	tx.Exec("DELETE FROM item_groups")
 	tx.Exec("DELETE FROM custom_feeds")

@@ -48,6 +48,7 @@ var expectedColumns = map[string][]struct{ Name, Def string }{
 		{"is_hidden", "INTEGER NOT NULL DEFAULT 0"},
 		{"user_id", "INTEGER NOT NULL DEFAULT 1"},
 		{"created_at", "TEXT NOT NULL DEFAULT ''"},
+		{"url_key", "TEXT NOT NULL DEFAULT ''"},
 	},
 	"item_groups": {
 		{"parent_id", "INTEGER NOT NULL DEFAULT 0"},
@@ -232,7 +233,8 @@ var schemaDDL = []string{
 		sort INTEGER NOT NULL DEFAULT 0,
 		is_hidden INTEGER NOT NULL DEFAULT 0,
 		user_id INTEGER NOT NULL DEFAULT 1,
-		created_at TEXT NOT NULL DEFAULT ''
+		created_at TEXT NOT NULL DEFAULT '',
+		url_key TEXT NOT NULL DEFAULT ''
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS custom_feeds (
@@ -282,6 +284,46 @@ var schemaDDL = []string{
 		created_at TEXT NOT NULL DEFAULT '',
 		last_used_at TEXT,
 		expires_at TEXT NOT NULL
+	)`,
+
+	// 剪藏：个人访问令牌（只存 SHA-256，不存明文）
+	`CREATE TABLE IF NOT EXISTS api_tokens (
+		id            INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id       INTEGER NOT NULL,
+		name          TEXT NOT NULL,
+		token_hash    TEXT NOT NULL UNIQUE,
+		token_prefix  TEXT NOT NULL,
+		scopes        TEXT NOT NULL DEFAULT 'clip:write',
+		expires_at    TEXT NOT NULL DEFAULT '',
+		last_used_at  TEXT NOT NULL DEFAULT '',
+		revoked_at    TEXT NOT NULL DEFAULT '',
+		created_at    TEXT NOT NULL DEFAULT ''
+	)`,
+
+	// 剪藏：幂等请求（临时数据，不参与备份，定时清理 24 小时前记录）
+	`CREATE TABLE IF NOT EXISTS clip_requests (
+		token_id   INTEGER NOT NULL,
+		client_id  TEXT NOT NULL,
+		item_id    INTEGER NOT NULL,
+		created_at TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (token_id, client_id)
+	)`,
+
+	// 剪藏：正文快照（P1 使用，P0 建表以便备份/迁移口径一致）
+	`CREATE TABLE IF NOT EXISTS clip_contents (
+		item_id      INTEGER PRIMARY KEY,
+		url_key      TEXT NOT NULL DEFAULT '',
+		url_original TEXT NOT NULL DEFAULT '',
+		source       TEXT NOT NULL DEFAULT '',
+		excerpt      TEXT NOT NULL DEFAULT '',
+		content_md   TEXT NOT NULL DEFAULT '',
+		cover_path   TEXT NOT NULL DEFAULT '',
+		fetched_at   TEXT NOT NULL DEFAULT '',
+		http_status  INTEGER NOT NULL DEFAULT 0,
+		content_hash TEXT NOT NULL DEFAULT '',
+		word_count   INTEGER NOT NULL DEFAULT 0,
+		fetch_error  TEXT NOT NULL DEFAULT '',
+		FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
 	)`,
 }
 

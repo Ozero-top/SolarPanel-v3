@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<title>保存到 SolarPanel</title>
+<link rel="stylesheet" href="/assets/css/clip.css?v=f27c353f">
+</head>
+<body>
+<main class="clip-wrap">
+  <header class="clip-head">
+    <a class="clip-brand" href="/">SolarPanel</a>
+    <span class="clip-tag">剪藏</span>
+  </header>
+
+  <!-- 结果视图 -->
+  <section id="view-result" class="clip-card hidden" aria-live="polite">
+    <div id="result-icon" class="result-icon">S</div>
+    <h1 id="result-title">已保存</h1>
+    <p id="result-desc" class="clip-hint"></p>
+    <div class="result-actions">
+      <a id="btn-open" class="clip-btn" href="#" target="_blank" rel="noopener">打开原文</a>
+      <button id="btn-undo" class="clip-btn ghost" type="button">撤销</button>
+      <a class="clip-btn ghost" href="/clip">再存一个</a>
+    </div>
+    <p id="result-msg" class="clip-msg"></p>
+  </section>
+
+  <!-- 表单视图 -->
+  <section id="view-form" class="clip-card hidden">
+    <h1 id="form-heading">保存链接</h1>
+    <p class="clip-hint">粘贴链接后自动补全标题；标题、图标与描述由服务端统一抓取。</p>
+    <form id="clip-form" novalidate>
+      <label class="field">
+        <span>链接 URL</span>
+        <input id="f-url" type="url" inputmode="url" autocomplete="off" placeholder="https://example.com/article" required>
+      </label>
+      <label class="field">
+        <span>标题</span>
+        <input id="f-title" type="text" maxlength="200" placeholder="留空则自动抓取">
+      </label>
+      <label class="field">
+        <span>分组</span>
+        <select id="f-group"></select>
+      </label>
+      <label class="field">
+        <span>备注（可选）</span>
+        <textarea id="f-note" maxlength="500" rows="2" placeholder="为什么要保存它"></textarea>
+      </label>
+
+      <div id="f-dup" class="clip-alert hidden">
+        该链接已存在。
+        <a id="dup-open" href="#" target="_blank" rel="noopener">打开已有卡片</a>
+        <button id="btn-force" type="button">仍要另存</button>
+      </div>
+
+      <button id="btn-save" class="clip-btn" type="submit">保存到 SolarPanel</button>
+      <p id="f-msg" class="clip-msg" role="status"></p>
+    </form>
+  </section>
+
+  <footer class="clip-foot">
+    <a href="/admin.html">返回后台</a>
+    <span>Alt+Shift+S 快速保存（安装桌面扩展后可用）</span>
+  </footer>
+</main>
+<script src="/assets/js/api.js?v=dee5b814"></script>
+<script src="/assets/js/clip.js?v=0d5877ce"></script>
+</body>
+</html>

@@ -2,6 +2,8 @@ package db
 
 import (
 	"log"
+
+	"solarpanel/internal/urlutil"
 )
 
 // Migration 定义一次数据库升级
@@ -31,6 +33,104 @@ var migrations = []Migration{
 	{Version: 3, Name: "audit_logs.region + indexes",
 		SQL: `ALTER TABLE audit_logs ADD COLUMN region TEXT NOT NULL DEFAULT ''`,
 		Fn:  backfillV3AuditRegion},
+
+	// v4: 剪藏 — items.url_key + api_tokens / clip_requests / clip_contents
+	{Version: 4, Name: "clip: items.url_key + token tables",
+		SQL: `ALTER TABLE items ADD COLUMN url_key TEXT NOT NULL DEFAULT ''`,
+		Fn:  backfillV4Clip},
+}
+
+// backfillV4Clip v4 迁移专用：确保 url_key 列与索引存在，并回填已有卡片
+func backfillV4Clip() error {
+	has := false
+	rows, err := DB.Query("PRAGMA table_info(items)")
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var cid, notnull, pk int
+		var cname, ctype string
+		var dflt any
+		if err := rows.Scan(&cid, &cname, &ctype, &notnull, &dflt, &pk); err != nil {
+			continue
+		}
+		if cname == "url_key" {
+			has = true
+			break
+		}
+	}
+	rows.Close()
+	if !has {
+		if _, err := DB.Exec("ALTER TABLE items ADD COLUMN url_key TEXT NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+	}
+	DB.Exec(`CREATE INDEX IF NOT EXISTS idx_items_url_key ON items(url_key)`)
+	DB.Exec(`CREATE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash)`)
+	DB.Exec(`CREATE INDEX IF NOT EXISTS idx_clip_contents_url_key ON clip_contents(url_key)`)
+	log.Println("[migrate] v4: items.url_key + 剪藏表已就绪")
+
+	BackfillURLKeys()
+	return nil
+}
+
+// BackfillURLKeys 为 url_key 为空的卡片补算查重键（幂等，启动时也会调用）。
+// 先收集再关闭游标，避免在 SQLite 读事务中写入造成锁等待。
+func BackfillURLKeys() {
+	if DB == nil {
+		return
+	}
+	type row struct {
+		id     int
+		url    string
+		lanURL string
+	}
+	var rowsData []row
+	rows, err := DB.Query("SELECT id, url, lan_url FROM items WHERE url_key = ''")
+	if err != nil {
+		return
+	}
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.url, &r.lanURL); err == nil {
+			rowsData = append(rowsData, r)
+		}
+	}
+	rows.Close()
+	if len(rowsData) == 0 {
+		return
+	}
+
+	tx, err := DB.Begin()
+	if err != nil {
+		return
+	}
+	defer tx.Rollback()
+	filled := 0
+	for _, r := range rowsData {
+		src := r.url
+		if src == "" {
+			src = r.lanURL
+		}
+		if src == "" {
+			continue
+		}
+		key := urlutil.Key(src)
+		if key == "" {
+			continue
+		}
+		if _, err := tx.Exec("UPDATE items SET url_key = ? WHERE id = ?", key, r.id); err != nil {
+			continue
+		}
+		filled++
+	}
+	if err := tx.Commit(); err != nil {
+		log.Printf("[migrate] url_key 回填失败: %v", err)
+		return
+	}
+	if filled > 0 {
+		log.Printf("[migrate] url_key 回填 %d 张卡片", filled)
+	}
 }
 
 // backfillV2SettingsUpdatedAt v2 迁移专用：

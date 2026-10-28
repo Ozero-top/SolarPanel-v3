@@ -194,6 +194,8 @@ func main() {
 		log.Fatal("[db] 初始化失败:", err)
 	}
 	defer db.Close()
+	// 剪藏查重键兜底回填（迁移已跑过；这里覆盖旧库/导入数据）
+	db.BackfillURLKeys()
 
 	seedPresetWallpapers(cfg.UploadDir)
 	sessionStore := auth.NewSessionStore(cfg.SessionTTL)
@@ -241,6 +243,9 @@ func main() {
 	wallpaperHandler := handler.NewWallpaperHandler(cfg)
 	nasHandler := handler.NewNASHandler(cfg)
 	versionHandler := handler.VersionHandler{}
+	clipHandler := handler.NewClipHandler(cfg)
+	clipTokenHandler := handler.ClipTokenHandler{}
+	clipShareHandler := handler.NewClipShareHandler(clipHandler)
 
 	// ===== 限流中间件（chi 适配器）=====
 	rateLimitMW := func(endpoint string, max, windowSec int) func(http.Handler) http.Handler {
@@ -302,6 +307,34 @@ func main() {
 		})
 	})
 
+	// ===== 剪藏 API v1（Bearer Token / 登录会话双鉴权，CORS 允许 *）=====
+	clipCORS := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h := w.Header()
+			h.Set("Access-Control-Allow-Origin", "*")
+			h.Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-CSRF-Token")
+			h.Set("Access-Control-Max-Age", "600")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+	r.Route("/api/v1", func(v1 chi.Router) {
+		v1.Use(clipCORS)
+		v1.Use(rateLimitMW("clip", 120, 60))
+		v1.Post("/clips", clipHandler.Create)
+		v1.Delete("/clips", clipHandler.Delete)
+		v1.Get("/me", clipHandler.Me)
+		v1.Get("/groups", clipHandler.Groups)
+		v1.Post("/preview", clipHandler.Preview)
+		v1.Get("/tokens", clipTokenHandler.List)
+		v1.Post("/tokens", clipTokenHandler.Create)
+		v1.Delete("/tokens", clipTokenHandler.Revoke)
+	})
+
 	// ===== 保护 admin.html / login.html =====
 	protectAdminHTML := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -344,6 +377,11 @@ func main() {
 	r.Get("/favicon.ico", serveEmbed("frontend/favicon.ico", "image/x-icon"))
 	r.With(protectLoginHTML).Get("/login.html", serveEmbed("frontend/login.html", "text/html; charset=utf-8"))
 	r.With(protectAdminHTML).Get("/admin.html", serveEmbed("frontend/admin.html", "text/html; charset=utf-8"))
+
+	// 剪藏落地页 / PWA 分享入口
+	r.Get("/clip", serveEmbed("frontend/clip.html", "text/html; charset=utf-8"))
+	r.Get("/clip-share", clipShareHandler.Share)
+	r.Post("/clip-share", clipShareHandler.Share)
 
 	// 用户上传文件目录（磁盘直读）
 	// 上传内容来源不可信（可能含 SVG），用 CSP sandbox + default-src 'none' 阻止脚本执行
@@ -414,6 +452,16 @@ func main() {
 
 	// 自动备份调度：默认关闭，开启后按 1/3/5/7/9 天间隔生成，最多保留 5 份
 	go backupHandler.StartAutoBackup()
+
+	// 剪藏幂等记录清理：启动跑一次，之后每小时清理 24 小时前数据
+	go func() {
+		handler.CleanupClipRequests()
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			handler.CleanupClipRequests()
+		}
+	}()
 
 	// HTTP 始终启动（方便反代）
 	httpAddr := ":" + cfg.ServerPort

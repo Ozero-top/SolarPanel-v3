@@ -29,6 +29,7 @@ var allowedSettingKeys = map[string]struct{}{
 	"topbar_mobile_enabled": {},
 	"update_check":          {}, "update_check_interval": {},
 	"auto_backup_enabled": {}, "auto_backup_interval": {},
+	"clip_enabled": {}, "clip_default_group": {}, "clip_default_capture": {},
 }
 
 // settingValueWhitelist 特定键的取值白名单（与 frontend/themes.json / card_style 可选项保持同步）
@@ -41,6 +42,8 @@ var settingValueWhitelist = map[string]map[string]bool{
 	"nas_layout":           {"right": true, "left": true, "both": true, "banner": true},
 	"auto_backup_enabled":  {"0": true, "1": true},
 	"auto_backup_interval": {"1": true, "3": true, "5": true, "7": true, "9": true},
+	"clip_enabled":         {"0": true, "1": true},
+	"clip_default_capture": {"card": true},
 	// 时钟/天气字体（与 frontend/assets/js/api.js SP_CLOCK_FONTS 保持一致；空 = 跟随系统）
 	"clock_font": {
 		"":         true,
@@ -139,6 +142,23 @@ func (h *SettingsHandler) Save(w http.ResponseWriter, r *http.Request) {
 				n = 40
 			} else if n > 100 {
 				n = 100
+			}
+			v = strconv.Itoa(n)
+		}
+		// 剪藏默认分组：0 表示自动创建「稍后读」，其余必须是可见分组
+		if k == "clip_default_group" {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				continue
+			}
+			if n < 0 {
+				n = 0
+			}
+			if n > 0 {
+				var exists int
+				if err := db.DB.QueryRow("SELECT COUNT(*) FROM item_groups WHERE id = ? AND is_visible = 1", n).Scan(&exists); err != nil || exists == 0 {
+					continue
+				}
 			}
 			v = strconv.Itoa(n)
 		}

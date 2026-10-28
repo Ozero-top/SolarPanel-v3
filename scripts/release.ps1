@@ -124,6 +124,7 @@ try {
   # ===== 2. 构建与校验 =====
   Step "前端资源戳 + 编译校验"
   Run "node" @("scripts/build-frontend.js")
+  Run "node" @("scripts/build-clipper.js")
   Run "go" @("build", "./...")
   Run "go" @("vet", "./...")
 
@@ -142,7 +143,16 @@ try {
     Step "创建 GitHub Release"
     $notesFile = Join-Path $env:TEMP "sp-release-$clean.md"
     [IO.File]::WriteAllText($notesFile, $notes, (New-Object System.Text.UTF8Encoding($false)))
-    Run "gh" @("release", "create", $tag, "--title", $Title, "--notes-file", $notesFile)
+    $ghArgs = @("release", "create", $tag, "--title", $Title, "--notes-file", $notesFile)
+    $clipZip = Get-ChildItem "dist/solarpanel-clipper-v*.zip" -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($clipZip) {
+      $ghArgs += $clipZip.FullName
+      $sums = Join-Path "dist" "SHA256SUMS.txt"
+      if (Test-Path $sums) { $ghArgs += (Resolve-Path $sums).Path }
+      Write-Host "    附扩展包：$($clipZip.Name)" -ForegroundColor Green
+    }
+    Run "gh" $ghArgs
   }
 
   # ===== 4. 三架构镜像 =====

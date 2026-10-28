@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "SolarPanel 剪藏",
+  "version": "1.0.0",
+  "description": "一键把当前网页保存为 SolarPanel 导航卡片，支持右键、快捷键与分组。",
+  "permissions": ["activeTab", "scripting", "contextMenus", "commands", "storage"],
+  "action": {
+    "default_title": "保存到 SolarPanel",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "commands": {
+    "save-page": {
+      "suggested_key": { "default": "Alt+Shift+S" },
+      "description": "保存当前页面到 SolarPanel"
+    }
+  }
+}

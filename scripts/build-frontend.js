@@ -17,7 +17,7 @@ const ROOT = path.resolve(__dirname, '..');
 const FE = path.join(ROOT, 'frontend');
 
 // HTML 文件：含资源戳需改写
-const HTML_FILES = ['index.html', 'admin.html', 'login.html'].map(n => path.join(FE, n));
+const HTML_FILES = ['index.html', 'admin.html', 'login.html', 'clip.html'].map(n => path.join(FE, n));
 
 // 资源戳匹配：src="xxx.js?v=OLD" / href="xxx.css?v=OLD" 等
 // 捕获组 1=引号后路径  2=文件扩展（小写）

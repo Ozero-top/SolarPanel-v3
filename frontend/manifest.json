@@ -13,6 +13,16 @@
   "theme_color": "#222734",
   "background_color": "#222734",
   "categories": ["productivity", "utilities", "bookmarks"],
+  "share_target": {
+    "action": "/clip-share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
   "icons": [
     {
       "src": "assets/img/icon.svg",
@@ -34,6 +44,11 @@
     }
   ],
   "shortcuts": [
+    {
+      "name": "保存链接",
+      "short_name": "剪藏",
+      "url": "clip"
+    },
     {
       "name": "管理后台",
       "short_name": "管理",

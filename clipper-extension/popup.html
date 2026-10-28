@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>保存到 SolarPanel</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<div class="head">
+  <span class="brand">SolarPanel</span>
+  <a id="openOptions" class="link" href="options.html" target="_blank">设置</a>
+</div>
+
+<div id="setupView" class="hidden">
+  <p class="hint">首次使用需要填写服务器地址与个人 Token。</p>
+  <button id="setupBtn" class="btn">打开设置</button>
+</div>
+
+<div id="mainView" class="hidden">
+  <div id="statusBar" class="status"></div>
+
+  <label class="field">
+    <span>标题</span>
+    <input id="fTitle" type="text" maxlength="200">
+  </label>
+  <div class="url" id="fUrl"></div>
+  <label class="field">
+    <span>分组</span>
+    <select id="fGroup"></select>
+  </label>
+  <label class="field">
+    <span>备注（可选）</span>
+    <textarea id="fNote" rows="2" maxlength="500"></textarea>
+  </label>
+
+  <div id="dupBox" class="alert hidden">
+    该链接已存在。
+    <button id="forceBtn" type="button">仍要另存</button>
+  </div>
+
+  <button id="saveBtn" class="btn" type="button">保存到 SolarPanel</button>
+  <div id="doneBox" class="hidden">
+    <div class="actions">
+      <a id="openPage" class="btn ghost" href="#" target="_blank">打开原文</a>
+      <button id="undoBtn" class="btn ghost" type="button">撤销</button>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span>Alt+Shift+S 快速保存</span>
+    <span id="ver"></span>
+  </div>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>

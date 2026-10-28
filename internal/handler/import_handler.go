@@ -10,6 +10,7 @@ import (
 
 	"solarpanel/internal/auth"
 	"solarpanel/internal/db"
+	"solarpanel/internal/urlutil"
 )
 
 // ImportHandler 浏览器书签导入
@@ -225,7 +226,7 @@ func (h *ImportHandler) ImportBookmarks(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer groupStmt.Close()
-	itemStmt, err := tx.Prepare("INSERT INTO items (group_id, title, url, icon_type, icon_value, open_method, sort) VALUES (?, ?, ?, 'favicon', '', 2, ?)")
+	itemStmt, err := tx.Prepare("INSERT INTO items (group_id, title, url, icon_type, icon_value, open_method, sort, url_key) VALUES (?, ?, ?, 'favicon', '', 2, ?, ?)")
 	if err != nil {
 		Err(w, http.StatusInternalServerError, 1, "导入失败")
 		return
@@ -275,7 +276,7 @@ func (h *ImportHandler) ImportBookmarks(w http.ResponseWriter, r *http.Request) 
 			continue
 		}
 		sort := itemSort[gid] + 1
-		if _, err := itemStmt.Exec(gid, e.Title, e.URL, sort); err != nil {
+		if _, err := itemStmt.Exec(gid, e.Title, e.URL, sort, urlutil.Key(e.URL)); err != nil {
 			skipped++
 			continue
 		}

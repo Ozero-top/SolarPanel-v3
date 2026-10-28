@@ -75,6 +75,7 @@ const OPEN_TEXT = { 1: '当前页', 2: '新窗口', 3: '弹层' };
   bindNewsSourceDrag();
   bindAccount();
   bindBackup();
+  bindClip();
   renderVersionInfo();
   bindUpdateCheck();
   applyRoleUI();
@@ -99,6 +100,9 @@ function applyRoleUI() {
     // 审计日志：viewer/guest 无权查看敏感日志
     const auditTab = document.querySelector('.admin-tabs .tab[data-tab="audit"]');
     if (auditTab) auditTab.style.display = 'none';
+    // 剪藏与接入：只读账号不能创建 Token，直接隐藏
+    const clipTab = document.querySelector('.admin-tabs .tab[data-tab="clip"]');
+    if (clipTab) clipTab.style.display = 'none';
     // 书签导入、2FA 开关（viewer 只读，访客也无权修改）
     document.querySelectorAll('#openBookmarksBtn, #twofaSetupBtn, #twofaEnableBtn, #twofaDisableBtn').forEach(el => {
       el.disabled = true;
@@ -127,6 +131,8 @@ function applyRoleUI() {
     // 审计日志：仅管理员可见（敏感信息）
     const auditTab = document.querySelector('.admin-tabs .tab[data-tab="audit"]');
     if (auditTab) auditTab.style.display = 'none';
+    // 剪藏设置：改全站开关/默认分组仅管理员，编辑者仍可管理自己的 Token
+    document.querySelectorAll('#tab-clip #s_clip_enabled, #tab-clip #s_clip_default_group, #tab-clip #s_clip_default_capture, #tab-clip #saveClipSettingsBtn').forEach(el => { el.disabled = true; });
     // 默认页签为站点设置，编辑者不可见 → 回退到卡片管理
     const firstTab = document.querySelector('.admin-tabs .tab[data-tab="items"]');
     if (firstTab) activateTab(firstTab);
@@ -168,6 +174,7 @@ function bindTabs() {
       }
       activateTab(tab);
       if (tab.dataset.tab === 'backup') loadBackupList();
+      if (tab.dataset.tab === 'clip') loadClipPage();
     });
   });
   // 关闭 / 刷新页面时同样拦截未保存的排序（浏览器原生确认，无法样式化）
@@ -2079,6 +2086,7 @@ const SETTING_SECTIONS = {
   access: { label: '访问控制', keys: ['guest_access_enabled', 'guest_password_hash'] },
   news:   { label: '热点新闻', keys: ['news_show', 'news_sources', 'news_order'] },
   nas:    { label: 'NAS 监控', keys: ['nas_show', 'nas_layout', 'nas_refresh', 'nas_guest', 'nas_disk_paths', 'nas_modal_alpha'] },
+  clip:   { label: '剪藏与接入', keys: ['clip_enabled', 'clip_default_group', 'clip_default_capture'] },
 };
 
 function numSetting(id, def) {
@@ -2100,6 +2108,9 @@ function collectSetting(key) {
   if (key === 'mask_opacity') {
     const v = document.getElementById('s_mask_opacity').value.trim();
     return v === '' ? '0.35' : v;
+  }
+  if (key === 'clip_enabled') {
+    return document.getElementById('s_clip_enabled').checked ? '1' : '0';
   }
   if (key === 'content_maxwidth') return numSetting('s_content_maxwidth', '1200');
   if (key === 'content_pad_lr') return numSetting('s_content_pad_lr', '20');
@@ -3243,6 +3254,187 @@ async function unpinDailyWallpaper(source) {
     loadDailyPreviews(source);
   } catch (e) {
     toast(e.message, 'error');
+  }
+}
+
+/* ================= 剪藏与接入 ================= */
+function bindClip() {
+  const copyServer = document.getElementById('copyServerAddrBtn');
+  if (!copyServer) return;
+
+  copyServer.addEventListener('click', () => copyClipText(location.origin, copyServer));
+  document.getElementById('copyTokenBtn').addEventListener('click', () =>
+    copyClipText(document.getElementById('tokenValueText').value, document.getElementById('copyTokenBtn')));
+  document.getElementById('copyBookmarkletBtn').addEventListener('click', () =>
+    copyClipText(document.getElementById('bookmarkletCode').value, document.getElementById('copyBookmarkletBtn')));
+  document.getElementById('saveClipSettingsBtn').addEventListener('click', saveClipSettings);
+  document.getElementById('createTokenBtn').addEventListener('click', createClipToken);
+
+  document.getElementById('tokensTbody').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-revoke]');
+    if (!btn) return;
+    const id = parseInt(btn.dataset.revoke, 10);
+    const ok = await uiConfirm('吊销后该 Token 立即失效，扩展与快捷指令需要重新配置。确定吊销？', { danger: true, okText: '吊销' });
+    if (!ok) return;
+    btn.disabled = true;
+    try {
+      await API.request('/api/v1/tokens', { method: 'DELETE', body: { id } });
+      toast('Token 已吊销', 'success');
+      loadClipTokens();
+    } catch (err) {
+      toast(err.message, 'error');
+      btn.disabled = false;
+    }
+  });
+
+  // 书签小工具只做顶层跳转，避免页面 CSP / CORS 拦截
+  document.getElementById('bookmarkletCode').value =
+    "javascript:(function(){var u=location.origin+'/clip?url='+encodeURIComponent(location.href)+'&title='+encodeURIComponent(document.title);window.open(u,'_blank');})();";
+}
+
+async function loadClipPage() {
+  document.getElementById('clipServerAddrText').value = location.origin;
+  buildClipGroupOptions();
+  try {
+    const s = await API.get(API_BASE + 'settings.php?action=list');
+    document.getElementById('s_clip_enabled').checked = (s.clip_enabled || '1') !== '0';
+    const g = document.getElementById('s_clip_default_group');
+    g.value = s.clip_default_group || '0';
+    if (g.value !== (s.clip_default_group || '0')) g.value = '0';
+    document.getElementById('s_clip_default_capture').value = 'card';
+  } catch (_) {
+    /* 编辑者无站点设置读取权限时保持默认展示 */
+  }
+  loadClipTokens();
+}
+
+function buildClipGroupOptions() {
+  const sel = document.getElementById('s_clip_default_group');
+  sel.innerHTML = '<option value="0">自动（稍后读）</option>';
+  const groups = state.groups || [];
+  groups.filter(g => !g.parent_id).forEach(top => {
+    const opt = document.createElement('option');
+    opt.value = String(top.id);
+    opt.textContent = top.title;
+    sel.appendChild(opt);
+    groups.filter(c => c.parent_id === top.id).forEach(child => {
+      const copt = document.createElement('option');
+      copt.value = String(child.id);
+      copt.textContent = '　└ ' + child.title;
+      sel.appendChild(copt);
+    });
+  });
+}
+
+async function saveClipSettings() {
+  if (state.role !== 'admin') {
+    toast('仅管理员可以修改剪藏设置', 'error');
+    return;
+  }
+  const btn = document.getElementById('saveClipSettingsBtn');
+  btn.disabled = true;
+  btn.textContent = '保存中…';
+  try {
+    await API.post(API_BASE + 'settings.php?action=save', {
+      clip_enabled: collectSetting('clip_enabled'),
+      clip_default_group: collectSetting('clip_default_group'),
+      clip_default_capture: 'card',
+    });
+    toast('剪藏设置已保存', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '保存设置';
+  }
+}
+
+async function createClipToken() {
+  const input = document.getElementById('tokenNameInput');
+  const name = input.value.trim();
+  if (!name) {
+    toast('请先填写令牌名称', 'error');
+    input.focus();
+    return;
+  }
+  const btn = document.getElementById('createTokenBtn');
+  btn.disabled = true;
+  btn.textContent = '生成中…';
+  try {
+    const res = await API.post('/api/v1/tokens', {
+      name,
+      scopes: ['clip:write', 'groups:read'],
+      expires_days: parseInt(document.getElementById('tokenExpiresSel').value, 10) || 0,
+    });
+    document.getElementById('tokenValueText').value = res.token;
+    document.getElementById('tokenRevealBox').style.display = 'block';
+    input.value = '';
+    loadClipTokens();
+    toast('Token 已生成，请立即复制保存', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '生成 Token';
+  }
+}
+
+async function loadClipTokens() {
+  const tbody = document.getElementById('tokensTbody');
+  const hint = document.getElementById('tokensEmptyHint');
+  try {
+    const list = await API.get('/api/v1/tokens');
+    tbody.innerHTML = '';
+    (list || []).forEach(t => {
+      const stateInfo = clipTokenState(t);
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + esc(t.name) + '<div class="form-hint" style="margin:0;font-family:ui-monospace,Consolas,monospace">' + esc(t.prefix) + '</div></td>' +
+        '<td>' + esc(t.owner || '') + '</td>' +
+        '<td>' + esc(t.scopes || '') + '</td>' +
+        '<td>' + (t.expires_at ? esc(t.expires_at.slice(0, 10)) : '永久') + '</td>' +
+        '<td>' + (t.last_used_at ? esc(t.last_used_at.slice(0, 16)) : '从未') + '</td>' +
+        '<td><span class="' + stateInfo.cls + '">' + stateInfo.label + '</span></td>' +
+        '<td>' + (t.revoked_at ? '—' : '<button class="btn btn-sm" type="button" data-revoke="' + t.id + '">吊销</button>') + '</td>';
+      tbody.appendChild(tr);
+    });
+    hint.hidden = (list || []).length > 0;
+  } catch (e) {
+    tbody.innerHTML = '';
+    hint.hidden = false;
+    hint.textContent = 'Token 读取失败：' + e.message;
+  }
+}
+
+function clipTokenState(t) {
+  if (t.revoked_at) return { label: '已吊销', cls: 'form-hint' };
+  if (t.expires_at) {
+    const exp = new Date(t.expires_at.replace(' ', 'T')).getTime();
+    if (!isNaN(exp) && exp < Date.now()) return { label: '已过期', cls: 'form-hint' };
+  }
+  return { label: '有效', cls: 'form-hint' };
+}
+
+function copyClipText(text, btn) {
+  const done = () => toast('已复制', 'success');
+  const fallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      done();
+    } catch (_) {
+      toast('复制失败，请手动选择复制', 'error');
+    }
+    ta.remove();
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
+  } else {
+    fallback();
   }
 }
 

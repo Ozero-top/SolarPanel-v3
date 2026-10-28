@@ -23,6 +23,7 @@ import (
 	"solarpanel/internal/auth"
 	"solarpanel/internal/config"
 	"solarpanel/internal/db"
+	"solarpanel/internal/urlutil"
 )
 
 type ItemsHandler struct {
@@ -1017,8 +1018,8 @@ func (h *ItemsHandler) Edit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if body.ID == 0 {
-		res, err := db.DB.Exec("INSERT INTO items (group_id, title, url, lan_url, description, icon_type, icon_value, icon_bg, open_method, sort, is_hidden) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-			body.GroupID, body.Title, body.URL, body.LanURL, body.Description, body.IconType, body.IconValue, body.IconBG, body.OpenMethod, body.Sort, body.IsHidden)
+		res, err := db.DB.Exec("INSERT INTO items (group_id, title, url, lan_url, description, icon_type, icon_value, icon_bg, open_method, sort, is_hidden, url_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+			body.GroupID, body.Title, body.URL, body.LanURL, body.Description, body.IconType, body.IconValue, body.IconBG, body.OpenMethod, body.Sort, body.IsHidden, urlutil.Key(body.URL))
 		if err != nil {
 			Fail(w, "创建失败")
 			return
@@ -1029,8 +1030,8 @@ func (h *ItemsHandler) Edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := db.DB.Exec("UPDATE items SET group_id=?, title=?, url=?, lan_url=?, description=?, icon_type=?, icon_value=?, icon_bg=?, open_method=?, sort=?, is_hidden=? WHERE id=?",
-		body.GroupID, body.Title, body.URL, body.LanURL, body.Description, body.IconType, body.IconValue, body.IconBG, body.OpenMethod, body.Sort, body.IsHidden, body.ID)
+	_, err := db.DB.Exec("UPDATE items SET group_id=?, title=?, url=?, lan_url=?, description=?, icon_type=?, icon_value=?, icon_bg=?, open_method=?, sort=?, is_hidden=?, url_key=? WHERE id=?",
+		body.GroupID, body.Title, body.URL, body.LanURL, body.Description, body.IconType, body.IconValue, body.IconBG, body.OpenMethod, body.Sort, body.IsHidden, urlutil.Key(body.URL), body.ID)
 	if err != nil {
 		Fail(w, "保存失败")
 		return

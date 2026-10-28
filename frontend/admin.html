@@ -30,6 +30,7 @@
       <button class="tab" data-tab="groups">分组管理</button>
       <button class="tab" data-tab="account">账号管理</button>
       <button class="tab" data-tab="backup">系统备份</button>
+      <button class="tab" data-tab="clip">剪藏与接入</button>
       <button class="tab" data-tab="audit">审计日志</button>
     </nav>
 
@@ -814,6 +815,137 @@
       <div id="changelogDetail" class="changelog"></div>
     </section>
 
+    <!-- ============ 剪藏与接入 ============ -->
+    <section class="admin-panel glass" id="tab-clip" hidden>
+      <div class="panel-head"><h2>✂️ 剪藏与接入</h2></div>
+      <div class="backup-actions">
+
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>剪藏开关</b>
+            <span>关闭后，扩展、iOS 快捷指令、Android 分享与网页入口都无法保存新卡片；已保存的卡片不受影响。</span>
+          </div>
+          <div class="backup-row-actions">
+            <label class="form-hint" style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+              <input type="checkbox" id="s_clip_enabled"> 启用剪藏
+            </label>
+            <button class="btn btn-primary" type="button" id="saveClipSettingsBtn">保存设置</button>
+          </div>
+        </div>
+
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>默认分组</b>
+            <span>剪藏时未指定分组则进入该分组；选择「自动」时使用已有的「稍后读」，不存在则自动创建。</span>
+          </div>
+          <div class="backup-row-actions">
+            <select class="select" id="s_clip_default_group" style="width:auto;min-width:180px"></select>
+          </div>
+        </div>
+
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>默认保存方式</b>
+            <span>P0 只保存导航卡片；正文快照（Markdown）将在 P1 提供。</span>
+          </div>
+          <div class="backup-row-actions">
+            <select class="select" id="s_clip_default_capture" style="width:auto;min-width:160px">
+              <option value="card">导航卡片</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="backup-row" style="margin-top:18px">
+          <div class="backup-info">
+            <b>个人访问令牌（Token）</b>
+            <span>桌面扩展、iOS 快捷指令与脚本使用 Bearer Token 调用 <code>/api/v1/clips</code>。Token 只在创建时显示一次，服务端仅保存 SHA-256 哈希，可随时吊销。</span>
+          </div>
+          <div class="backup-row-actions">
+            <input class="input" id="tokenNameInput" maxlength="50" placeholder="令牌名称，如 Chrome 扩展" style="width:180px">
+            <select class="select" id="tokenExpiresSel" style="width:auto;min-width:120px">
+              <option value="0">永不过期</option>
+              <option value="30">30 天</option>
+              <option value="90">90 天</option>
+              <option value="365">365 天</option>
+            </select>
+            <button class="btn btn-primary" type="button" id="createTokenBtn">生成 Token</button>
+          </div>
+        </div>
+
+        <div id="tokenRevealBox" class="form-hint" style="display:none;padding:12px;border:1px solid var(--line, #e5e7eb);border-radius:10px">
+          <b>请立即复制，关闭后无法再次查看。</b>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+            <input class="input" id="tokenValueText" readonly style="flex:1;font-family:ui-monospace,Consolas,monospace">
+            <button class="btn" type="button" id="copyTokenBtn">复制</button>
+          </div>
+        </div>
+
+        <table class="table" style="margin-top:14px">
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th style="width:110px">归属</th>
+              <th style="width:150px">权限</th>
+              <th style="width:130px">有效期</th>
+              <th style="width:140px">最近使用</th>
+              <th style="width:90px">状态</th>
+              <th style="width:90px">操作</th>
+            </tr>
+          </thead>
+          <tbody id="tokensTbody"></tbody>
+        </table>
+        <div class="form-hint" id="tokensEmptyHint" hidden>还没有令牌，先生成一个用于扩展或快捷指令。</div>
+
+        <div class="backup-row" style="margin-top:18px">
+          <div class="backup-info">
+            <b>服务器地址</b>
+            <span>扩展与快捷指令里填写的地址，公网 HTTPS 与内网 HTTP 均可。</span>
+          </div>
+          <div class="backup-row-actions">
+            <input class="input" id="clipServerAddrText" readonly style="width:240px">
+            <button class="btn" type="button" id="copyServerAddrBtn">复制</button>
+          </div>
+        </div>
+
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>Chrome / Edge 扩展（zip 侧载）</b>
+            <span>从 GitHub Releases 下载 <code>solarpanel-clipper-v*.zip</code>，解压到固定目录后，在 <code>chrome://extensions</code> 或 <code>edge://extensions</code> 开启开发者模式，选择「加载已解压的扩展程序」。首次使用在扩展选项里填服务器地址与 Token。</span>
+          </div>
+          <div class="backup-row-actions">
+            <a class="btn" id="clipperReleaseLink" href="https://github.com/Ozero-top/SolarPanel-v3/releases" target="_blank" rel="noopener">打开下载页</a>
+          </div>
+        </div>
+
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>Android 系统分享</b>
+            <span>用 Chrome 打开本站并「添加到主屏幕」，安装后即可在系统分享面板看到 SolarPanel。HTTP 局域网环境不支持 PWA 分享时，请使用网页入口或书签小工具。</span>
+          </div>
+        </div>
+
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>iOS 快捷指令</b>
+            <span>在「快捷指令」App 新建快捷指令：接收 Safari 分享的 URL → 获取 URL 内容 → 使用「获取 URL 内容」的 POST 方法请求 <code>/api/v1/clips</code>，请求头加 <code>Authorization: Bearer &lt;Token&gt;</code> 与 <code>Content-Type: application/json</code>，请求体为 <code>{"url":"...","title":"..."}</code>。也可直接用 Safari 打开本站的「网页快速添加」。</span>
+          </div>
+        </div>
+
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>书签小工具</b>
+            <span>把下面的代码存成书签，在任意网页点击即可打开剪藏页（不依赖页面脚本与 CORS）。</span>
+          </div>
+          <div class="backup-row-actions" style="flex:1;max-width:520px">
+            <input class="input" id="bookmarkletCode" readonly style="flex:1;font-family:ui-monospace,Consolas,monospace">
+            <button class="btn" type="button" id="copyBookmarkletBtn">复制</button>
+          </div>
+        </div>
+
+        <div class="form-hint">Firefox 仅代码兼容：未签名扩展只能用 about:debugging 临时载入，重启浏览器后失效；Firefox 用户建议使用书签小工具或网页快速添加。</div>
+      </div>
+    </section>
+
   </div>
 
   <!-- ============ 历史更新弹窗 ============ -->
@@ -1092,6 +1224,6 @@
 
   <script src="assets/js/qrcode.min.js"></script>
   <script src="assets/js/api.js?v=dee5b814"></script>
-  <script src="assets/js/admin.js?v=e6092ec7"></script>
+  <script src="assets/js/admin.js?v=8695a7c3"></script>
 </body>
 </html>
