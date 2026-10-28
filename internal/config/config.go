@@ -13,6 +13,7 @@ type Config struct {
 	KeyFile           string
 	DBPath            string
 	UploadDir         string
+	BackupDir         string
 	SessionTTL        int
 	SessionCookieName string
 	CSRFCookieName    string
@@ -28,8 +29,10 @@ func Load() *Config {
 	dataDir := filepath.Join(wd, "data")
 	uploadDir := filepath.Join(dataDir, "uploads")
 	dbPath := filepath.Join(dataDir, "solarpanel.db")
+	backupDir := filepath.Join(dataDir, "backups")
 	os.MkdirAll(dataDir, 0755)
 	os.MkdirAll(uploadDir, 0755)
+	os.MkdirAll(backupDir, 0755)
 
 	hostRoot := getEnv("NAS_HOST_ROOT", "/host")
 	if _, err := os.Stat(hostRoot); err != nil {
@@ -43,6 +46,7 @@ func Load() *Config {
 		KeyFile:           getEnv("KEY_FILE", filepath.Join(dataDir, "key.pem")),
 		DBPath:            dbPath,
 		UploadDir:         uploadDir,
+		BackupDir:         backupDir,
 		SessionTTL:        86400,
 		SessionCookieName: "sp_session",
 		CSRFCookieName:    "csrf_token",

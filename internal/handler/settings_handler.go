@@ -28,16 +28,19 @@ var allowedSettingKeys = map[string]struct{}{
 	"search_bar_enabled": {}, "topbar_desktop_enabled": {},
 	"topbar_mobile_enabled": {},
 	"update_check":          {}, "update_check_interval": {},
+	"auto_backup_enabled": {}, "auto_backup_interval": {},
 }
 
 // settingValueWhitelist 特定键的取值白名单（与 frontend/themes.json / card_style 可选项保持同步）
 var settingValueWhitelist = map[string]map[string]bool{
-	"theme_style": {"soft": true, "blueprint": true, "clarity": true, "soft-utility": true, "aurora": true, "iris": true, "sketch-style": true, "retro-vintage": true, "corporate-clean": true, "liquid-glass": true},
-	"card_style":  {"nav": true, "navapp": true},
-	"nas_show":    {"0": true, "1": true},
-	"nas_guest":   {"0": true, "1": true},
-	"update_check": {"0": true, "1": true},
-	"nas_layout":  {"right": true, "left": true, "both": true, "banner": true},
+	"theme_style":          {"soft": true, "blueprint": true, "clarity": true, "soft-utility": true, "aurora": true, "iris": true, "sketch-style": true, "retro-vintage": true, "corporate-clean": true, "liquid-glass": true},
+	"card_style":           {"nav": true, "navapp": true},
+	"nas_show":             {"0": true, "1": true},
+	"nas_guest":            {"0": true, "1": true},
+	"update_check":         {"0": true, "1": true},
+	"nas_layout":           {"right": true, "left": true, "both": true, "banner": true},
+	"auto_backup_enabled":  {"0": true, "1": true},
+	"auto_backup_interval": {"1": true, "3": true, "5": true, "7": true, "9": true},
 	// 时钟/天气字体（与 frontend/assets/js/api.js SP_CLOCK_FONTS 保持一致；空 = 跟随系统）
 	"clock_font": {
 		"":         true,

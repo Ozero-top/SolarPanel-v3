@@ -7,7 +7,7 @@
   <title>管理后台 - SolarPanel</title>
   <link rel="icon" href="favicon.ico?v=79e864af" type="image/x-icon">
   <link rel="stylesheet" href="assets/css/common.css?v=bd8bb362">
-  <link rel="stylesheet" href="assets/css/auth-admin.css?v=60ef7415">
+  <link rel="stylesheet" href="assets/css/auth-admin.css?v=2836d626">
   <link rel="stylesheet" href="assets/css/themes.css?v=921ca89b">
 </head>
 <body>
@@ -726,9 +726,15 @@
         <div class="backup-row">
           <div class="backup-info">
             <b>导出配置</b>
-            <span>下载 JSON 备份文件，包含全部分组、卡片、站点设置及所有图标 / Logo / 壁纸 / favicon 文件。</span>
+            <span>JSON：完整备份，包含全部分组、卡片、站点设置及所有图标 / Logo / 壁纸 / favicon 文件。HTML：浏览器书签格式（不含图片资源），可直接导入 Chrome / Edge 收藏夹。</span>
           </div>
-          <button class="btn btn-primary" type="button" id="exportBackupBtn">⬇️ 导出配置</button>
+          <div class="backup-row-actions">
+            <select class="select" id="exportFormatSel" style="width:auto;min-width:140px" title="导出格式">
+              <option value="json">JSON 备份（默认）</option>
+              <option value="html">HTML 书签</option>
+            </select>
+            <button class="btn btn-primary" type="button" id="exportBackupBtn">⬇️ 导出配置</button>
+          </div>
         </div>
         <div class="backup-row">
           <div class="backup-info">
@@ -746,6 +752,37 @@
         </div>
         <input type="file" id="importBackupFile" accept=".json,application/json" hidden>
         <div class="form-hint">导入配置或恢复初始状态前，建议先「导出配置」备份一次。</div>
+
+        <!-- 自动备份 -->
+        <div class="backup-row" style="margin-top:18px">
+          <div class="backup-info">
+            <b>自动备份</b>
+            <span>默认关闭。开启后按设定间隔自动备份站点设置与卡片数据（不含图片文件），自动备份与手动备份各最多保留 5 份，超出后自动删除最早的备份。</span>
+          </div>
+          <div class="backup-row-actions">
+            <label class="form-hint" style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+              <input type="checkbox" id="autoBackupToggle"> 开启
+            </label>
+            <select class="select" id="autoBackupIntervalSel" style="width:auto;min-width:120px" title="自动备份间隔">
+              <option value="1">每 1 天</option>
+              <option value="3">每 3 天</option>
+              <option value="5">每 5 天</option>
+              <option value="7">每 7 天</option>
+              <option value="9">每 9 天</option>
+            </select>
+            <button class="btn" type="button" id="manualBackupBtn">立即备份</button>
+          </div>
+        </div>
+        <div class="backup-list-block">
+          <div class="backup-list-head">
+            <span>自动备份（最多 5 份）</span>
+          </div>
+          <div class="backup-list" id="autoBackupList"><div class="backup-list-empty">暂无自动备份</div></div>
+          <div class="backup-list-head">
+            <span>手动备份（最多 5 份）</span>
+          </div>
+          <div class="backup-list" id="manualBackupList"><div class="backup-list-empty">暂无手动备份</div></div>
+        </div>
       </div>
 
       <!-- 更新日志 -->
@@ -1051,6 +1088,6 @@
 
   <script src="assets/js/qrcode.min.js"></script>
   <script src="assets/js/api.js?v=ff170aea"></script>
-  <script src="assets/js/admin.js?v=cdaa7d4b"></script>
+  <script src="assets/js/admin.js?v=ac2341ec"></script>
 </body>
 </html>

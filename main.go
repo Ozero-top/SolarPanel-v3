@@ -412,6 +412,9 @@ func main() {
 		}
 	}()
 
+	// 自动备份调度：默认关闭，开启后按 1/3/5/7/9 天间隔生成，最多保留 5 份
+	go backupHandler.StartAutoBackup()
+
 	// HTTP 始终启动（方便反代）
 	httpAddr := ":" + cfg.ServerPort
 	go func() {

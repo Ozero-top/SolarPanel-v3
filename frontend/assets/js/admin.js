@@ -143,6 +143,7 @@ async function applyThemeFromBackend() {
     state.siteUrl = (s.site_url || '').trim();
     fillSettingsForm(s);
     applyUpdateSettings(s);
+    applyBackupSettings(s);
   } catch (e) {
     toast('设置读取失败：' + e.message, 'error');
   }
@@ -166,6 +167,7 @@ function bindTabs() {
         return;
       }
       activateTab(tab);
+      if (tab.dataset.tab === 'backup') loadBackupList();
     });
   });
   // 关闭 / 刷新页面时同样拦截未保存的排序（浏览器原生确认，无法样式化）
@@ -2349,11 +2351,13 @@ function bindBackup() {
   const fileInput = document.getElementById('importBackupFile');
   if (!exportBtn || !importBtn || !fileInput) return;
 
-  // 导出：直接下载（GET 带登录态 Cookie）
+  const exportFormatSel = document.getElementById('exportFormatSel');
+  // 导出：直接下载（GET 带登录态 Cookie），可选 JSON 完整备份或 HTML 书签
   exportBtn.onclick = () => {
+    const format = exportFormatSel ? exportFormatSel.value : 'json';
     exportBtn.disabled = true;
     setTimeout(() => { exportBtn.disabled = false; }, 2000);
-    location.href = API_BASE + 'backup.php?action=export&t=' + Date.now();
+    location.href = API_BASE + 'backup.php?action=export&format=' + encodeURIComponent(format) + '&t=' + Date.now();
   };
 
   // 导入：选文件 → 强确认 → 上传 → 成功后整页刷新
@@ -2408,6 +2412,161 @@ function bindBackup() {
         resetBtn.textContent = oldText;
       }
     };
+  }
+
+  // ===== 自动备份 =====
+  const autoToggle = document.getElementById('autoBackupToggle');
+  const autoIntervalSel = document.getElementById('autoBackupIntervalSel');
+  const manualBackupBtn = document.getElementById('manualBackupBtn');
+
+  if (autoToggle) {
+    autoToggle.addEventListener('change', async () => {
+      try {
+        await API.post(API_BASE + 'settings.php?action=save', { auto_backup_enabled: autoToggle.checked ? '1' : '0' });
+        toast(autoToggle.checked ? '已开启自动备份' : '已关闭自动备份', 'success');
+      } catch (e) {
+        toast(e.message, 'error');
+      }
+    });
+  }
+  if (autoIntervalSel) {
+    autoIntervalSel.addEventListener('change', async () => {
+      try {
+        await API.post(API_BASE + 'settings.php?action=save', { auto_backup_interval: autoIntervalSel.value });
+        toast('自动备份间隔已设为每 ' + autoIntervalSel.value + ' 天', 'success');
+      } catch (e) {
+        toast(e.message, 'error');
+      }
+    });
+  }
+  if (manualBackupBtn) {
+    manualBackupBtn.onclick = async () => {
+      manualBackupBtn.disabled = true;
+      const oldText = manualBackupBtn.textContent;
+      manualBackupBtn.textContent = '备份中…';
+      try {
+        const res = await API.post(API_BASE + 'backup.php?action=create', {});
+        toast('已生成手动备份：' + res.name, 'success');
+        await loadBackupList();
+      } catch (e) {
+        toast('备份失败：' + e.message, 'error');
+      } finally {
+        manualBackupBtn.disabled = false;
+        manualBackupBtn.textContent = oldText;
+      }
+    };
+  }
+
+  if (state.role === 'admin') loadBackupList();
+}
+
+/** 回填自动备份开关与间隔（值来自 settings.php?action=list） */
+function applyBackupSettings(s) {
+  const toggle = document.getElementById('autoBackupToggle');
+  const sel = document.getElementById('autoBackupIntervalSel');
+  if (toggle) toggle.checked = (s.auto_backup_enabled ?? '0') === '1';
+  if (sel) sel.value = s.auto_backup_interval || '3';
+}
+
+function fmtBackupSize(n) {
+  if (!n) return '0 B';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+function renderBackupList(el, list, type) {
+  el.innerHTML = '';
+  if (!list || !list.length) {
+    const empty = document.createElement('div');
+    empty.className = 'backup-list-empty';
+    empty.textContent = type === 'auto' ? '暂无自动备份' : '暂无手动备份';
+    el.appendChild(empty);
+    return;
+  }
+  list.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'backup-item';
+
+    const meta = document.createElement('div');
+    meta.className = 'backup-item-meta';
+    const name = document.createElement('span');
+    name.className = 'backup-item-name';
+    name.textContent = item.name;
+    const sub = document.createElement('span');
+    sub.className = 'backup-item-sub';
+    sub.textContent = (item.created || '') + ' · ' + fmtBackupSize(item.size);
+    meta.appendChild(name);
+    meta.appendChild(sub);
+
+    const actions = document.createElement('div');
+    actions.className = 'backup-item-actions';
+
+    const dl = document.createElement('a');
+    dl.className = 'btn btn-sm';
+    dl.textContent = '下载';
+    dl.href = API_BASE + 'backup.php?action=download&type=' + encodeURIComponent(type) + '&name=' + encodeURIComponent(item.name);
+
+    const restore = document.createElement('button');
+    restore.type = 'button';
+    restore.className = 'btn btn-sm';
+    restore.textContent = '恢复';
+    restore.onclick = () => restoreBackup(type, item.name);
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'btn btn-sm btn-danger';
+    del.textContent = '删除';
+    del.onclick = () => deleteBackup(type, item.name);
+
+    actions.appendChild(dl);
+    actions.appendChild(restore);
+    actions.appendChild(del);
+    row.appendChild(meta);
+    row.appendChild(actions);
+    el.appendChild(row);
+  });
+}
+
+async function loadBackupList() {
+  const autoEl = document.getElementById('autoBackupList');
+  const manualEl = document.getElementById('manualBackupList');
+  if (!autoEl || !manualEl || state.role !== 'admin') return;
+  try {
+    const res = await API.get(API_BASE + 'backup.php?action=list');
+    renderBackupList(autoEl, res.auto || [], 'auto');
+    renderBackupList(manualEl, res.manual || [], 'manual');
+  } catch (e) {
+    autoEl.innerHTML = '';
+    const err = document.createElement('div');
+    err.className = 'backup-list-empty';
+    err.textContent = '备份列表读取失败：' + e.message;
+    autoEl.appendChild(err);
+    manualEl.innerHTML = '';
+  }
+}
+
+async function restoreBackup(type, name) {
+  const label = type === 'auto' ? '自动备份' : '手动备份';
+  if (!await uiConfirm('将用' + label + '「' + name + '」覆盖当前全部分组、卡片和站点设置（用户账号不受影响，图片文件保持不变）。\n\n确定继续吗？', { danger: true })) return;
+  if (!await uiConfirm('再次确认：此操作不可撤销，当前配置将被覆盖。现在恢复吗？', { danger: true })) return;
+  try {
+    const res = await API.post(API_BASE + 'backup.php?action=restore', { type, name });
+    toast('恢复完成：' + res.groups + ' 个分组、' + res.items + ' 张卡片、' + res.settings + ' 项设置，页面即将刷新', 'success');
+    setTimeout(() => location.reload(), 1200);
+  } catch (e) {
+    toast('恢复失败：' + e.message, 'error');
+  }
+}
+
+async function deleteBackup(type, name) {
+  if (!await uiConfirm('确定删除备份「' + name + '」吗？删除后无法找回。', { danger: true })) return;
+  try {
+    await API.post(API_BASE + 'backup.php?action=delete', { type, name });
+    toast('已删除备份：' + name, 'success');
+    await loadBackupList();
+  } catch (e) {
+    toast('删除失败：' + e.message, 'error');
   }
 }
 
