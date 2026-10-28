@@ -531,10 +531,15 @@ func (h *BackupHandler) clearUploadDirPreserveWeather() {
 
 // backupTypeDir 校验类型并返回对应目录
 func (h *BackupHandler) backupTypeDir(kind string) (string, bool) {
-	if kind != "auto" && kind != "manual" {
+	// 用固定常量分支取目录，避免把请求参数拼进路径
+	switch kind {
+	case "auto":
+		return filepath.Join(h.cfg.BackupDir, "auto"), true
+	case "manual":
+		return filepath.Join(h.cfg.BackupDir, "manual"), true
+	default:
 		return "", false
 	}
-	return filepath.Join(h.cfg.BackupDir, kind), true
 }
 
 // listBackupEntries 列出指定类型的备份文件，按修改时间从新到旧
