@@ -395,6 +395,29 @@ SolarPanel/
 4. 卡片的 `group_id` 经映射重写；所属分组映射不存在的卡片会被**直接跳过**
 5. `files` 写入前校验路径（拒绝 `..`、限制在 `uploads` 内），`.svg` 会先做安全清洗，同名覆盖
 
+## 🧲 浏览器扩展（剪藏）
+
+Chrome / Edge 扩展源码位于 `clipper-extension/`，打包产物在 [Releases](https://github.com/Ozero-top/SolarPanel-v3/releases/latest) 的 `solarpanel-clipper-v1.0.0.zip`（也可运行 `node scripts/build-clipper.js` 自行生成到 `dist/`）。
+
+**安装**
+
+1. 下载并解压 `solarpanel-clipper-v1.0.0.zip`，得到 `solarpanel-clipper` 文件夹
+2. 打开 `chrome://extensions` 或 `edge://extensions`，开启右上角「开发者模式」
+3. 点击「加载已解压的扩展程序」，选择该文件夹
+
+**配置**
+
+1. 后台 → **剪藏与接入 → 令牌与地址**，生成一个 Token（列表中可随时复制）
+2. 点击扩展图标 →「打开设置」，填写站点地址（如 `http://192.168.1.10:10086`）与 Token
+3. 按需开启正文快照、整页截图，选择默认分组后保存
+
+**使用**
+
+- 点击工具栏扩展图标，确认标题 / 分组后点「保存」；勾选整页截图时会自动滚动拼接长图，失败自动降级为可视区截图
+- 右键菜单可保存当前页面 / 链接 / 选中文本
+- 快捷键 `Alt+Shift+S` 快速保存当前页面
+- 断网时保存会进入本地队列，恢复网络后自动补发
+
 ## 🧩 示例数据（可选导入）
 
 `presets/nav-cards-backup.json` 是一份**通用导航站配置备份**，包含 **10 个分组 / 150 张卡片**（AI 工具、视频、社交、开发、云盘等常用站点），可用于快速建站或演示：
