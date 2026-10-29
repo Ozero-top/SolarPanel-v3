@@ -530,8 +530,13 @@ func resolveClipGroup(cfg *config.Config, id int, name string) (int, string, int
 	if err := db.DB.QueryRow("SELECT id, title FROM item_groups WHERE title = ? AND parent_id = 0 ORDER BY id ASC LIMIT 1", inbox).Scan(&gid, &title); err == nil {
 		return gid, title, 0, ""
 	}
-	res, err := db.DB.Exec("INSERT INTO item_groups (title, icon, description, parent_id, sort, is_visible) VALUES (?, '', ?, 0, 0, 1)",
-		inbox, "剪藏收件箱")
+	// 自动创建的收件箱排到顶级分组最后，避免顶掉用户已有分组
+	var maxSort int
+	if err := db.DB.QueryRow("SELECT COALESCE(MAX(sort), 0) FROM item_groups WHERE parent_id = 0").Scan(&maxSort); err != nil {
+		return 0, "", http.StatusInternalServerError, "创建默认分组失败"
+	}
+	res, err := db.DB.Exec("INSERT INTO item_groups (title, icon, description, parent_id, sort, is_visible) VALUES (?, '', ?, 0, ?, 1)",
+		inbox, "剪藏收件箱", maxSort+1)
 	if err != nil {
 		return 0, "", http.StatusInternalServerError, "创建默认分组失败"
 	}

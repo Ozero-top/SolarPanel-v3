@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -10,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"solarpanel/internal/config"
 )
@@ -36,6 +36,10 @@ type faviconFetchSlot struct {
 
 var faviconInflight sync.Map
 
+// 失败冷却：24h 内不再重复抓取，避免每次刷新都卡在坏站点上
+var faviconNegative sync.Map
+var faviconNegativeTTL = 24 * time.Hour
+
 func faviconCachePath(cfg *config.Config, host string) (diskPath, urlPath, ext string) {
 	md5h := md5Hex(host)
 	dir := filepath.Join(cfg.UploadDir, "favicon")
@@ -60,10 +64,24 @@ func (h *FaviconProxyHandler) Proxy(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
+	// ?refresh=1 允许后台手动重建图标：清本地文件与失败冷却后重新抓取
+	if r.URL.Query().Get("refresh") == "1" {
+		if disk, _, _ := faviconCachePath(h.cfg, host); disk != "" {
+			os.Remove(disk)
+		}
+		faviconNegative.Delete(host)
+	}
 
 	if disk, _, ext := faviconCachePath(h.cfg, host); disk != "" {
 		h.serveFile(w, r, disk, ext)
 		return
+	}
+	if v, ok := faviconNegative.Load(host); ok {
+		if t, _ := v.(time.Time); time.Since(t) < faviconNegativeTTL {
+			h.serveNotFound(w)
+			return
+		}
+		faviconNegative.Delete(host)
 	}
 
 	slot := &faviconFetchSlot{done: make(chan struct{})}
@@ -71,22 +89,20 @@ func (h *FaviconProxyHandler) Proxy(w http.ResponseWriter, r *http.Request) {
 	if loaded {
 		wait := actual.(*faviconFetchSlot)
 		<-wait.done
-		if wait.path != "" {
-			if disk, _, e := faviconCachePath(h.cfg, host); disk != "" {
-				h.serveFile(w, r, disk, e)
-				return
-			}
+		if disk, _, e := faviconCachePath(h.cfg, host); disk != "" {
+			h.serveFile(w, r, disk, e)
+			return
 		}
-		http.Redirect(w, r, fallbackFaviconURL(host), http.StatusFound)
+		if wait.path != "" {
+			h.serveURLPath(w, r, wait.path)
+			return
+		}
+		h.serveNotFound(w)
 		return
 	}
 
-	candidates := []string{"https://" + host + "/favicon.ico"}
-	for _, tmpl := range faviconFallbackServices {
-		candidates = append(candidates, strings.ReplaceAll(tmpl, "%s", host))
-	}
-	log.Printf("[favicon] host=%s — trying %d candidates", host, len(candidates))
-	slot.path = trySaveIconFromCandidates(h.cfg, host, candidates)
+	// 走完整解析：HTML 里的 icon / manifest / 常见默认路径 → 公共源兜底
+	slot.path = trySaveIcon(h.cfg, "https://"+host)
 	close(slot.done)
 	faviconInflight.Delete(host)
 
@@ -94,27 +110,32 @@ func (h *FaviconProxyHandler) Proxy(w http.ResponseWriter, r *http.Request) {
 		h.serveFile(w, r, disk, e)
 		return
 	}
-	log.Printf("[favicon] host=%s — all candidates + fallback failed, serving inline SVG", host)
-	h.serveFallbackSVG(w, host)
+	// 目标站点发生跳转时图标会按最终域名落盘，这里回退到实际保存的文件
+	if slot.path != "" {
+		h.serveURLPath(w, r, slot.path)
+		return
+	}
+	// 不再伪装成 200：让前端 onerror 继续回退到下一个源，最后用文字图标
+	faviconNegative.Store(host, time.Now())
+	log.Printf("[favicon] host=%s — all candidates failed, served 404", host)
+	h.serveNotFound(w)
 }
 
-// fallbackSVG 当整个 favicon 解析链都挂了时返回一个带首字母的 SVG 占位
-func (h *FaviconProxyHandler) serveFallbackSVG(w http.ResponseWriter, host string) {
-	// 取 host 首段首字符（如 "github.com" → "G"，"zhihu.com" → "Z"）
-	label := ""
-	if dot := strings.Index(host, "."); dot > 0 {
-		label = strings.ToUpper(host[:1])
-	} else if len(host) > 0 {
-		label = strings.ToUpper(host[:1])
-	}
-	svg := fmt.Sprintf(
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#6c5ce7"/><text x="50%%" y="54%%" text-anchor="middle" dominant-baseline="middle" font-family="system-ui,Helvetica,Arial" font-size="16" font-weight="700" fill="#ffffff">%s</text></svg>`,
-		label,
-	)
-	w.Header().Set("Content-Type", "image/svg+xml")
+// serveNotFound 图标不存在时返回 404（带短缓存，避免同一次访问中反复请求）
+func (h *FaviconProxyHandler) serveNotFound(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "public, max-age=3600")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(svg))
+	w.WriteHeader(http.StatusNotFound)
+}
+
+// serveURLPath 按落盘 URL（/frontend/uploads/...）直接取文件返回
+func (h *FaviconProxyHandler) serveURLPath(w http.ResponseWriter, r *http.Request, urlPath string) {
+	rel := strings.TrimPrefix(urlPath, "/frontend/uploads/")
+	if rel == urlPath || rel == "" {
+		h.serveNotFound(w)
+		return
+	}
+	disk := filepath.Join(h.cfg.UploadDir, filepath.FromSlash(rel))
+	h.serveFile(w, r, disk, strings.ToLower(filepath.Ext(disk)))
 }
 
 func (h *FaviconProxyHandler) serveFile(w http.ResponseWriter, r *http.Request, diskPath, ext string) {

@@ -249,6 +249,9 @@ func main() {
 	clipTokenHandler := handler.ClipTokenHandler{}
 	clipShareHandler := handler.NewClipShareHandler(clipHandler)
 
+	// 后台图标预热（不阻塞启动）
+	handler.StartFaviconPrewarm(cfg)
+
 	// ===== 限流中间件（chi 适配器）=====
 	rateLimitMW := func(endpoint string, max, windowSec int) func(http.Handler) http.Handler {
 		return func(next http.Handler) http.Handler {

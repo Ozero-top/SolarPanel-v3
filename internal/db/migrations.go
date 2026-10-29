@@ -50,6 +50,35 @@ var migrations = []Migration{
 
 	// v8: 令牌明文可再复制 + 已吊销令牌物理清理
 	{Version: 8, Name: "clip: api_tokens.token_plain", Fn: migrateV8TokenPlain},
+
+	// v9: 剪藏「稍后读」收件箱分组排到末尾（早期创建时 sort=0 会顶在最前）
+	{Version: 9, Name: "clip: inbox group last", Fn: migrateV9ClipInboxLast},
+}
+
+// migrateV9ClipInboxLast 把剪藏自动创建的「稍后读」收件箱分组移到顶级分组最后
+func migrateV9ClipInboxLast() error {
+	if DB == nil {
+		return nil
+	}
+	var id, sort int
+	err := DB.QueryRow(`SELECT id, sort FROM item_groups
+		WHERE title = '稍后读' AND parent_id = 0 AND description = '剪藏收件箱'
+		ORDER BY id ASC LIMIT 1`).Scan(&id, &sort)
+	if err != nil {
+		return nil // 没有自动创建的收件箱，无需处理
+	}
+	var maxSort int
+	if err := DB.QueryRow(`SELECT COALESCE(MAX(sort), 0) FROM item_groups WHERE parent_id = 0 AND id <> ?`, id).Scan(&maxSort); err != nil {
+		return err
+	}
+	if sort > maxSort {
+		return nil // 已经在最后
+	}
+	if _, err := DB.Exec(`UPDATE item_groups SET sort = ? WHERE id = ?`, maxSort+1, id); err != nil {
+		return err
+	}
+	log.Println("[migrate] v9: 「稍后读」收件箱已置底")
+	return nil
 }
 
 // migrateV8TokenPlain 为令牌表补明文列（后台可再次复制），并删除已吊销记录

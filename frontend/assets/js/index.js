@@ -462,9 +462,8 @@ function startClock() {
 /* 搜索引擎 logo：首位走本站服务端代理（缓存秒回），失败再串行回退公共图标服务，全部失败则隐藏只显示文字 */
 const ENGINE_ICON_SOURCES = [
   host => FAVICON_PROXY_BASE + 'favicon.php?host=' + encodeURIComponent(host),
-  host => 'https://api.iowen.cn/favicon/' + host + '.png',
-  host => 'https://favicon.cccyun.cc/' + host,
   host => 'https://favicon.im/' + host + '?larger=true',
+  host => 'https://favicon.cccyun.cc/' + host,
   host => 'https://www.google.com/s2/favicons?domain=' + host + '&sz=64',
 ];
 
@@ -802,6 +801,7 @@ function renderGroupCard(container, g, styleApp, idx, skipIntro, isChild) {
 function renderGroups() {
   const wrap = document.getElementById('groupsWrap');
   const styleApp = isAppCardStyle();
+  cardIconEagerLeft = CARD_ICON_EAGER_LIMIT; // 每次重绘重置首屏图标直载预算
 
   // 导航栏模式：由 renderGroupsNavbar 统一渲染（入口）
   if (isNavbarStyle()) {
@@ -1397,11 +1397,12 @@ function searchFilterRender() {
  */
 function renderNewsNav() {}
 
-/* ---------- 卡片图标懒加载：视口门控 + 同 host 探测去重 + 超时熔断 ---------- */
+/* ---------- 卡片图标加载：直出本站代理图 → onerror 逐级回退 → 文字图标 ---------- */
 
-const FAVICON_SRC_TIMEOUT = 8000;   // 单个图标源等待上限
-const FAVICON_TOTAL_BUDGET = 15000; // 单个 host 整条回退链总预算，避免坏源拖死
-const faviconProbeCache = new Map(); // host -> Promise<可用URL|''>，同 host 全卡片只探测一次
+const CARD_ICON_EAGER_LIMIT = 10; // 首屏前 10 个图标高优先级直载，其余懒加载
+let cardIconEagerLeft = CARD_ICON_EAGER_LIMIT;
+// host -> 已确认可用的源下标；'fail' 表示整条链都失败，同 host 直接走文字图标
+const faviconHostBest = new Map();
 let cardIconIO = null;
 const iconStarters = new WeakMap();
 
@@ -1428,41 +1429,6 @@ function armCardIcon(el, start) {
     if (el.isConnected) ioObserveIcon(el, start);
     else start(); // 兜底：脱离文档直接加载，避免图标永不出现
   });
-}
-
-/** 用独立 Image 探测单个源是否可用（带超时），不触碰卡片上的 img 元素 */
-function probeImage(url, timeout) {
-  return new Promise(resolve => {
-    const im = new Image();
-    let done = false;
-    const finish = ok => { if (!done) { done = true; clearTimeout(timer); im.onload = im.onerror = null; resolve(ok); } };
-    const timer = setTimeout(() => finish(false), timeout);
-    im.onload = () => finish(true);
-    im.onerror = () => finish(false);
-    im.referrerPolicy = 'no-referrer';
-    im.src = url;
-  });
-}
-
-/** 探测站点图标的可用源；同 host 只走一次回退链，结果被所有同 host 卡片共享 */
-function probeFaviconSources(pageUrl) {
-  const sources = faviconSources(pageUrl);
-  if (!sources.length) return Promise.resolve('');
-  let host = '';
-  try { host = new URL(pageUrl).hostname; } catch (e) { /* ignore */ }
-  if (host && faviconProbeCache.has(host)) return faviconProbeCache.get(host);
-  const p = (async () => {
-    const deadline = Date.now() + FAVICON_TOTAL_BUDGET;
-    for (let i = 0; i < sources.length; i++) {
-      if (Date.now() > deadline) break;
-      if (await probeImage(sources[i], Math.min(FAVICON_SRC_TIMEOUT, deadline - Date.now() + 1))) {
-        return sources[i];
-      }
-    }
-    return '';
-  })();
-  if (host) faviconProbeCache.set(host, p);
-  return p;
 }
 
 /** img 解码完成后再显示，避免大图解码造成卡片区掉帧；解码失败也照常显示 */
@@ -1534,27 +1500,44 @@ function buildCard(item, styleApp) {
     icon.appendChild(img);
     armCardIcon(icon, () => { img.src = assetUrl(item.icon_value); });
   } else if (item.icon_type === 'favicon' && item.url) {
-    // 进视口后探测可用源（同 host 共享结果 + 超时熔断），全部失败再使用文字图标
-    if (faviconSources(item.url).length) {
+    // 直出本站代理图标；失败后按 onerror 逐级回退公共源，全部失败再兜底文字图标
+    const srcs = faviconSources(item.url);
+    let host = '';
+    try { host = new URL(item.url).hostname; } catch (e) { /* ignore */ }
+    const known = host ? faviconHostBest.get(host) : undefined;
+    if (!srcs.length || known === 'fail') {
+      useTextIcon();
+    } else {
       const img = document.createElement('img');
       img.alt = '';
-      img.loading = 'lazy';
       img.decoding = 'async';
       img.referrerPolicy = 'no-referrer';
-      // 探测阶段已验证源可用（且浏览器已缓存），此处失败仅为极端竞争，直接兜底文字
-      img.onerror = useTextIcon;
-      img.onload = () => showWhenDecoded(img, icon, iconState);
+      // 首屏图标高优先级直载，其余交给浏览器懒加载
+      if (cardIconEagerLeft > 0) {
+        cardIconEagerLeft--;
+        img.loading = 'eager';
+        img.fetchPriority = 'high';
+      } else {
+        img.loading = 'lazy';
+        img.fetchPriority = 'low';
+      }
+      let idx = typeof known === 'number' ? known : 0;
+      img.onerror = () => {
+        idx++;
+        if (idx >= srcs.length) {
+          if (host) faviconHostBest.set(host, 'fail');
+          useTextIcon();
+          return;
+        }
+        img.src = srcs[idx];
+      };
+      img.onload = () => {
+        if (host) faviconHostBest.set(host, idx);
+        showWhenDecoded(img, icon, iconState);
+      };
       icon.classList.add('has-img'); // 立即透明底，避免加载前露出色块
       icon.appendChild(img);
-      armCardIcon(icon, () => {
-        probeFaviconSources(item.url).then(url => {
-          if (iconState.done) return;
-          if (url) img.src = url;
-          else useTextIcon();
-        });
-      });
-    } else {
-      useTextIcon();
+      armCardIcon(icon, () => { img.src = srcs[idx]; });
     }
   } else {
     useTextIcon();

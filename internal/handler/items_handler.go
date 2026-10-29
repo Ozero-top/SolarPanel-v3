@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -220,65 +219,18 @@ func absolutizeURL(href string, base *url.URL) string {
 	return abs.String()
 }
 
-// extractIconLinks 按图标质量排序：大尺寸 apple-touch-icon / 声明 sizes 的 icon 优先，
-// 跳过 mask-icon（单色模板）与 preload，最后补 /favicon.ico
+// extractIconLinks 兼容旧调用：仅解析 HTML 中的 <link rel=icon>，按质量排序并补 /favicon.ico
 func extractIconLinks(html string, base *url.URL) []string {
-	type cand struct {
-		href  string
-		score int
-	}
-	var cands []cand
-	for _, m := range reLinkIcon.FindAllStringSubmatch(html, -1) {
-		attrs := m[1]
-		relMatch := reLinkRel.FindStringSubmatch(attrs)
-		hrefMatch := reLinkHref.FindStringSubmatch(attrs)
-		if relMatch == nil || hrefMatch == nil {
-			continue
-		}
-		rel := strings.ToLower(strings.TrimSpace(relMatch[1]))
-		if !strings.Contains(rel, "icon") || strings.Contains(rel, "mask-icon") || strings.Contains(rel, "bookmark") {
-			continue
-		}
-		href := absolutizeURL(hrefMatch[1], base)
-		if href == "" {
-			continue
-		}
-		score := 10
-		if strings.Contains(rel, "apple-touch-icon") {
-			score = 45
-		} else if strings.Contains(rel, "shortcut") {
-			score = 20
-		}
-		if sm := reLinkSizes.FindStringSubmatch(attrs); sm != nil {
-			for _, part := range strings.Split(sm[1], " ") {
-				part = strings.ToLower(strings.TrimSpace(part))
-				if part == "any" {
-					score = 60
-					continue
-				}
-				var w, h int
-				if _, err := fmt.Sscanf(part, "%dx%d", &w, &h); err == nil && w > 0 {
-					if w >= 96 {
-						score += 30
-					} else if w >= 48 {
-						score += 15
-					} else {
-						score += w / 16
-					}
-				}
-			}
-		}
-		cands = append(cands, cand{href: href, score: score})
-	}
-	sort.SliceStable(cands, func(i, j int) bool { return cands[i].score > cands[j].score })
-	seen := make(map[string]bool)
-	var out []string
+	cands := extractIconCandidates(html, base)
+	sort.SliceStable(cands, func(i, j int) bool { return cands[i].Score > cands[j].Score })
+	seen := make(map[string]bool, len(cands)+1)
+	out := make([]string, 0, len(cands)+1)
 	for _, c := range cands {
-		if seen[c.href] {
+		if seen[c.URL] {
 			continue
 		}
-		seen[c.href] = true
-		out = append(out, c.href)
+		seen[c.URL] = true
+		out = append(out, c.URL)
 	}
 	ico := base.Scheme + "://" + base.Host + "/favicon.ico"
 	if !seen[ico] {
@@ -424,7 +376,7 @@ func checkFaviconCache(cfg *config.Config, host string) string {
 		if err != nil {
 			continue
 		}
-		if time.Since(info.ModTime()) > 30*24*time.Hour {
+		if time.Since(info.ModTime()) > 90*24*time.Hour {
 			os.Remove(p)
 			continue
 		}
@@ -469,11 +421,10 @@ func saveFavicon(cfg *config.Config, host, ext string, data []byte) string {
 }
 
 var faviconFallbackServices = []string{
-	"https://api.iowen.cn/favicon/%s.png",
 	"https://favicon.cccyun.cc/%s",
 	"https://favicon.im/%s?larger=true",
 	"https://icon.horse/icon/%s",
-	"https://www.google.com/s2/favicons?domain=%s&sz=64",
+	"https://www.google.com/s2/favicons?domain=%s&sz=128",
 }
 
 func extractExtFromCT(ct string) string {
@@ -521,74 +472,13 @@ func detectImageExt(data []byte) string {
 	return ""
 }
 
-// trySaveIconFromCandidates 并发探测候选图标（最多 8 个），首个成功即落盘并取消其余请求。
-// 串行原实现最坏要等 8s × N，遇到挂掉的公共图标源会非常慢。
+// trySaveIconFromCandidates 把调用方给定的顺序视为优先级，交给统一的质量选优逻辑
 func trySaveIconFromCandidates(cfg *config.Config, host string, candidates []string) string {
-	seen := make(map[string]bool, len(candidates))
-	list := make([]string, 0, len(candidates))
-	for _, u := range candidates {
-		u = strings.TrimSpace(u)
-		if u == "" || seen[u] || isPrivateHostMustParse(u) {
-			continue
-		}
-		seen[u] = true
-		list = append(list, u)
-		if len(list) >= 8 {
-			break
-		}
+	cands := make([]iconCandidate, 0, len(candidates))
+	for i, u := range candidates {
+		cands = append(cands, iconCandidate{URL: u, Score: 20 - i})
 	}
-	if len(list) == 0 {
-		return ""
-	}
-
-	type iconResult struct {
-		data []byte
-		ct   string
-		url  string
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	ch := make(chan iconResult, len(list))
-	for _, u := range list {
-		go func(u string) {
-			data, ct, err := fetchIconBytes(ctx, u, 5*time.Second)
-			if err != nil {
-				ch <- iconResult{url: u}
-				return
-			}
-			ch <- iconResult{data: data, ct: ct, url: u}
-		}(u)
-	}
-	for range list {
-		r := <-ch
-		if len(r.data) < 50 {
-			continue
-		}
-		ext := detectImageExt(r.data)
-		if ext == "" {
-			ext = extractExtFromCT(r.ct)
-		}
-		if ext == "" {
-			ext = extFromURL(r.url)
-		}
-		valid := false
-		for _, e := range faviconExts {
-			if e == ext {
-				valid = true
-				break
-			}
-		}
-		if !valid {
-			continue
-		}
-		if saved := saveFavicon(cfg, host, ext, r.data); saved != "" {
-			cancel()
-			log.Printf("[favicon] host=%s — saved via %s (%d bytes)", host, r.url, len(r.data))
-			return saved
-		}
-	}
-	log.Printf("[favicon] host=%s — all %d candidates failed", host, len(list))
-	return ""
+	return fetchBestIcon(cfg, host, cands)
 }
 
 func trySaveIcon(cfg *config.Config, rawURL string) string {
@@ -606,18 +496,29 @@ func trySaveIcon(cfg *config.Config, rawURL string) string {
 	if cached := checkFaviconCache(cfg, host); cached != "" {
 		return cached
 	}
-	var candidates []string
+
+	// 第一轮：站点自身声明的图标（<link rel=icon> / manifest / 默认路径）
+	var cands []iconCandidate
 	html, base, err := fetchPageHTML(rawURL)
 	if err == nil && base != nil {
 		host = base.Hostname()
-		candidates = extractIconLinks(html, base)
+		cands = append(cands, extractIconCandidates(html, base)...)
+		cands = append(cands, manifestIconCandidates(html, base)...)
+		cands = append(cands, rootIconCandidates(base)...)
 	} else {
-		candidates = append(candidates, u.Scheme+"://"+u.Host+"/favicon.ico")
+		cands = append(cands, iconCandidate{URL: u.Scheme + "://" + u.Host + "/favicon.ico", Score: 15})
 	}
-	for _, tmpl := range faviconFallbackServices {
-		candidates = append(candidates, fmt.Sprintf(tmpl, host))
+	if saved := fetchBestIcon(cfg, host, cands); saved != "" {
+		return saved
 	}
-	return trySaveIconFromCandidates(cfg, host, candidates)
+
+	// 第二轮：站点自身候选全部失败才用公共图标服务，避免通用图顶掉真实 logo
+	// 公共源可能是字母占位 SVG（对未知域名），故只接受位图
+	fb := make([]iconCandidate, 0, len(faviconFallbackServices))
+	for i, tmpl := range faviconFallbackServices {
+		fb = append(fb, iconCandidate{URL: fmt.Sprintf(tmpl, host), Score: 10 - i, RasterOnly: true})
+	}
+	return fetchBestIcon(cfg, host, fb)
 }
 
 func isPrivateHostMustParse(rawURL string) bool {

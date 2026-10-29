@@ -1,6 +1,6 @@
 // SolarPanel PWA Service Worker — 轻量缓存策略
-const CACHE_NAME = 'sp-cache-243b2d01';
-const RUNTIME_CACHE = 'sp-runtime-243b2d01';
+const CACHE_NAME = 'sp-cache-2f690278';
+const RUNTIME_CACHE = 'sp-runtime-2f690278';
 
 // 预缓存（安装时）
 const PRECACHE_URLS = [
@@ -66,7 +66,24 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // 4) 上传图片（/uploads/） —— 网络优先，失败回退缓存
+  // 4) 站点图标（本地落盘）—— stale-while-revalidate：先秒出缓存，后台静默更新
+  if (url.pathname.startsWith('/frontend/uploads/favicon/')) {
+    e.respondWith(
+      caches.match(req).then(cached => {
+        const fetchPromise = fetch(req).then(res => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(RUNTIME_CACHE).then(c => c.put(req, copy));
+          }
+          return res;
+        }).catch(() => cached);
+        return cached || fetchPromise;
+      })
+    );
+    return;
+  }
+
+  // 5) 上传图片（/uploads/） —— 网络优先，失败回退缓存
   if (url.pathname.startsWith('/uploads/') || url.pathname.startsWith('/frontend/uploads/')) {
     e.respondWith(
       fetch(req).then(res => {

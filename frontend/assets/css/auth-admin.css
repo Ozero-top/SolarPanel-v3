@@ -1560,3 +1560,80 @@ tr.drag-over-bottom td {
 .admin-footer a { color: inherit; text-decoration: none; }
 .admin-footer a:hover { color: var(--primary, #2563eb); text-decoration: underline; }
 .admin-footer-dot { opacity: .5; }
+
+/* ================= 移动端后台布局优化（≤640px） ================= */
+@media (max-width: 640px) {
+  /* 页面与面板留白收紧，把宽度让给内容 */
+  .admin-wrap { padding: 12px 10px 40px; }
+  .admin-panel { padding: 14px 12px; border-radius: 18px; }
+
+  /* 顶栏：品牌独占一行，操作按钮均分第二行 */
+  .admin-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 18px;
+  }
+  .admin-header .brand { font-size: 15px; }
+  .admin-header > div:not(.brand) {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+  .admin-header > div:not(.brand) .btn { flex: 1 1 auto; }
+
+  /* 主导航：一行横向滚动，隐藏滚动条，避免折成两行 */
+  .admin-tabs {
+    padding: 5px;
+    gap: 2px;
+    border-radius: 14px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .admin-tabs::-webkit-scrollbar { display: none; }
+  .admin-tabs .tab {
+    flex: 0 0 auto;
+    padding: 7px 14px;
+    font-size: 13px;
+  }
+
+  /* 面板标题与筛选控件：整体堆叠，输入框铺满 */
+  .panel-head { align-items: flex-start; gap: 10px; }
+  .panel-head h2 { font-size: 17px; }
+  .panel-head > div { width: 100%; flex-wrap: wrap; }
+  .panel-head .input,
+  .panel-head .select {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  .panel-head .btn { flex: 1 1 auto; }
+
+  /* 表单：横向行改为上下堆叠，避免控件被压成很窄 */
+  .form-row { flex-direction: column; gap: 0; }
+  .form-row > .form-item { width: 100%; }
+  .upload-row { flex-wrap: wrap; }
+  .upload-row .input { flex: 1 1 140px; }
+  .upload-row .btn { flex: 1 1 auto; }
+
+  /* 表格：给列一个可读的最小宽度，超出部分在面板内横向滚动 */
+  .admin-panel > .table { min-width: 520px; }
+  .table th,
+  .table td { padding: 8px 9px; font-size: 13px; }
+  .table .actions { justify-content: flex-start; }
+  .table .actions .btn { padding: 5px 10px; font-size: 12px; }
+
+  /* 设置分区 / 账号卡片：内边距收紧，保存按钮独占一行 */
+  .settings-section { padding: 12px 12px 2px; border-radius: 14px; }
+  .section-head { flex-wrap: wrap; gap: 8px; }
+  .section-save { width: 100%; }
+  .account-card { padding: 14px; }
+
+  /* 弹窗：贴近全宽，按钮均分 */
+  .modal { padding: 12px; }
+  .modal-box { padding: 16px; border-radius: 18px; max-height: 92vh; }
+  .modal-foot .btn { flex: 1 1 auto; }
+
+  /* 拖拽把手加大触摸热区 */
+  .drag-handle { padding: 6px 10px; }
+}

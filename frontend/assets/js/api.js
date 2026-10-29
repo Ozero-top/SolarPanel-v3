@@ -3,8 +3,12 @@
  */
 
 /* ================= 应用版本与更新日志（每次更新只需改这里） ================= */
-const APP_VERSION = 'v3.4.0';
+const APP_VERSION = 'v3.4.1';
 const APP_CHANGELOG = [
+  { ver: 'v3.4.1', date: '2026-10-29', items: [
+    '🖼️ 卡片图标优化：获取与加载优化提速',
+    '🔥 新增图标预热：启动后自动为已有卡片补齐图标',
+  ]},
   { ver: 'v3.4.0', date: '2026-10-29', items: [
     '🎯 拖拽卡片排序：鼠标与触摸同一逻辑，拖拽卡片精准落位',
     '✨ 增强拖拽手感：拖影随甩动倾斜、占位框流动斜纹、松手回弹、其余卡片让位变淡',
@@ -243,12 +247,11 @@ const FAVICON_PROXY_BASE = '/api/';
 function faviconSources(url) {
   try {
     const host = new URL(url).hostname;
+    // 首选本站代理（命中本地缓存秒回），失败后只保留两个国内可达的兜底源
     return [
       FAVICON_PROXY_BASE + 'favicon.php?host=' + encodeURIComponent(host),
       'https://favicon.cccyun.cc/' + host,
-      'https://icon.horse/icon/' + host,
       'https://favicon.im/' + host + '?larger=true',
-      'https://www.google.com/s2/favicons?domain=' + host + '&sz=64',
     ];
   } catch (e) {
     return [];
