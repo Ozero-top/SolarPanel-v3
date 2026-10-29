@@ -17,6 +17,7 @@ const state = {
   activeTopId: 0,        // 当前激活的顶级分组 id（两种模式共享：sidebar 模式用它决定渲染哪个顶级的子 section；navbar 模式和 navActiveGroupIdx 同步）
   activeChildId: 0,      // 当前激活的子分组 id（侧边栏点击二级定位主内容）
   searchKeyword: '',     // 实时页面内搜索关键词（空 = 全量渲染）
+  cardsFolded: new Set(), // 已隐藏自身卡片区的一级分组 id（隐藏后可直接看到二级分组）
 };
 
 const API_BASE = '/api/';
@@ -262,6 +263,7 @@ async function boot() {
   initNewsSwitch();
   initNASPanel();
   initUpdateNotice();
+  scheduleIconPrefetch();
 }
 
 /* ---------- 基础元素渲染（标题/logo/公告/页脚/壁纸/内容区） ---------- */
@@ -477,6 +479,93 @@ function setEngineLogo(img, engineUrl) {
   };
   if (host) img.src = ENGINE_ICON_SOURCES[idx++](host);
   else img.hidden = true;
+}
+
+/* ---------- 图标 IndexedDB 缓存 ----------
+   二次访问或切换分组时图标直接从本地读，秒出；首屏渲染完成后在空闲时后台补齐全部图标。 */
+const ICON_DB_NAME = 'sp-icon-cache';
+const ICON_DB_STORE = 'icons';
+let iconDBPromise;
+
+function iconDBOpen() {
+  if (iconDBPromise !== undefined) return iconDBPromise;
+  if (!('indexedDB' in window)) {
+    iconDBPromise = Promise.resolve(null);
+    return iconDBPromise;
+  }
+  iconDBPromise = new Promise(resolve => {
+    try {
+      const req = indexedDB.open(ICON_DB_NAME, 1);
+      req.onupgradeneeded = () => { req.result.createObjectStore(ICON_DB_STORE); };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+      req.onblocked = () => resolve(null);
+    } catch (_) { resolve(null); }
+  });
+  return iconDBPromise;
+}
+
+function iconDBSend(mode, fn) {
+  return iconDBOpen().then(db => {
+    if (!db) return null;
+    return new Promise(resolve => {
+      try {
+        const tx = db.transaction(ICON_DB_STORE, mode);
+        const req = fn(tx.objectStore(ICON_DB_STORE));
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+      } catch (_) { resolve(null); }
+    });
+  });
+}
+
+const iconCacheGet = host => iconDBSend('readonly', s => s.get(host));
+const iconCachePut = (host, dataUrl) => iconDBSend('readwrite', s => s.put(dataUrl, host));
+
+function blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result || ''));
+    fr.onerror = () => reject(fr.error || new Error('read error'));
+    fr.readAsDataURL(blob);
+  });
+}
+
+/** 后台预取全部分组的 favicon：串行 + 间隔 900ms（接口限流 300 次/分钟），不抢占首屏带宽 */
+async function prefetchAllIcons() {
+  if (!navigator.onLine || !('indexedDB' in window)) return;
+  const hosts = [];
+  const seen = new Set();
+  (state.groups || []).forEach(g => (g.items || []).forEach(it => {
+    if (it.icon_type !== 'favicon' || !it.url || it.icon_data) return;
+    let host = '';
+    try { host = new URL(it.url).hostname.toLowerCase(); } catch (_) { return; }
+    if (!host || seen.has(host)) return;
+    seen.add(host);
+    hosts.push(host);
+  }));
+  if (!hosts.length) return;
+
+  for (const host of hosts) {
+    if (!navigator.onLine) break;
+    if (await iconCacheGet(host)) continue;
+    try {
+      const resp = await fetch(FAVICON_PROXY_BASE + 'favicon.php?host=' + encodeURIComponent(host), { credentials: 'same-origin' });
+      if (resp.ok) {
+        const blob = await resp.blob();
+        if (blob.size > 0 && blob.size <= 64 * 1024) {
+          const dataUrl = await blobToDataURL(blob);
+          if (dataUrl) await iconCachePut(host, dataUrl);
+        }
+      }
+    } catch (_) { /* 单个站点失败不影响后续 */ }
+    await new Promise(r => setTimeout(r, 900));
+  }
+}
+
+function scheduleIconPrefetch() {
+  const idle = window.requestIdleCallback || (fn => setTimeout(fn, 1200));
+  try { idle(() => prefetchAllIcons(), { timeout: 3000 }); } catch (_) { setTimeout(prefetchAllIcons, 1200); }
 }
 
 function renderSearch() {
@@ -726,8 +815,9 @@ function renderGroupCard(container, g, styleApp, idx, skipIntro, isChild) {
   }
   // 管理员/编辑：分组名后显示排序操作 + 快速添加
   const isEditor = state.user && (state.user.role === 'admin' || state.user.role === 'editor');
+  let sortWrap = null;
   if (isEditor) {
-    const sortWrap = document.createElement('span');
+    sortWrap = document.createElement('span');
     sortWrap.className = 'group-sort';
     if (state.sortingGroupId === g.id) {
       // 排序模式提示：明确告知可拖拽，避免用户感知不到进入排序状态
@@ -768,10 +858,28 @@ function renderGroupCard(container, g, styleApp, idx, skipIntro, isChild) {
       sortWrap.appendChild(addBtn);
     }
   }
+  // 一级分组自身有卡片、且下面还有二级分组时，提供「隐藏 / 打开」自身卡片区的开关，
+  // 隐藏后二级分组直接上移，不用再往下翻找
+  const kidSections = (state.childrenMap && state.childrenMap[g.id]) || [];
+  const hasChildSections = !isChild && kidSections.some(k => (k.items || []).length > 0 || k.is_visible !== 0);
+  const canFoldCards = hasChildSections && (g.items || []).length > 0 && state.sortingGroupId !== g.id;
+  const folded = canFoldCards && state.cardsFolded.has(g.id);
+  if (canFoldCards) {
+    const foldBtn = document.createElement('button');
+    foldBtn.type = 'button';
+    foldBtn.className = 'btn btn-sm group-cards-toggle' + (folded ? ' folded' : '');
+    foldBtn.textContent = folded ? '打开卡片' : '隐藏卡片';
+    foldBtn.title = folded ? '显示该一级分组的卡片' : '收起该一级分组的卡片，直接查看下面的二级分组';
+    foldBtn.setAttribute('aria-expanded', folded ? 'false' : 'true');
+    foldBtn.onclick = (e) => { e.stopPropagation(); toggleGroupCards(g.id); };
+    // 有排序/添加按钮时并入同一容器，整体靠右，开关在最右端
+    if (sortWrap) sortWrap.appendChild(foldBtn);
+    else head.appendChild(foldBtn);
+  }
   section.appendChild(head);
 
   const cards = document.createElement('div');
-  cards.className = 'cards' + (styleApp ? ' style-app' : '');
+  cards.className = 'cards' + (styleApp ? ' style-app' : '') + (folded ? ' cards-collapsed' : '');
   // 先在 DocumentFragment 上构建整组卡片，一次性 append，减少重排次数
   const cardsFrag = document.createDocumentFragment();
   (g.items || []).forEach(item => {
@@ -796,6 +904,14 @@ function renderGroupCard(container, g, styleApp, idx, skipIntro, isChild) {
   }
 
   container.appendChild(section);
+}
+
+/** 隐藏 / 打开一级分组自身的卡片区（不影响其下的二级分组） */
+function toggleGroupCards(gid) {
+  if (!state.cardsFolded) state.cardsFolded = new Set();
+  if (state.cardsFolded.has(gid)) state.cardsFolded.delete(gid);
+  else state.cardsFolded.add(gid);
+  renderGroups();
 }
 
 function renderGroups() {
@@ -1283,8 +1399,10 @@ function renderNavbarCardsOnly() {
     renderGroupCard(wrap, tg, styleApp, state.navActiveGroupIdx, true, false);
   }
   // 再渲染所有可见子分组（如果顶级本身无 items，这里就是全部内容）
+  // 导航栏模式下子分组与顶级分组是同一层的兄弟节点，统一按普通分组渲染，
+  // 复用一级分组的盒模型（内边距/边框/网格间距一致），卡片尺寸与列位置才能完全对齐
   visibleKids.forEach((k, i) => {
-    renderGroupCard(wrap, k, styleApp, i, true, true);
+    renderGroupCard(wrap, k, styleApp, i, true, false);
   });
   state.groupIntroDone = true;
   state.cardsIntroDone = true;
@@ -1436,6 +1554,7 @@ function showWhenDecoded(img, icon, iconDoneRef) {
   const finish = () => {
     if (iconDoneRef.done) return;
     iconDoneRef.done = true;
+    icon.classList.remove('icon-loading');
     icon.style.background = '';
     icon.classList.add('has-img');
   };
@@ -1477,6 +1596,7 @@ function buildCard(item, styleApp) {
   const useTextIcon = () => {
     if (iconState.done) return;
     iconState.done = true;
+    icon.classList.remove('icon-loading');
     icon.classList.remove('has-img');
     // 文字型：手动文字优先（允许 2 个字母）→ 空则回退标题（英文只取大写首字母）
     const manual = item.icon_type === 'text' && item.icon_value && !isImageUrlLike(item.icon_value);
@@ -1496,16 +1616,16 @@ function buildCard(item, styleApp) {
     img.decoding = 'async';
     img.onerror = useTextIcon;
     img.onload = () => showWhenDecoded(img, icon, iconState);
-    icon.classList.add('has-img'); // 立即透明底，避免加载前露出色块
+    icon.classList.add('icon-loading'); // 加载中显示骨架微光，解码完成淡入
     icon.appendChild(img);
     armCardIcon(icon, () => { img.src = assetUrl(item.icon_value); });
   } else if (item.icon_type === 'favicon' && item.url) {
     // 直出本站代理图标；失败后按 onerror 逐级回退公共源，全部失败再兜底文字图标
-    const srcs = faviconSources(item.url);
     let host = '';
-    try { host = new URL(item.url).hostname; } catch (e) { /* ignore */ }
+    try { host = new URL(item.url).hostname.toLowerCase(); } catch (e) { /* ignore */ }
+    const proxySrcs = faviconSources(item.url);
     const known = host ? faviconHostBest.get(host) : undefined;
-    if (!srcs.length || known === 'fail') {
+    if (!proxySrcs.length || known === 'fail') {
       useTextIcon();
     } else {
       const img = document.createElement('img');
@@ -1521,7 +1641,16 @@ function buildCard(item, styleApp) {
         img.loading = 'lazy';
         img.fetchPriority = 'low';
       }
-      let idx = typeof known === 'number' ? known : 0;
+      // 服务端首屏内联：data URL 直接显示，失败再走代理回退链
+      let srcs = item.icon_data ? [item.icon_data].concat(proxySrcs) : proxySrcs;
+      let idx = item.icon_data ? 0 : (typeof known === 'number' ? known : 0);
+      let picked = false;
+      const pick = (list, i) => {
+        srcs = list;
+        idx = i;
+        picked = true;
+        img.src = srcs[idx];
+      };
       img.onerror = () => {
         idx++;
         if (idx >= srcs.length) {
@@ -1535,9 +1664,20 @@ function buildCard(item, styleApp) {
         if (host) faviconHostBest.set(host, idx);
         showWhenDecoded(img, icon, iconState);
       };
-      icon.classList.add('has-img'); // 立即透明底，避免加载前露出色块
+      icon.classList.add('icon-loading'); // 加载中显示骨架微光，解码完成淡入
       icon.appendChild(img);
-      armCardIcon(icon, () => { img.src = srcs[idx]; });
+      if (item.icon_data) {
+        pick(srcs, 0);
+      } else {
+        // 先查 IndexedDB（毫秒级命中免网络），未命中再发起代理请求
+        armCardIcon(icon, () => {
+          iconCacheGet(host).then(dataUrl => {
+            if (picked || iconState.done) return;
+            if (dataUrl) pick([dataUrl].concat(proxySrcs), 0);
+            else pick(srcs, idx);
+          }).catch(() => { if (!picked) pick(srcs, idx); });
+        });
+      }
     }
   } else {
     useTextIcon();

@@ -50,6 +50,8 @@ type ItemRow struct {
 	UserID      int      `json:"user_id"`
 	CreatedAt   string   `json:"created_at"`
 	Tags        []string `json:"tags,omitempty"`
+	// IconData 仅公开接口首屏少量卡片使用：本地已缓存图标的 data URL，免一次网络请求
+	IconData string `json:"icon_data,omitempty"`
 }
 
 func isValidURL(s string) bool {
@@ -408,9 +410,18 @@ func saveFavicon(cfg *config.Config, host, ext string, data []byte) string {
 	if ext == ".svg" {
 		data = sanitizeSVG(data)
 	}
+	// 位图统一缩到 ≤64px（转 PNG），卡片实际只显示 52~58px，原图浪费带宽与解码时间
+	data, ext = optimizeFaviconImage(data, ext)
 	p := filepath.Join(dir, md5h+ext)
 	if err := os.WriteFile(p, data, 0644); err != nil {
 		return ""
+	}
+	// 同 host 的旧扩展名文件（如旧 256px .ico）不再需要，避免 faviconCachePath 命中旧图
+	for _, e := range faviconExts {
+		if e == ext {
+			continue
+		}
+		os.Remove(filepath.Join(dir, md5h+e))
 	}
 	info, err := os.Stat(p)
 	if err != nil || info.Size() < 50 {

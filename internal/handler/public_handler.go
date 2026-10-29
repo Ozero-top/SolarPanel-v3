@@ -1,16 +1,27 @@
 package handler
 
 import (
+	"encoding/base64"
 	"log"
 	"net/http"
+	"net/url"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"solarpanel/internal/auth"
+	"solarpanel/internal/config"
 	"solarpanel/internal/db"
 )
 
-type PublicHandler struct{}
+type PublicHandler struct {
+	cfg *config.Config
+}
+
+func NewPublicHandler(cfg *config.Config) *PublicHandler {
+	return &PublicHandler{cfg: cfg}
+}
 
 // 访客访问日志去重：同一 IP 24 小时内只记一条，避免刷屏
 var (
@@ -194,10 +205,100 @@ func (h *PublicHandler) Public(w http.ResponseWriter, r *http.Request) {
 		grouped = append(grouped, gw)
 	}
 
+	// 首屏图标内联：第一个顶级分组（含其子分组）的前 10 张 favicon 卡片附带 data URL，
+	// 只读本地缓存、不在请求内联网抓取；其余图标交给前端 IndexedDB 缓存 + 后台预取。
+	h.inlineFirstScreenIcons(grouped)
+
 	OK(w, map[string]any{
 		"settings":       settings,
 		"groups":         grouped,
 		"user":           userInfo,
 		"guest_required": guestRequired,
 	})
+}
+
+// inlineIconLimit 首屏内联图标数量：与前端首屏直载预算一致
+const inlineIconLimit = 10
+
+// inlineFirstScreenIcons 给首个顶级分组链路（自身 + 子分组）的前几张 favicon 卡片填 IconData。
+// 卡片按渲染顺序取：先本分组卡片，再子分组卡片。
+func (h *PublicHandler) inlineFirstScreenIcons(groups []GroupWithItems) {
+	if h.cfg == nil || len(groups) == 0 {
+		return
+	}
+	byID := make(map[int]*GroupWithItems, len(groups))
+	children := make(map[int][]int, len(groups))
+	firstTop := -1
+	for i := range groups {
+		g := &groups[i]
+		byID[g.ID] = g
+		if g.ParentID == 0 {
+			if firstTop < 0 {
+				firstTop = g.ID
+			}
+		} else {
+			children[g.ParentID] = append(children[g.ParentID], g.ID)
+		}
+	}
+	if firstTop < 0 {
+		return
+	}
+
+	count := 0
+	var walk func(id int)
+	walk = func(id int) {
+		if count >= inlineIconLimit {
+			return
+		}
+		g := byID[id]
+		if g == nil {
+			return
+		}
+		for i := range g.Items {
+			if count >= inlineIconLimit {
+				return
+			}
+			it := &g.Items[i]
+			if it.IconType != "favicon" || it.URL == "" {
+				continue
+			}
+			if data := cachedFaviconDataURL(h.cfg, it.URL); data != "" {
+				it.IconData = data
+				count++
+			}
+		}
+		for _, cid := range children[id] {
+			walk(cid)
+		}
+	}
+	walk(firstTop)
+}
+
+// cachedFaviconDataURL 只读磁盘缓存，命中则转 data URL；未命中返回空（由前端走代理）。
+func cachedFaviconDataURL(cfg *config.Config, rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" {
+		return ""
+	}
+	disk, _, ext := faviconCachePath(cfg, host)
+	if disk == "" {
+		return ""
+	}
+	st, err := os.Stat(disk)
+	if err != nil || st.Size() == 0 || st.Size() > 64*1024 {
+		return ""
+	}
+	data, err := os.ReadFile(disk)
+	if err != nil || len(data) == 0 {
+		return ""
+	}
+	ct := faviconProxyContentTypes[ext]
+	if ct == "" {
+		return ""
+	}
+	return "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(data)
 }

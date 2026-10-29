@@ -1199,6 +1199,23 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  opacity: 1;
+  transition: opacity 240ms var(--ease, ease);
+}
+/* 图片图标加载骨架：等待网络与解码期间显示微光占位，就绪后图片淡入，消除空白闪烁 */
+:root body .card .icon.icon-loading {
+  background: linear-gradient(100deg, var(--surface-2, #e9e9ee) 25%, var(--surface, #fff) 37%, var(--surface-2, #e9e9ee) 63%) !important;
+  background-size: 200% 100% !important;
+  box-shadow: none !important;
+  animation: iconShimmer 1.2s ease-in-out infinite;
+}
+.card .icon.icon-loading img { opacity: 0; }
+@keyframes iconShimmer {
+  0% { background-position: 150% 0; }
+  100% { background-position: -50% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card .icon.icon-loading { animation: none; }
 }
 /* 图标背景透明度为 0：文字图标改用主色文字并去掉投影，避免白字透明底看不清
    （提升特异度 + !important，压过各主题给 .card .icon 设的文字色） */
@@ -1854,6 +1871,29 @@
   white-space: nowrap;
 }
 
+/* 一级分组卡片区「隐藏 / 打开」：右侧对齐，隐藏后其下二级分组直接上移 */
+.group-head .group-cards-toggle {
+  flex: none;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.group-head .group-cards-toggle.folded {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.cards.cards-collapsed {
+  display: none;
+}
+/* 一级分组隐藏卡片后：去掉标题下方的间距与底部内边距，分组收成一条紧凑标题栏，
+   避免中间留下一大块空白（下个分组直接上移贴合） */
+.group:has(> .cards.cards-collapsed) {
+  padding: 16px 22px;
+  margin-bottom: 10px;
+}
+.group:has(> .cards.cards-collapsed) .group-head {
+  margin-bottom: 0;
+}
+
 /* 当前排序分组高亮：整组虚线框 + 卡片可抓，进入排序一眼可见 */
 .group.sorting {
   outline: 2px dashed var(--accent);
@@ -2307,22 +2347,40 @@
 
 /* ============ P2: 快捷键帮助 ============ */
 .shortcuts-list {
-  display: flex; flex-direction: column; gap: 8px;
-  padding: 8px 0;
+  display: flex; flex-direction: column;
+  padding: 2px 0;
 }
 .sc-row {
-  display: flex; justify-content: space-between; align-items: center;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: 150px 1fr; /* 按键列固定宽度，说明文字统一左对齐 */
+  align-items: center;
+  column-gap: 14px;
+  padding: 7px 0;
 }
-.sc-row span { color: var(--text-muted); font-size: 13px; }
+.sc-keys {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-width: 0;
+}
+.sc-keys i {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.sc-desc { color: var(--text-muted); font-size: 13px; line-height: 1.5; }
 kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 26px; height: 24px;
+  padding: 0 8px;
   background: rgba(255,255,255,0.08);
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 6px;
-  padding: 2px 8px;
   font-family: monospace;
   font-size: 12px;
   color: var(--text);
+}
+@media (max-width: 420px) {
+  .sc-row { grid-template-columns: 118px 1fr; column-gap: 10px; padding: 6px 0; }
+  kbd { min-width: 22px; height: 22px; padding: 0 6px; }
 }
 
 /* update-ready / shortcuts-btn 已移除（Docker 版无 SW update 提示） */

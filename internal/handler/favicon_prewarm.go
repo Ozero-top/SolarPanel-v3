@@ -6,6 +6,9 @@ package handler
 import (
 	"log"
 	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,10 +16,56 @@ import (
 	"solarpanel/internal/db"
 )
 
+// optimizeCachedFavicons 启动时把历史缓存里的大图标就地缩到 ≤64px（一次性迁移，之后基本全是小图）。
+func optimizeCachedFavicons(cfg *config.Config) {
+	dir := filepath.Join(cfg.UploadDir, "favicon")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	n := 0
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(e.Name()))
+		switch ext {
+		case ".png", ".jpg", ".gif", ".ico":
+		default:
+			continue // SVG / WEBP 无法用标准库解码，保持原样
+		}
+		info, err := e.Info()
+		if err != nil || info.Size() < 20*1024 {
+			continue // 已经是小文件，跳过
+		}
+		p := filepath.Join(dir, e.Name())
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		out, newExt := optimizeFaviconImage(data, ext)
+		if newExt == ext && len(out) >= len(data) {
+			continue
+		}
+		np := filepath.Join(dir, strings.TrimSuffix(e.Name(), ext)+newExt)
+		if err := os.WriteFile(np, out, 0644); err != nil {
+			continue
+		}
+		if np != p {
+			os.Remove(p)
+		}
+		n++
+	}
+	if n > 0 {
+		log.Printf("[favicon] 历史缓存图标已压缩 %d 个", n)
+	}
+}
+
 // StartFaviconPrewarm 异步预热全部 favicon 类型卡片（并发 2，逐个错开，避免打满出网连接）
 func StartFaviconPrewarm(cfg *config.Config) {
 	go func() {
 		time.Sleep(5 * time.Second) // 等 HTTP 服务与数据库就绪
+		optimizeCachedFavicons(cfg)
 		if db.DB == nil {
 			return
 		}

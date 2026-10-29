@@ -231,7 +231,7 @@ func main() {
 	uploadHandler := handler.NewUploadHandler(cfg)
 	galleryHandler := handler.NewGalleryHandler(cfg)
 	weatherHandler := handler.NewWeatherHandler(cfg)
-	publicHandler := &handler.PublicHandler{}
+	publicHandler := handler.NewPublicHandler(cfg)
 	newsHandler := &handler.NewsHandler{}
 	settingsHandler := &handler.SettingsHandler{}
 	groupsHandler := &handler.GroupsHandler{}
@@ -268,7 +268,8 @@ func main() {
 	r.Route("/api", func(api chi.Router) {
 		// 公共（无需登录）
 		api.With(rateLimitMW("public", 60, 60)).Get("/public.php", publicHandler.Public)
-		api.With(rateLimitMW("favicon", 120, 60)).Get("/favicon.php", faviconProxyHandler.Proxy)
+		// 图标代理：命中本地缓存时几乎零成本，放宽到 300 次/分钟，避免首屏 + 后台预取被限流
+		api.With(rateLimitMW("favicon", 300, 60)).Get("/favicon.php", faviconProxyHandler.Proxy)
 		api.Get("/install.php", installHandler.Status)
 		api.Post("/install.php", installHandler.Setup)
 		api.With(rateLimitMW("weather", 30, 60)).Get("/weather.php", weatherHandler.Get)

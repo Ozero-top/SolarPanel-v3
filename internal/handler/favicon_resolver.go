@@ -359,6 +359,10 @@ func fetchBestIcon(cfg *config.Config, host string, cands []iconCandidate) strin
 		if r.cand.RasterOnly && ext == ".svg" {
 			continue
 		}
+		// 有些站点把图标地址返回成 HTML（反爬页/错误页），按 URL 后缀当成图片落盘会导致前端永远裂图
+		if detectImageExt(r.data) == "" && !strings.HasPrefix(strings.ToLower(r.ct), "image/") {
+			continue
+		}
 		r.ext = ext
 		r.w, r.h = imagePixelSize(r.data, ext)
 		if r.w > 0 && r.w < 16 {
