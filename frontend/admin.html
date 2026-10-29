@@ -216,10 +216,13 @@
             <label>自动识别补充域名（Split DNS 场景）</label>
             <input type="text" class="input" id="s_lan_hostnames" placeholder="如 home.local, nas, 192.168.1.10">
             <div class="form-hint">
-              仅 auto 模式生效。填写你在内网访问面板时用的域名或 IP，多个用英文逗号分隔。<br>
-              支持<strong>精确匹配</strong>（如 <code>test.yourdomain.com</code>，同时匹配其子域）和<strong>后缀通配</strong>（如 <code>.yourdomain.com</code> 或 <code>*.yourdomain.com</code>）。<br>
-              <strong>NAS / Docker 反代场景</strong>：如果内网也是通过反代出来的公网域名访问，把该域名填进来即可判定为内网（浏览器无法仅凭域名区分内外网）。<br>
-              内置已识别 <code>localhost</code>、<code>.local/.lan/.home</code>、私网 IP 段（<code>10.x.x.x</code>、<code>192.168.x.x</code>、<code>172.16-31.x.x</code>），这些不用填。
+              <strong>只有上面的「卡片打开地址模式」选「自动识别」时，这里才起作用</strong>；选外网 / 内网模式时填了也不生效。<br>
+              系统怎么判断你在内网还是外网：看你<strong>打开这个导航页时地址栏里的域名</strong>。<br>
+              <strong>需要填的情况：</strong>你在家里也是用公网域名（例如 <code>nav.xxx.com</code>）打开导航页的。这种域名系统认不出来，就会以为你在外网、给你打开外网地址；把该域名填进来，在家就会被当作内网（这正是常说的 Split DNS 场景）。<br>
+              <strong>怎么填：</strong>可以填域名，也可以填主机名或 IP；多个用英文逗号隔开，例如 <code>nav.xxx.com, nas, 192.168.1.10</code>。<br>
+              <strong>不用填的：</strong>用 <code>localhost</code>、<code>xxx.local</code> / <code>xxx.lan</code> / <code>xxx.home</code>，或用 <code>192.168.x.x</code>、<code>10.x.x.x</code>、<code>172.16~31.x.x</code>、<code>100.64~127.x.x</code>（Tailscale 等）这类内网 IP 打开导航页的，系统本来就认得。<br>
+              <strong>想一次匹配所有子域名：</strong>写 <code>.xxx.com</code> 或 <code>*.xxx.com</code>，例如 <code>.xxx.com</code> 同时涵盖 <code>nav.xxx.com</code>、<code>app.xxx.com</code>。<br>
+              <strong>判断错了也不怕：</strong>点卡片时会先试着连内网地址，连不上会自动改开外网地址，不需要手动切。
             </div>
           </div>
         </form>

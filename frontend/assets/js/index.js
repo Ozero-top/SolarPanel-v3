@@ -7,6 +7,7 @@ const state = {
   user: null,
   updateInfo: null, // 管理员可见的新版本信息（version.php 返回）
   lanMode: false, // 由后台「默认地址模式」设置决定
+  lanAuto: true,  // 当前是否由自动识别决定（false = 手动切换的临时覆盖）
   theme: 'dark',
   sortingGroupId: null, // 当前正在排序的分组 id（仅管理员，null = 未排序）
   sortDirty: false, // 当前排序分组有未保存的拖拽改动
@@ -35,7 +36,8 @@ const isAppCardStyle = () => cardStyle() === 'navapp';
  *  说明：NAS 内网也可能通过反向代理的公网域名访问，此时把该域名填进 lanHostnames 即可判定为内网。
  */
 function isLikelyLAN(lanHostnames) {
-  const h = (location.hostname || '').toLowerCase();
+  // 浏览器返回的 IPv6 字面量带方括号（如 [fd00::1]），先去掉再判断
+  const h = String(location.hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
   if (!h) return false;
   // 管理员配置项归一化：去协议/路径/端口，*.example.com 与 .example.com 等价
   const norm = (s) => String(s || '').trim().toLowerCase()
@@ -62,14 +64,79 @@ function isLikelyLAN(lanHostnames) {
   if (h.includes(':') && (h.startsWith('fe80:') || h.startsWith('fc') || h.startsWith('fd'))) return true;
   // IPv4 私网
   const parts = h.split('.').map(Number);
-  if (parts.length === 4) {
+  if (parts.length === 4 && parts.every(n => Number.isFinite(n))) {
     if (parts[0] === 10) return true;
     if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
     if (parts[0] === 192 && parts[1] === 168) return true;
     if (parts[0] === 127) return true;
     if (parts[0] === 169 && parts[1] === 254) return true;
+    // CGNAT / Tailscale：100.64.0.0/10
+    if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true;
   }
   return false;
+}
+
+/* ===== 手动切换记忆 =====
+   旧实现把选择永久写进 localStorage，一旦点过「外网」就再也不走自动识别。
+   现在改为记录 {模式, 访问域名, 时间}：换域名（换网络访问）或超过 24 小时即失效，
+   由后台设置的自动识别重新接管。 */
+const LAN_OVERRIDE_KEY = 'sp_lan_override';
+const LAN_OVERRIDE_TTL = 24 * 60 * 60 * 1000;
+
+function readLanOverride() {
+  try {
+    const raw = localStorage.getItem(LAN_OVERRIDE_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (!o || (o.mode !== 'lan' && o.mode !== 'public')) return null;
+    if (String(o.host || '') !== (location.hostname || '').toLowerCase()) return null;
+    if (!o.ts || Date.now() - o.ts > LAN_OVERRIDE_TTL) return null;
+    return o.mode;
+  } catch (_) {
+    return null;
+  }
+}
+
+function saveLanOverride(mode) {
+  try {
+    localStorage.setItem(LAN_OVERRIDE_KEY, JSON.stringify({
+      mode: mode,
+      host: (location.hostname || '').toLowerCase(),
+      ts: Date.now(),
+    }));
+  } catch (_) { /* 隐私模式无法写入时忽略 */ }
+}
+
+/* ===== 内网地址连通性探测 =====
+   Split DNS 场景下同一域名内外网都能访问，仅凭 hostname 判断会误判；
+   打开内网地址前先做一次短超时探测，不可达则自动回退外网地址。 */
+const LAN_PROBE_TIMEOUT = 900;
+const LAN_PROBE_TTL = 60 * 1000;
+const lanProbeCache = Object.create(null);
+
+function probeLanURL(url) {
+  let origin = '';
+  try { origin = new URL(url).origin; } catch (_) { return Promise.resolve(false); }
+  const hit = lanProbeCache[origin];
+  if (hit && Date.now() - hit.ts < LAN_PROBE_TTL) return Promise.resolve(hit.ok);
+  return new Promise((resolve) => {
+    const finish = (ok) => {
+      lanProbeCache[origin] = { ok: ok, ts: Date.now() };
+      resolve(ok);
+    };
+    if (!navigator.onLine) { finish(false); return; }
+    const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = setTimeout(() => { if (ctrl) ctrl.abort(); }, LAN_PROBE_TIMEOUT);
+    // no-cors：只验证能否建立连接（拿到 opaque 响应即视为可达），不读取内容
+    fetch(url, {
+      mode: 'no-cors',
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'omit',
+      signal: ctrl ? ctrl.signal : undefined,
+    }).then(() => { clearTimeout(timer); finish(true); })
+      .catch(() => { clearTimeout(timer); finish(false); });
+  });
 }
 
 function bindTopbarAutoHide() {
@@ -321,11 +388,13 @@ function renderBase() {
   if (!isNaN(sw) && sw > 200) document.getElementById('searchBox').style.maxWidth = sw + 'px';
   if (weatherOn) renderWeather(s.weather_city || '');
 
-  // 地址模式：localStorage 优先（访客自定义），否则用后台默认（缺省视为自动识别）
-  const savedLan = localStorage.getItem('sp_lan_mode');
+  // 地址模式：手动切换（按域名 + 24 小时记忆）优先，否则用后台默认（缺省视为自动识别）
+  try { localStorage.removeItem('sp_lan_mode'); } catch (_) { /* 清理旧版永久记忆 */ }
   const lanModeSetting = String(s.default_lan_mode || 'auto').toLowerCase();
-  state.lanMode = savedLan !== null
-    ? savedLan === 'lan'
+  const override = readLanOverride();
+  state.lanAuto = override === null;
+  state.lanMode = override !== null
+    ? override === 'lan'
     : (lanModeSetting === 'lan' || (lanModeSetting === 'auto' && isLikelyLAN(s.lan_hostnames)));
   updateLanBtn();
 
@@ -1537,9 +1606,12 @@ function safeUrl(url) {
   return /^https?:\/\//i.test(String(url || '').trim());
 }
 
-/** 打开卡片：1 当前页 / 2 新窗口 / 3 弹层；newTab 参数可强制覆盖打开方式（右键菜单用） */
-function openPage(item, newTab) {
-  const url = state.lanMode && item.lan_url ? item.lan_url : item.url;
+/** 打开卡片：1 当前页 / 2 新窗口 / 3 弹层；newTab 参数可强制覆盖打开方式（右键菜单用）
+    内网模式下先探测内网地址是否可达，不可达自动回退外网，避免 Split DNS 场景误判。 */
+async function openPage(item, newTab) {
+  const useLan = state.lanMode && !!item.lan_url;
+  let url = useLan ? item.lan_url : item.url;
+  if (!useLan && state.lanMode) warnMissingLan(item);
   if (!url) {
     toast('该卡片未设置地址', 'error');
     return;
@@ -1548,24 +1620,52 @@ function openPage(item, newTab) {
     toast('该卡片地址协议不合法（仅支持 http / https），已阻止打开', 'error');
     return;
   }
-  // newTab 参数覆盖：右键菜单直接指定打开方式
-  if (typeof newTab === 'boolean') {
-    if (newTab) window.open(url, '_blank');
-    else location.href = url;
+
+  const openNew = typeof newTab === 'boolean' ? newTab : item.open_method === 2;
+  const openIframe = typeof newTab !== 'boolean' && item.open_method === 3;
+  // 新窗口必须在点击手势内同步打开，否则 await 之后会被浏览器弹窗拦截
+  let win = openNew && useLan ? window.open('', '_blank') : null;
+
+  if (useLan) {
+    const reachable = await probeLanURL(url);
+    if (!reachable) {
+      const fallback = safeUrl(item.url) ? item.url : '';
+      if (!fallback) {
+        if (win) win.close();
+        toast('内网地址不可达，且该卡片未填写可用的外网地址', 'error');
+        return;
+      }
+      url = fallback;
+      toast('内网地址不可达，已改用外网地址打开', 'info');
+    }
+  }
+
+  if (openNew) {
+    if (win) {
+      try { win.opener = null; } catch (_) { /* 跨域时忽略 */ }
+      win.location.replace(url);
+    } else {
+      window.open(url, '_blank');
+    }
     return;
   }
-  if (item.open_method === 3) {
+  if (openIframe) {
     document.getElementById('iframeTitle').textContent = item.title + ' · ' + url;
     document.getElementById('iframeNewTab').href = url;
     document.getElementById('iframeWin').src = url;
     document.getElementById('iframeModal').classList.add('show');
     return;
   }
-  if (item.open_method === 1) {
-    location.href = url;
-    return;
-  }
-  window.open(url, '_blank');
+  location.href = url;
+}
+
+/** 内网模式下该卡片没填内网地址：同一卡片每个会话只提示一次，避免反复弹提示 */
+const lanWarned = Object.create(null);
+function warnMissingLan(item) {
+  const id = item && item.id;
+  if (!id || lanWarned[id]) return;
+  lanWarned[id] = 1;
+  toast('「' + (item.title || '该卡片') + '」未填写内网地址，已打开外网地址', 'info');
 }
 
 /** 右键卡片弹出操作菜单（仅 admin/editor 生效） */
@@ -1630,8 +1730,9 @@ function hideCardContextMenu() {
 function updateLanBtn() {
   const btn = document.getElementById('lanBtn');
   if (!btn) return;
+  const src = state.lanAuto ? '自动识别' : '手动切换，24 小时后恢复自动识别';
   btn.textContent = state.lanMode ? '内网' : '外网';
-  btn.title = state.lanMode ? '当前：内网地址（点击切外网）' : '当前：外网地址（点击切内网）';
+  btn.title = (state.lanMode ? '当前：内网地址' : '当前：外网地址') + '（' + src + '），点击切换';
 }
 
 /* ---------- 主题切换（浅色 / 深色 / 跟随系统 三态循环） ---------- */
@@ -1683,7 +1784,8 @@ function bindGlobal() {
   if (lanBtn) {
     lanBtn.onclick = () => {
       state.lanMode = !state.lanMode;
-      localStorage.setItem('sp_lan_mode', state.lanMode ? 'lan' : 'public');
+      state.lanAuto = false;
+      saveLanOverride(state.lanMode ? 'lan' : 'public');
       updateLanBtn();
       toast(state.lanMode ? '已切换到内网地址' : '已切换到外网地址', 'success');
       reloadPublic();
