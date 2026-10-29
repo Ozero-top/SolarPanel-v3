@@ -1448,6 +1448,38 @@ tr.drag-over-bottom td {
   line-height: 1.5;
 }
 
+/* 二级分组折叠：默认收起，一级分组名后显示「打开 / 收起」 */
+#groupsTbody tr.row-collapsed {
+  display: none;
+}
+.g-fold {
+  flex-shrink: 0;
+  margin-left: 2px;
+  padding: 1px 8px 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--edge-weak, rgba(128, 128, 128, 0.35));
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  cursor: pointer;
+  transition: color .18s, border-color .18s, background .18s;
+}
+.g-fold::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 3px;
+  transition: transform .18s;
+}
+.g-fold.open::before {
+  transform: rotate(90deg);
+}
+.g-fold:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-weak, rgba(92, 124, 250, 0.12));
+}
+
 /* 图标选择弹窗（宽度为常规弹窗的两倍，内容一屏展开） */
 #groupIconModal .modal-box {
   max-width: min(1040px, 96vw);

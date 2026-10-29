@@ -31,6 +31,7 @@ const state = {
   itemPage: 1, // 卡片列表当前页码（每页 ITEM_PAGE_SIZE 条）
   editingItem: null,
   groupsOrderDirty: false, // 分组拖拽后有未保存的排序
+  groupExpanded: new Set(), // 已展开的一级分组 id（默认为空 = 二级分组全部收起）
   siteUrl: '', // 后台设置的站点地址（退出登录跳转用）
   role: 'admin', // 当前登录用户权限组：admin / editor / viewer
   pendingTabSwitch: null, // 未保存排序弹窗挂起的切换目标（tab 标签页模块）
@@ -568,19 +569,37 @@ function renderGroupsTable() {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">暂无分组，点击右上角「添加分组」创建</td></tr>';
     return;
   }
+  // 统计每个一级分组下的二级分组数量：>0 才显示「打开 / 收起」
+  const childCount = {};
+  state.groups.forEach(g => {
+    const pid = g.parent_id || 0;
+    if (pid !== 0) childCount[pid] = (childCount[pid] || 0) + 1;
+  });
   state.groups.forEach((g, i) => {
     const vis = (g.is_visible ?? 1) ? 1 : 0;
     const isChild = (g.parent_id || 0) !== 0;
+    const pid = g.parent_id || 0;
+    const foldable = !isChild && childCount[g.id] > 0; // 有二级分组的一级分组才显示折叠按钮
+    const open = foldable && state.groupExpanded.has(g.id);
     const tr = document.createElement('tr');
     tr.dataset.idx = i;
     if (!vis) tr.classList.add('row-hidden');
-    if (isChild) tr.classList.add('row-child');
+    if (isChild) {
+      tr.classList.add('row-child');
+      tr.dataset.parent = String(pid);
+      if (!state.groupExpanded.has(pid)) tr.classList.add('row-collapsed');
+    } else {
+      tr.dataset.gid = String(g.id);
+    }
     tr.innerHTML =
       '<td class="drag-cell"><span class="drag-handle" title="拖动调整顺序">⠿</span></td>' +
       '<td><span class="g-table-name' + (isChild ? ' is-child' : '') + '">' +
         (isChild ? '<span class="g-level-tag">二级</span>' : '') +
         (g.icon ? '<span class="g-table-icon">' + esc(g.icon) + '</span>' : '') +
         '<span>' + esc(g.title) + '</span>' +
+        (foldable ? '<button type="button" class="g-fold' + (open ? ' open' : '') +
+          '" data-fold="' + g.id + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
+          (open ? '收起' : '打开') + '</button>' : '') +
       '</span></td>' +
       '<td style="color:var(--text-muted)">' + esc(g.description) + '</td>' +
       '<td>' + g.item_count + '</td>' +
@@ -597,8 +616,40 @@ function renderGroupsTable() {
     tr.querySelectorAll('[data-act]').forEach(btn => {
       btn.onclick = () => groupAction(btn.dataset.act, g);
     });
+    const foldBtn = tr.querySelector('[data-fold]');
+    if (foldBtn) foldBtn.onclick = e => { e.stopPropagation(); setGroupFold(g.id); };
     tbody.appendChild(tr);
   });
+}
+
+/* ---------- 二级分组折叠（默认收起，点「打开 / 收起」切换） ---------- */
+function setGroupFold(id) {
+  setGroupFoldState(id, !state.groupExpanded.has(id));
+}
+
+/** 直接切换已有行的显隐，不整体重绘：拖拽排序过程中行元素不被替换 */
+function setGroupFoldState(id, open) {
+  if (open) state.groupExpanded.add(id); else state.groupExpanded.delete(id);
+  const tbody = document.getElementById('groupsTbody');
+  if (!tbody) return;
+  tbody.querySelectorAll('tr[data-parent="' + id + '"]').forEach(tr => {
+    tr.classList.toggle('row-collapsed', !open);
+  });
+  const btn = tbody.querySelector('[data-fold="' + id + '"]');
+  if (btn) {
+    btn.textContent = open ? '收起' : '打开';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.classList.toggle('open', open);
+  }
+}
+
+/** 拖动一级分组前先展开其二级分组，避免隐藏行导致落位错乱 */
+function expandFoldedParent(tr) {
+  if (!tr || !tr.dataset.gid) return;
+  const id = Number(tr.dataset.gid);
+  if (state.groupExpanded.has(id)) return;
+  const tbody = document.getElementById('groupsTbody');
+  if (tbody && tbody.querySelector('tr[data-parent="' + id + '"]')) setGroupFoldState(id, true);
 }
 
 async function groupAction(act, g) {
@@ -666,6 +717,8 @@ function bindGroups() {
       });
       document.getElementById('groupModal').classList.remove('show');
       toast('已保存', 'success');
+      // 保存二级分组后自动展开所属一级分组，避免刚建的分组被折叠隐藏
+      if (parentId > 0) state.groupExpanded.add(parentId);
       await loadGroups();
       await loadItems();
     } catch (err) {
@@ -1198,6 +1251,10 @@ function bindDragSort() {
       renderGroupsTable();
       setGroupsOrderDirty(true);
     },
+  });
+  // 收起状态下从把手开始拖动一级分组：先展开其二级分组，避免隐藏行导致落位错乱
+  document.getElementById('groupsTbody').addEventListener('mousedown', e => {
+    if (e.target.closest('.drag-handle')) expandFoldedParent(e.target.closest('tr'));
   });
   document.getElementById('saveGroupsOrderBtn').onclick = () => {
     saveGroupsOrder().catch(e => toast(e.message, 'error'));
