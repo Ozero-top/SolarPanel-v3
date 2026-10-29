@@ -1901,6 +1901,31 @@
   box-shadow: var(--raised), inset -5px 0 0 var(--accent), 0 0 0 2px var(--accent);
   transform: translateX(-2px);
 }
+/* 排序模式：卡片区末尾常驻一条整行投放带，远处拖到最后一格时更容易命中 */
+.group.sorting .cards::after {
+  content: '拖到这里 = 放到最后';
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  user-select: none;
+  pointer-events: none;
+  border: 1px dashed var(--text-muted);
+  border-radius: 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: .02em;
+  opacity: .42;
+  transition: opacity .18s ease, border-color .18s ease, background-color .18s ease, color .18s ease;
+}
+.group.sorting .cards.drag-over-end::after {
+  content: '松手放到最后';
+  opacity: 1;
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-weak, rgba(92, 124, 250, .12));
+}
 /* 拖到卡片区末尾：整块卡片容器虚线高亮，明确“追加到最后” */
 .cards.drag-over-end {
   outline: 2px dashed var(--accent);

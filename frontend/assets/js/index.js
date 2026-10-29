@@ -1795,9 +1795,7 @@ function bindSortMode() {
     const container = cardContainerOf(dragCard);
     if (!container) return;
     clearDropMarkers(wrap);
-    const sec = container.closest('.group');
-    // 仅允许当前排序分组内排序（含卡片区尾部的空白落点）
-    if (!sec || !sec.contains(e.target)) return;
+    if (!isCardDropZone(container, e)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     const ref = cardInsertRef(container, e.clientX, e.clientY, dragCard);
@@ -1814,9 +1812,8 @@ function bindSortMode() {
     if (state.sortingGroupId === null || !dragCard) return;
     const container = cardContainerOf(dragCard);
     if (!container) { clearDrag(); return; }
-    const sec = container.closest('.group');
-    // 落在分组卡片区（含尾部空白）都算有效，避免拖到最后一格旁被丢弃
-    if (!sec || !sec.contains(e.target)) { clearDrag(); return; }
+    // 指针在卡片区、本分组内或末尾热区都算有效，避免拖到最下方稍有滑出就丢弃
+    if (!isCardDropZone(container, e)) { clearDrag(); return; }
     e.preventDefault();
     const ref = cardInsertRef(container, e.clientX, e.clientY, dragCard);
     const before = snapshotCards(container);
@@ -1831,24 +1828,58 @@ function bindSortMode() {
 }
 
 /**
- * 网格落点计算：返回「应插到其前面」的卡片，按流式顺序（先行后列）比较指针与各卡中心；
- * 指针位于所有卡片之后时返回 null（= 追加到容器末尾）
+ * 网格落点计算：先找离指针最近的卡片作为参照，再判断插在其前还是其后。
+ * 与逐张卡比较中心点相比，指针落在空白区（末行右侧、网格下方）时也能稳定命中末尾，
+ * 避免「拖到最后一格旁就失效」。
+ * 返回「应插到其前面」的卡片，返回 null 表示追加到容器末尾。
  */
 function cardInsertRef(container, x, y, ignore) {
   const cards = Array.prototype.filter.call(container.querySelectorAll('.card'), c => c !== ignore);
+  if (!cards.length) return null;
+  let best = null;
+  let bestDist = Infinity;
   for (const c of cards) {
     const r = c.getBoundingClientRect();
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height / 2;
-    if (y < cy - r.height * 0.25 || (Math.abs(y - cy) <= r.height * 0.25 && x < cx)) return c;
+    const dx = x - (r.left + r.width / 2);
+    const dy = y - (r.top + r.height / 2);
+    const d = dx * dx + dy * dy;
+    if (d < bestDist) { bestDist = d; best = c; }
   }
-  return null;
+  if (!best) return null;
+  const r = best.getBoundingClientRect();
+  // 指针在卡片下半部（或整排下方）→ 排在其后；上半部 → 排在其前；中段按左右半区判定
+  let after;
+  if (y > r.top + r.height * 0.62) after = true;
+  else if (y < r.top + r.height * 0.38) after = false;
+  else after = x > r.left + r.width / 2;
+  if (!after) return best;
+  let next = best.nextElementSibling;
+  // 跳过非卡片节点与正在拖拽的卡本身，避免 ref 指向自身导致插入落空
+  while (next && (next === ignore || !next.classList.contains('card'))) next = next.nextElementSibling;
+  return next; // null = 已是最后一张，追加到末尾
 }
 
 /** 取卡片所在的 .cards 容器（拖拽只在本容器内排序） */
 function cardContainerOf(card) {
   const p = card && card.parentElement;
   return p && p.classList.contains('cards') ? p : null;
+}
+
+/**
+ * 判断指针是否落在可接受的投放区域：
+ * 1) 卡片区内部（含卡片间隙）；2) 本分组内的空白；3) 卡片区下方 64px 的「末尾热区」。
+ * 末尾热区让拖到列表最底部时即使滑出容器一点点也不会丢落点；
+ * 指针已移入其它分组时一律不接收，避免误插到别的分组。
+ */
+function isCardDropZone(container, e) {
+  const ownSec = container.closest('.group');
+  const hoverSec = e.target && e.target.closest ? e.target.closest('.group') : null;
+  if (container.contains(e.target)) return true;
+  if (ownSec && hoverSec === ownSec) return true;
+  if (hoverSec && hoverSec !== ownSec) return false;
+  const r = container.getBoundingClientRect();
+  return e.clientX >= r.left - 16 && e.clientX <= r.right + 16
+    && e.clientY > r.bottom && e.clientY <= r.bottom + 64;
 }
 
 /** 清理拖拽落点提示 */
