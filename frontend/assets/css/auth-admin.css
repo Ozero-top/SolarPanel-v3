@@ -309,6 +309,38 @@ input[type='range'].range::-moz-range-thumb {
 .setting-preview.show {
   display: block;
 }
+/* 站点 Logo 行内缩略图：放在输入框左侧，缩成小方块，避免大图把表单撑高、压到下方区块 */
+.upload-row .setting-preview {
+  width: 46px;
+  height: 46px;
+  max-width: 46px;
+  max-height: 46px;
+  margin-top: 0;
+  border-radius: 13px;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: var(--raised-sm);
+}
+/* 壁纸：预览图在左，地址输入行在右，避免大图单独占一行把表单撑高 */
+.wallpaper-pick {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.wallpaper-pick .upload-row {
+  flex: 1;
+  min-width: 0;
+}
+.wallpaper-pick .setting-preview {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+/* 窄屏放不下一行时改为上下排列 */
+@media (max-width: 640px) {
+  .wallpaper-pick {
+    flex-wrap: wrap;
+  }
+}
 
 /* 单选组 */
 .radio-group {

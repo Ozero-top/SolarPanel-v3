@@ -11,4 +11,4 @@ data/
 # Go 构建
 *.test
 *.out
-vendor/
+/vendor/

@@ -1868,15 +1868,92 @@
   cursor: grabbing;
 }
 .group.sorting .card:hover {
-  transform: none; /* 拖拽时关闭上浮，避免抖动干扰 */
+  transform: none; /* 排序时关闭上浮，避免拖拽抖动 */
 }
-.group.sorting .card.dragging {
-  opacity: 0.35;
-  transform: scale(0.94) rotate(-1.2deg);
-  border-color: var(--accent);
-  box-shadow: 0 14px 28px rgba(0, 0, 0, .28), 0 0 0 2px var(--accent);
+/* 排序拖拽（SortableJS forceFallback）：
+   sort-ghost = 原位置的占位框，sort-drag = 跟随指针的克隆体 */
+.group.sorting .card.sort-chosen {
+  cursor: grabbing;
 }
-/* 排序模式提示文案 */
+/* 占位框：虚线 + 流动斜纹，暗示「松手就放这里」 */
+.group.sorting .card.sort-ghost {
+  opacity: .5;
+  border: 1px dashed var(--accent);
+  background-color: transparent;
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent 0 8px,
+    var(--accent-weak, rgba(92, 124, 250, .12)) 8px 16px
+  );
+  background-size: 28px 28px;
+  box-shadow: none;
+  transform: none;
+  animation: sortGhostFlow 1.1s linear infinite;
+}
+@keyframes sortGhostFlow {
+  from { background-position: 0 0; }
+  to { background-position: 28px 0; }
+}
+/* 其余卡片让位时轻微变淡，把注意力集中到被拖的卡片上 */
+.cards.sort-dragging .card:not(.sort-chosen):not(.sort-ghost) {
+  opacity: .78;
+  transition: opacity .18s ease;
+}
+/* 拖影克隆体被挂在 body 下（fallbackOnBody），不能用 .group.sorting 限定。
+   位置由 Sortable 的 inline transform 负责，倾斜/放大改用独立的 rotate/scale 属性叠加，
+   不会覆盖定位 transform；--sort-tilt 由 JS 按指针横向速度实时调整。 */
+.card.sort-drag {
+  opacity: .96;
+  rotate: var(--sort-tilt, 1.2deg);
+  scale: 1.045;
+  box-shadow: 0 22px 48px rgba(0, 0, 0, .32), 0 0 0 2px var(--accent);
+  cursor: grabbing;
+  pointer-events: none;
+  transition: none; /* 关闭过渡，保证拖影跟手不延迟 */
+  z-index: 99999;
+  animation: sortDragLift 160ms ease-out;
+}
+@keyframes sortDragLift {
+  from {
+    scale: 1;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, .18), 0 0 0 2px var(--accent);
+  }
+  to { scale: 1.045; }
+}
+/* 松手落位：一点回弹，手感更「实」 */
+.card.sort-settle {
+  animation: sortSettle 240ms cubic-bezier(.3, 1.25, .5, 1);
+}
+@keyframes sortSettle {
+  0% { scale: 1.05; }
+  55% { scale: .982; }
+  100% { scale: 1; }
+}
+/* 系统开启「减少动态效果」时退回静态表现 */
+@media (prefers-reduced-motion: reduce) {
+  .group.sorting .card.sort-ghost,
+  .card.sort-drag,
+  .card.sort-settle {
+    animation: none;
+  }
+}
+/* 排序模式提示文案：柠檬黄底胶囊，在壁纸上也清晰可见 */
+.sort-tip {
+  width: fit-content;
+  margin: 12px auto 0;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: #ffe94d;
+  color: #5a4a00;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .14);
+  animation: sortTipIn 200ms ease-out;
+}
+@keyframes sortTipIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
 .sort-hint {
   font-size: 12px;
   color: var(--accent);
@@ -1889,48 +1966,6 @@
 @keyframes sortHintPulse {
   0%, 100% { opacity: .65; }
   50% { opacity: 1; }
-}
-/* 落点指示：accent 内描边 + 左/右侧定位条 + 外发光 */
-.card.drag-over-before {
-  border-color: var(--accent);
-  box-shadow: var(--raised), inset 5px 0 0 var(--accent), 0 0 0 2px var(--accent);
-  transform: translateX(2px);
-}
-.card.drag-over-after {
-  border-color: var(--accent);
-  box-shadow: var(--raised), inset -5px 0 0 var(--accent), 0 0 0 2px var(--accent);
-  transform: translateX(-2px);
-}
-/* 排序模式：卡片区末尾常驻一条整行投放带，远处拖到最后一格时更容易命中 */
-.group.sorting .cards::after {
-  content: '拖到这里 = 放到最后';
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 56px;
-  user-select: none;
-  pointer-events: none;
-  border: 1px dashed var(--text-muted);
-  border-radius: 12px;
-  color: var(--text-muted);
-  font-size: 12px;
-  letter-spacing: .02em;
-  opacity: .42;
-  transition: opacity .18s ease, border-color .18s ease, background-color .18s ease, color .18s ease;
-}
-.group.sorting .cards.drag-over-end::after {
-  content: '松手放到最后';
-  opacity: 1;
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-weak, rgba(92, 124, 250, .12));
-}
-/* 拖到卡片区末尾：整块卡片容器虚线高亮，明确“追加到最后” */
-.cards.drag-over-end {
-  outline: 2px dashed var(--accent);
-  outline-offset: 6px;
-  border-radius: 12px;
 }
 
 @media (max-width: 640px) {

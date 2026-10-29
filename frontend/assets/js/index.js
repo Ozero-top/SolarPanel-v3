@@ -781,6 +781,14 @@ function renderGroupCard(container, g, styleApp, idx, skipIntro, isChild) {
   cards.appendChild(cardsFrag);
   section.appendChild(cards);
 
+  // 排序模式：卡片区下方居中的操作提示，避免拖到一半就松手
+  if (state.sortingGroupId === g.id) {
+    const tip = document.createElement('div');
+    tip.className = 'sort-tip';
+    tip.textContent = '拖拽卡片时切勿松开鼠标，拖到目标位置后再松手';
+    section.appendChild(tip);
+  }
+
   if (!(g.items || []).length) {
     const empty = document.createElement('div');
     empty.className = 'empty-tip';
@@ -907,6 +915,7 @@ function renderGroups() {
       state.groupIntroDone = true;
       state.cardsIntroDone = true;
       renderGroupNav();
+      syncCardSortable();  // 重绘后按排序状态重建拖拽实例
       return;
     }
     const entry = queue[qi];
@@ -1279,6 +1288,7 @@ function renderNavbarCardsOnly() {
   });
   state.groupIntroDone = true;
   state.cardsIntroDone = true;
+  syncCardSortable(); // 导航栏模式重绘后同样重建拖拽实例
 }
 
 /* ---------- 实时页面内搜索：两级分组 + 卡片级别 ---------- */
@@ -1846,10 +1856,10 @@ function bindSortMode() {
   document.getElementById('guardDiscardBtn').onclick = () => {
     const after = pendingSortLeave;
     closeGuard();
-    // 放弃：按 state 已保存数据重绘，还原脏顺序并退出排序
-    renderGroups();
+    // 放弃：先清排序状态再按 state 已保存数据重绘，还原脏顺序并退出排序
     state.sortingGroupId = null;
     state.sortDirty = false;
+    renderGroups();
     if (after) after();
   };
   document.getElementById('guardSaveBtn').onclick = async () => {
@@ -1867,150 +1877,97 @@ function bindSortMode() {
       b.disabled = false;
     }
   };
+}
 
-  // 卡片拖拽：事件委托挂 groupsWrap（重绘不丢绑定）；仅当前排序分组生效
-  const wrap = document.getElementById('groupsWrap');
-  let dragCard = null;
-  const clearDrag = () => {
-    wrap.querySelectorAll('.card.dragging, .card.drag-over-before, .card.drag-over-after')
-      .forEach(c => c.classList.remove('dragging', 'drag-over-before', 'drag-over-after'));
-    wrap.querySelectorAll('.cards.drag-over-end').forEach(c => c.classList.remove('drag-over-end'));
-    if (dragCard) { dragCard.draggable = false; dragCard = null; }
-  };
-  wrap.addEventListener('mousedown', e => {
-    if (state.sortingGroupId === null) return;
-    const card = e.target.closest('.card');
-    // 只允许拖拽当前排序分组内的卡片
-    if (card && card.closest('.group').id === 'group-' + state.sortingGroupId) card.draggable = true;
-  });
-  wrap.addEventListener('dragstart', e => {
-    if (state.sortingGroupId === null) return;
-    const card = e.target.closest('.card');
-    if (!card) { e.preventDefault(); return; }
-    dragCard = card;
-    requestAnimationFrame(() => card.classList.add('dragging'));
-    e.dataTransfer.effectAllowed = 'move';
-    try { e.dataTransfer.setData('text/plain', card.dataset.id || ''); } catch (_) { /* 兼容忽略 */ }
-  });
-  wrap.addEventListener('dragover', e => {
-    if (state.sortingGroupId === null || !dragCard) return;
-    const container = cardContainerOf(dragCard);
-    if (!container) return;
-    clearDropMarkers(wrap);
-    if (!isCardDropZone(container, e)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const ref = cardInsertRef(container, e.clientX, e.clientY, dragCard);
-    if (ref) {
-      ref.classList.add('drag-over-before');
-    } else {
-      const cards = Array.prototype.filter.call(container.querySelectorAll('.card'), c => c !== dragCard);
-      const last = cards[cards.length - 1];
-      if (last) last.classList.add('drag-over-after');
-      container.classList.add('drag-over-end'); // 末尾落点整块高亮
+// 卡片拖拽排序：SortableJS（forceFallback 模式）
+// forceFallback 让鼠标与触摸共用一套逻辑，避免原生 HTML5 拖放的固有问题：
+// 卡片内的 <a>/<img> 抢走拖拽、拖出容器就丢弃落点、手机端完全不触发 dragstart。
+// 顺序变化只标脏，仍由「保存排序」按钮提交。
+let cardSortable = null;
+let sortTiltCleanup = null; // 拖拽期间监听指针、实时调整拖影倾角
+
+function disposeCardSortable() {
+  if (!cardSortable) return;
+  cardSortable.destroy();
+  cardSortable = null;
+  if (sortTiltCleanup) sortTiltCleanup();
+}
+
+/** 拖拽手感：按指针横向速度实时调整拖影倾斜角（--sort-tilt），松手归零 */
+function bindSortTilt() {
+  if (sortTiltCleanup) sortTiltCleanup();
+  const root = document.documentElement;
+  let lastX = null;
+  let tilt = 1.2;
+  let raf = 0;
+  const onMove = (e) => {
+    const x = e.clientX;
+    if (lastX !== null) {
+      // 速度越大倾斜越明显，限制在 1.2°±2.4° 内，避免甩来甩去太夸张
+      const v = Math.max(-16, Math.min(16, x - lastX));
+      tilt += (1.2 + v * 0.15 - tilt) * 0.3;
+      if (!raf) {
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          root.style.setProperty('--sort-tilt', tilt.toFixed(2) + 'deg');
+        });
+      }
     }
-  });
-  wrap.addEventListener('drop', e => {
-    if (state.sortingGroupId === null || !dragCard) return;
-    const container = cardContainerOf(dragCard);
-    if (!container) { clearDrag(); return; }
-    // 指针在卡片区、本分组内或末尾热区都算有效，避免拖到最下方稍有滑出就丢弃
-    if (!isCardDropZone(container, e)) { clearDrag(); return; }
-    e.preventDefault();
-    const ref = cardInsertRef(container, e.clientX, e.clientY, dragCard);
-    const before = snapshotCards(container);
-    if (ref) container.insertBefore(dragCard, ref);
-    else container.appendChild(dragCard);
-    playCardReflow(before, container);
-    state.sortDirty = true;
-    updateSortSaveBtn();
-    clearDrag();
-  });
-  wrap.addEventListener('dragend', clearDrag);
+    lastX = x;
+  };
+  root.style.setProperty('--sort-tilt', '1.2deg');
+  document.addEventListener('pointermove', onMove, { passive: true });
+  sortTiltCleanup = () => {
+    document.removeEventListener('pointermove', onMove);
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+    root.style.removeProperty('--sort-tilt');
+    sortTiltCleanup = null;
+  };
 }
 
-/**
- * 网格落点计算：先找离指针最近的卡片作为参照，再判断插在其前还是其后。
- * 与逐张卡比较中心点相比，指针落在空白区（末行右侧、网格下方）时也能稳定命中末尾，
- * 避免「拖到最后一格旁就失效」。
- * 返回「应插到其前面」的卡片，返回 null 表示追加到容器末尾。
- */
-function cardInsertRef(container, x, y, ignore) {
-  const cards = Array.prototype.filter.call(container.querySelectorAll('.card'), c => c !== ignore);
-  if (!cards.length) return null;
-  let best = null;
-  let bestDist = Infinity;
-  for (const c of cards) {
-    const r = c.getBoundingClientRect();
-    const dx = x - (r.left + r.width / 2);
-    const dy = y - (r.top + r.height / 2);
-    const d = dx * dx + dy * dy;
-    if (d < bestDist) { bestDist = d; best = c; }
+/** 按当前排序状态启用 / 销毁拖拽；分组重绘会替换 DOM，必须重新创建实例 */
+function syncCardSortable() {
+  disposeCardSortable();
+  if (state.sortingGroupId === null) return;
+  if (typeof Sortable === 'undefined') {
+    console.warn('[sort] SortableJS 未加载，拖拽排序不可用');
+    return;
   }
-  if (!best) return null;
-  const r = best.getBoundingClientRect();
-  // 指针在卡片下半部（或整排下方）→ 排在其后；上半部 → 排在其前；中段按左右半区判定
-  let after;
-  if (y > r.top + r.height * 0.62) after = true;
-  else if (y < r.top + r.height * 0.38) after = false;
-  else after = x > r.left + r.width / 2;
-  if (!after) return best;
-  let next = best.nextElementSibling;
-  // 跳过非卡片节点与正在拖拽的卡本身，避免 ref 指向自身导致插入落空
-  while (next && (next === ignore || !next.classList.contains('card'))) next = next.nextElementSibling;
-  return next; // null = 已是最后一张，追加到末尾
-}
-
-/** 取卡片所在的 .cards 容器（拖拽只在本容器内排序） */
-function cardContainerOf(card) {
-  const p = card && card.parentElement;
-  return p && p.classList.contains('cards') ? p : null;
-}
-
-/**
- * 判断指针是否落在可接受的投放区域：
- * 1) 卡片区内部（含卡片间隙）；2) 本分组内的空白；3) 卡片区下方 64px 的「末尾热区」。
- * 末尾热区让拖到列表最底部时即使滑出容器一点点也不会丢落点；
- * 指针已移入其它分组时一律不接收，避免误插到别的分组。
- */
-function isCardDropZone(container, e) {
-  const ownSec = container.closest('.group');
-  const hoverSec = e.target && e.target.closest ? e.target.closest('.group') : null;
-  if (container.contains(e.target)) return true;
-  if (ownSec && hoverSec === ownSec) return true;
-  if (hoverSec && hoverSec !== ownSec) return false;
-  const r = container.getBoundingClientRect();
-  return e.clientX >= r.left - 16 && e.clientX <= r.right + 16
-    && e.clientY > r.bottom && e.clientY <= r.bottom + 64;
-}
-
-/** 清理拖拽落点提示 */
-function clearDropMarkers(root) {
-  root.querySelectorAll('.card.drag-over-before, .card.drag-over-after')
-    .forEach(c => c.classList.remove('drag-over-before', 'drag-over-after'));
-  root.querySelectorAll('.cards.drag-over-end').forEach(c => c.classList.remove('drag-over-end'));
-}
-
-/** 记录插入前各卡片位置（FLIP 动画用） */
-function snapshotCards(container) {
-  const map = new Map();
-  container.querySelectorAll('.card').forEach(c => map.set(c, c.getBoundingClientRect()));
-  return map;
-}
-
-/** 插入后按位置差播放位移动画，让顺序变化肉眼可见 */
-function playCardReflow(before, container) {
-  container.querySelectorAll('.card').forEach(c => {
-    const prev = before.get(c);
-    if (!prev || typeof c.animate !== 'function') return;
-    const now = c.getBoundingClientRect();
-    const dx = prev.left - now.left;
-    const dy = prev.top - now.top;
-    if (!dx && !dy) return;
-    c.animate(
-      [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
-      { duration: 240, easing: 'cubic-bezier(.2,.8,.2,1)' },
-    );
+  const sec = document.getElementById('group-' + state.sortingGroupId);
+  const cardsEl = sec && sec.querySelector('.cards');
+  if (!cardsEl) return;
+  cardSortable = Sortable.create(cardsEl, {
+    group: { name: 'group-' + state.sortingGroupId, pull: false, put: false }, // 只在本分组内排序
+    animation: 160,
+    forceFallback: true,   // 不用原生拖放：拖影统一、触摸可用
+    fallbackOnBody: true,
+    fallbackTolerance: 4,
+    delay: 120,            // 触摸长按 120ms 才开始拖，避免和页面滚动冲突
+    delayOnTouchOnly: true,
+    touchStartThreshold: 4,
+    ghostClass: 'sort-ghost',
+    chosenClass: 'sort-chosen',
+    dragClass: 'sort-drag',
+    scroll: true,          // 拖到视口边缘自动滚动
+    scrollSensitivity: 80,
+    scrollSpeed: 12,
+    bubbleScroll: true,
+    onStart: () => {
+      cardsEl.classList.add('sort-dragging'); // 其余卡片让位变淡
+      bindSortTilt();                        // 拖影随甩动倾向
+    },
+    onEnd: (evt) => {
+      cardsEl.classList.remove('sort-dragging');
+      if (sortTiltCleanup) sortTiltCleanup();
+      // 落位回弹：结束后移除类，避免动画残留
+      const el = evt.item;
+      el.classList.add('sort-settle');
+      clearTimeout(el._sortSettleTimer);
+      el._sortSettleTimer = setTimeout(() => el.classList.remove('sort-settle'), 260);
+      state.sortDirty = true;
+      updateSortSaveBtn();
+    },
   });
 }
 

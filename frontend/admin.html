@@ -7,7 +7,7 @@
   <title>管理后台 - SolarPanel</title>
   <link rel="icon" href="favicon.ico?v=1b5d8c6c" type="image/x-icon">
   <link rel="stylesheet" href="assets/css/common.css?v=14471429">
-  <link rel="stylesheet" href="assets/css/auth-admin.css?v=866bdbd3">
+  <link rel="stylesheet" href="assets/css/auth-admin.css?v=371dcea5">
   <link rel="stylesheet" href="assets/css/themes.css?v=921ca89b">
 </head>
 <body>
@@ -146,24 +146,26 @@
             <div class="form-item">
               <label>站点 Logo</label>
               <div class="upload-row">
+                <img class="setting-preview" id="p_site_logo" alt="">
                 <input class="input" id="s_site_logo" type="text" placeholder="图片地址，或点击上传">
                 <button class="btn" type="button" data-upload="s_site_logo">上传图片</button>
               </div>
-              <img class="setting-preview" id="p_site_logo" alt="">
             </div>
           </div>
 
           <h4 class="sub-group-title">📢 公告</h4>
-          <div class="form-item">
-            <label>公告开关（默认关闭）</label>
-            <select class="select" id="s_announcement_show">
-              <option value="0">关闭（不在主页显示）</option>
-              <option value="1">开启（主页顶栏显示公告）</option>
-            </select>
-          </div>
-          <div class="form-item">
-            <label>公告内容（需打开上方公告开关才会显示）</label>
-            <textarea class="textarea" id="s_announcement" maxlength="500"></textarea>
+          <div class="form-row">
+            <div class="form-item" style="flex:2">
+              <label>公告内容（需打开右侧公告开关才会显示）</label>
+              <textarea class="textarea" id="s_announcement" maxlength="500"></textarea>
+            </div>
+            <div class="form-item" style="flex:1">
+              <label>公告开关（默认关闭）</label>
+              <select class="select" id="s_announcement_show">
+                <option value="0">关闭（不在主页显示）</option>
+                <option value="1">开启（主页顶栏显示公告）</option>
+              </select>
+            </div>
           </div>
 
           <h4 class="sub-group-title">📋 备案信息</h4>
@@ -203,18 +205,22 @@
           </div>
 
           <h4 class="sub-group-title">🌐 内网 / 外网访问</h4>
-          <div class="form-item">
-            <label>卡片打开地址模式</label>
-            <select class="select" id="s_default_lan_mode">
-              <option value="auto">🌐 自动识别（默认，按当前访问网络自动切换）</option>
-              <option value="public">外网地址模式（始终打开卡片公网域名）</option>
-              <option value="lan">内网地址模式（始终打开卡片内网 IP）</option>
-            </select>
-            <div class="form-hint">每张卡片可单独填「内网地址」（编辑卡片 → 内网地址）。此设置决定点卡片时打开哪一个。</div>
+          <div class="form-row">
+            <div class="form-item">
+              <label>卡片打开地址模式</label>
+              <select class="select" id="s_default_lan_mode">
+                <option value="auto">🌐 自动识别（默认，按当前访问网络自动切换）</option>
+                <option value="public">外网地址模式（始终打开卡片公网域名）</option>
+                <option value="lan">内网地址模式（始终打开卡片内网 IP）</option>
+              </select>
+              <div class="form-hint">每张卡片可单独填「内网地址」（编辑卡片 → 内网地址）。此设置决定点卡片时打开哪一个。</div>
+            </div>
+            <div class="form-item">
+              <label>自动识别补充域名（Split DNS 场景）</label>
+              <input type="text" class="input" id="s_lan_hostnames" placeholder="如 home.local, nas, 192.168.1.10">
+            </div>
           </div>
           <div class="form-item">
-            <label>自动识别补充域名（Split DNS 场景）</label>
-            <input type="text" class="input" id="s_lan_hostnames" placeholder="如 home.local, nas, 192.168.1.10">
             <div class="form-hint">
               <strong>只有上面的「卡片打开地址模式」选「自动识别」时，这里才起作用</strong>；选外网 / 内网模式时填了也不生效。<br>
               系统怎么判断你在内网还是外网：看你<strong>打开这个导航页时地址栏里的域名</strong>。<br>
@@ -351,13 +357,15 @@
           <div class="subpane" data-pane="wallpaper" hidden>
           <div class="form-item">
             <label>主页壁纸（填写地址或点击「图库」选择，上传的壁纸自动进入图库）</label>
-            <div class="upload-row">
-              <input class="input" id="s_wallpaper" type="text" placeholder="壁纸地址，留空使用默认渐变背景">
-              <button class="btn" type="button" data-upload="s_wallpaper">上传壁纸</button>
-              <button class="btn" type="button" id="openGalleryBtn">🖼️ 图库</button>
-              <button class="btn btn-danger btn-sm" type="button" id="clearWallpaperBtn">清空</button>
+            <div class="wallpaper-pick">
+              <img class="setting-preview" id="p_wallpaper" alt="">
+              <div class="upload-row">
+                <input class="input" id="s_wallpaper" type="text" placeholder="壁纸地址，留空使用默认渐变背景">
+                <button class="btn" type="button" data-upload="s_wallpaper">上传壁纸</button>
+                <button class="btn" type="button" id="openGalleryBtn">🖼️ 图库</button>
+                <button class="btn btn-danger btn-sm" type="button" id="clearWallpaperBtn">清空</button>
+              </div>
             </div>
-            <img class="setting-preview" id="p_wallpaper" alt="">
           </div>
 
           <div class="form-row">
@@ -1344,7 +1352,7 @@
   </div>
 
   <script src="assets/js/qrcode.min.js"></script>
-  <script src="assets/js/api.js?v=43bdd043"></script>
+  <script src="assets/js/api.js?v=7cefcff1"></script>
   <script src="assets/js/admin.js?v=0b5f5fb2"></script>
 </body>
 </html>
