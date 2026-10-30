@@ -168,6 +168,70 @@ body::before {
 .shortcut-tip { margin: 6px 0 0; font-size: 11px; line-height: 1.55; color: var(--muted); }
 .shortcut-tip code { color: var(--text); background: rgba(79, 107, 237, 0.12); padding: 0 5px; border-radius: 5px; }
 
+/* ---------- 最近剪藏 / 搜索 ---------- */
+.lib { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.lib-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.lib-q {
+  width: 100%;
+  padding: 8px 11px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--text);
+  font: inherit;
+  outline: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+}
+.lib-q:focus { background: rgba(255, 255, 255, 0.86); box-shadow: 0 0 0 3px var(--accent-soft), var(--raised-sm); }
+.lib-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 168px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+.lib-item {
+  display: block;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--raised-sm);
+  transition: background-color 240ms var(--ease);
+}
+.lib-item:hover { background: var(--surface-2); }
+.lib-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lib-meta { display: flex; gap: 6px; align-items: center; margin-top: 2px; font-size: 11px; color: var(--muted); }
+.lib-empty { padding: 10px 0; font-size: 12px; color: var(--muted); text-align: center; }
+.btn.on { color: var(--accent); border-color: var(--accent-soft); background: var(--accent-soft); }
+
 /* ---------- 设置页（options.html 复用同一套变量） ---------- */
 h1 { font-size: 18px; margin: 0 0 4px; letter-spacing: -0.01em; }
 .sub { color: var(--muted); margin: 0 0 22px; font-size: 13px; }

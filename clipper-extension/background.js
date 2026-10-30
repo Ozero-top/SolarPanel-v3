@@ -155,6 +155,8 @@ async function saveClip(payload) {
     url: payload.url,
     title: payload.title || '',
     note: payload.note || '',
+    selection: payload.selection || '',
+    tags: Array.isArray(payload.tags) ? payload.tags : [],
     group_id: payload.group_id || cfg.defaultGroup || 0,
     capture: payload.capture || '',
     force: !!payload.force,
@@ -182,7 +184,7 @@ async function quickSave(tab, extra) {
   let title = (extra && extra.title) || (tab && tab.title) || '';
   if (!title && tabId) title = await pageTitle(tabId);
   try {
-    const res = await saveClip({ url, title, note: (extra && extra.note) || '', source: 'quick' });
+    const res = await saveClip({ url, title, note: (extra && extra.note) || '', selection: (extra && extra.selection) || '', source: 'quick' });
     if (res && res.queued) {
       badge('…', '#b45309');
       await toast(tabId, '网络不可用，已存入离线队列，恢复后自动补发', true);
@@ -214,7 +216,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === MENU_LINK) {
     await quickSave(tab, { url: info.linkUrl, title: '' });
   } else if (info.menuItemId === MENU_SELECTION) {
-    await quickSave(tab, { url: info.pageUrl || (tab && tab.url), note: info.selectionText || '' });
+    await quickSave(tab, { url: info.pageUrl || (tab && tab.url), selection: info.selectionText || '' });
   } else if (info.menuItemId === MENU_PAGE) {
     await quickSave(tab, { url: info.pageUrl || (tab && tab.url) });
   }

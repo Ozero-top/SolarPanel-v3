@@ -1,6 +1,6 @@
 // SolarPanel PWA Service Worker — 轻量缓存策略
-const CACHE_NAME = 'sp-cache-173420ed';
-const RUNTIME_CACHE = 'sp-runtime-173420ed';
+const CACHE_NAME = 'sp-cache-471ff482';
+const RUNTIME_CACHE = 'sp-runtime-471ff482';
 
 // 预缓存（安装时）
 const PRECACHE_URLS = [

@@ -35,8 +35,16 @@ async function init() {
     chrome.tabs.create({ url: String(cfg.serverUrl).replace(/\/+$/, '') + '/' });
   });
   if (cfg.serverUrl) {
-    $('openHome').href = String(cfg.serverUrl).replace(/\/+$/, '') + '/';
+    const base = String(cfg.serverUrl).replace(/\/+$/, '');
+    $('openHome').href = base + '/';
+    $('openClips').href = base + '/clips';
   }
+  $('openClips').addEventListener('click', (e) => {
+    if (!cfg.serverUrl) {
+      e.preventDefault();
+      chrome.runtime.openOptionsPage();
+    }
+  });
   if (!cfg.serverUrl || !cfg.token) {
     $('setupView').classList.remove('hidden');
     return;
@@ -91,16 +99,27 @@ async function init() {
     state.item = it;
     state.savedText = '已更新「' + (it.title || '已有卡片') + '」';
     $('dupBox').classList.add('hidden');
-    $('doneBox').classList.remove('hidden');
-    $('openPage').href = state.url;
     $('saveBtn').classList.add('hidden');
+    showDone(it);
+    refreshSavedState(it.id).catch(() => {});
     setStatus(state.savedText + '，正在重新截图…', 'ok');
     await runShot(state.savedText);
   });
   $('undoBtn').addEventListener('click', undo);
+  $('starBtn').addEventListener('click', toggleStar);
+  $('readBtn').addEventListener('click', toggleRead);
+  $('refetchBtn').addEventListener('click', refetchBody);
+  $('delSnapBtn').addEventListener('click', deleteSnapshot);
+
+  let libTimer = null;
+  $('libQ').addEventListener('input', () => {
+    clearTimeout(libTimer);
+    libTimer = setTimeout(() => loadLibrary($('libQ').value.trim()), 350);
+  });
 
   loadGroups();
   checkConnection();
+  loadLibrary('');
   chrome.runtime.sendMessage({ type: 'flush' }).catch(() => {});
 }
 
@@ -198,6 +217,7 @@ async function save(force) {
         note: $('fNote').value.trim(),
         group_id: parseInt($('fGroup').value || '0', 10),
         capture: $('fSnapshot').checked ? 'snapshot' : '',
+        tags: parseTags($('fTags').value),
         force: force,
         clientId: state.clientId,
       },
@@ -221,10 +241,11 @@ async function save(force) {
     state.item = res.item;
     const savedText = '已保存到「' + (res.group || '默认分组') + '」' + (res.snapshot ? '（含正文快照）' : '');
     setStatus(savedText, 'ok');
-    $('doneBox').classList.remove('hidden');
-    $('openPage').href = state.url;
+    showDone(res.item);
     $('saveBtn').classList.add('hidden');
     $('dupBox').classList.add('hidden');
+    refreshSavedState(res.item && res.item.id).catch(() => {});
+    loadLibrary($('libQ').value.trim());
 
     state.savedText = savedText;
     // 截图（整页 / 可视区）：失败不影响保存结果，可点「重试截图」
@@ -275,8 +296,184 @@ async function undo() {
     $('saveBtn').classList.remove('hidden');
     $('saveBtn').disabled = false;
     state.item = null;
+    loadLibrary($('libQ').value.trim());
   } catch (e) {
     setStatus('撤销失败：' + e.message, 'err');
     btn.disabled = false;
   }
+}
+
+/* ---------- 保存后：阅读页入口 / 收藏 / 已读 / 正文 / 快照 ---------- */
+
+function parseTags(s) {
+  return String(s || '')
+    .split(/[,，;；]/)
+    .map((t) => t.trim().replace(/^#/, ''))
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+function showDone(it) {
+  $('doneBox').classList.remove('hidden');
+  $('openPage').href = state.url;
+  const id = it && it.id;
+  $('openRead').classList.toggle('hidden', !id);
+  if (id) $('openRead').href = state.cfg.serverUrl + '/read/' + id;
+  setStar(it && it.starred);
+  setRead(it && it.read_at);
+  $('delSnapBtn').disabled = !(it && it.has_snapshot);
+}
+
+function setStar(on) {
+  $('starBtn').textContent = on ? '★ 已收藏' : '☆ 收藏';
+  $('starBtn').classList.toggle('on', !!on);
+}
+
+function setRead(on) {
+  $('readBtn').textContent = on ? '标记未读' : '标记已读';
+  $('readBtn').classList.toggle('on', !!on);
+}
+
+/** 拉取卡片最新状态（收藏 / 已读 / 是否有快照） */
+async function refreshSavedState(id) {
+  if (!id) return;
+  const d = await request('/api/v1/clips/' + id);
+  if (!d || !d.item) return;
+  state.item = Object.assign({}, state.item, d.item, {
+    starred: !!d.starred,
+    read_at: d.read_at || '',
+    has_snapshot: !!d.has_snapshot,
+  });
+  setStar(state.item.starred);
+  setRead(state.item.read_at);
+  $('delSnapBtn').disabled = !state.item.has_snapshot;
+}
+
+async function toggleStar() {
+  if (!state.item || !state.item.id) return;
+  const next = !state.item.starred;
+  $('starBtn').disabled = true;
+  try {
+    const r = await request('/api/v1/clips/' + state.item.id, 'PATCH', { starred: next });
+    state.item.starred = !!(r && r.starred);
+    setStar(state.item.starred);
+    setStatus(state.item.starred ? '已收藏' : '已取消收藏', 'ok');
+    loadLibrary($('libQ').value.trim());
+  } catch (e) {
+    setStatus('收藏失败：' + e.message, 'err');
+  } finally {
+    $('starBtn').disabled = false;
+  }
+}
+
+async function toggleRead() {
+  if (!state.item || !state.item.id) return;
+  const next = !state.item.read_at;
+  $('readBtn').disabled = true;
+  try {
+    const r = await request('/api/v1/clips/' + state.item.id, 'PATCH', { read: next });
+    state.item.read_at = (r && r.read_at) || '';
+    setRead(state.item.read_at);
+    setStatus(state.item.read_at ? '已标记为已读' : '已标记为未读', 'ok');
+    loadLibrary($('libQ').value.trim());
+  } catch (e) {
+    setStatus('更新已读状态失败：' + e.message, 'err');
+  } finally {
+    $('readBtn').disabled = false;
+  }
+}
+
+async function refetchBody() {
+  if (!state.item || !state.item.id) return;
+  $('refetchBtn').disabled = true;
+  setStatus('正在重新抓取正文…');
+  try {
+    const r = await request('/api/v1/clips/' + state.item.id + '/refetch', 'POST');
+    if (r && r.changed) {
+      setStatus('正文已更新（' + (r.word_count || 0) + ' 字）', 'ok');
+    } else if (r && r.message) {
+      setStatus('正文未变化：' + r.message, 'ok');
+    } else {
+      setStatus('正文已是最新', 'ok');
+    }
+    state.item.has_snapshot = true;
+    $('delSnapBtn').disabled = false;
+    loadLibrary($('libQ').value.trim());
+  } catch (e) {
+    setStatus('抓取失败：' + e.message, 'err');
+  } finally {
+    $('refetchBtn').disabled = false;
+  }
+}
+
+async function deleteSnapshot() {
+  if (!state.item || !state.item.id) return;
+  if (!state.item.has_snapshot) {
+    setStatus('该卡片没有正文快照', 'err');
+    return;
+  }
+  $('delSnapBtn').disabled = true;
+  try {
+    await request('/api/v1/clips/' + state.item.id + '/content', 'DELETE');
+    state.item.has_snapshot = false;
+    setStatus('正文快照已删除（卡片保留）', 'ok');
+    loadLibrary($('libQ').value.trim());
+  } catch (e) {
+    setStatus('删除失败：' + e.message, 'err');
+    $('delSnapBtn').disabled = false;
+  }
+}
+
+/* ---------- 最近剪藏 / 搜索 ---------- */
+
+async function loadLibrary(q) {
+  const base = state.cfg && state.cfg.serverUrl;
+  if (!base) return;
+  $('libAll').href = base + '/clips' + (q ? '?q=' + encodeURIComponent(q) : '');
+  try {
+    const params = new URLSearchParams({ sort: 'newest', limit: '8' });
+    if (q) params.set('q', q);
+    const d = await request('/api/v1/clips?' + params.toString());
+    renderLibrary((d && d.items) || [], q);
+  } catch (e) {
+    const list = $('libList');
+    list.textContent = '';
+    list.appendChild(libEmpty('加载失败：' + e.message));
+  }
+}
+
+function libEmpty(text) {
+  const li = document.createElement('li');
+  li.className = 'lib-empty';
+  li.textContent = text;
+  return li;
+}
+
+function renderLibrary(items, q) {
+  const list = $('libList');
+  list.textContent = '';
+  if (!items.length) {
+    list.appendChild(libEmpty(q ? '没有匹配「' + q + '」的剪藏' : '还没有剪藏，先保存一条试试'));
+    return;
+  }
+  items.forEach((it) => {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'lib-item';
+    const title = document.createElement('span');
+    title.className = 'lib-title';
+    title.textContent = (it.starred ? '★ ' : '') + (it.title || it.url || '未命名剪藏');
+    const meta = document.createElement('span');
+    meta.className = 'lib-meta';
+    meta.textContent = [it.group || '未分组', it.read_at ? '已读' : '未读', it.screenshot_path ? '有截图' : '']
+      .filter(Boolean).join(' · ');
+    btn.appendChild(title);
+    btn.appendChild(meta);
+    btn.addEventListener('click', () => {
+      chrome.tabs.create({ url: state.cfg.serverUrl + '/read/' + it.id });
+    });
+    li.appendChild(btn);
+    list.appendChild(li);
+  });
 }

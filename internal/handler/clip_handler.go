@@ -42,16 +42,17 @@ type clipPrincipal struct {
 }
 
 type clipInput struct {
-	URL       string `json:"url"`
-	Title     string `json:"title"`
-	Note      string `json:"note"`
-	GroupID   int    `json:"group_id"`
-	GroupName string `json:"group_name"`
-	Capture   string `json:"capture"`
-	Selection string `json:"selection"`
-	Force     bool   `json:"force"`
-	ClientID  string `json:"client_id"`
-	Source    string `json:"-"`
+	URL       string   `json:"url"`
+	Title     string   `json:"title"`
+	Note      string   `json:"note"`
+	GroupID   int      `json:"group_id"`
+	GroupName string   `json:"group_name"`
+	Capture   string   `json:"capture"`
+	Selection string   `json:"selection"`
+	Tags      []string `json:"tags"`
+	Force     bool     `json:"force"`
+	ClientID  string   `json:"client_id"`
+	Source    string   `json:"-"`
 }
 
 // clipResult 返回给客户端的剪藏结果
@@ -187,6 +188,7 @@ func (h *ClipHandler) createClip(w http.ResponseWriter, r *http.Request, p *clip
 			if c, err := loadClipContent(it.ID); err == nil && c.ContentMD != "" {
 				hasSnapshot = true
 			}
+			mergeClipTags(it.ID, in.Tags)
 			return &clipResult{Item: it, Group: group, Warnings: []string{}, Snapshot: hasSnapshot}, 0, "已保存"
 		}
 	}
@@ -220,6 +222,7 @@ func (h *ClipHandler) createClip(w http.ResponseWriter, r *http.Request, p *clip
 					snap = true
 				}
 			}
+			mergeClipTags(existing.ID, in.Tags)
 			auditClip(w, r, p, in.Source, "duplicate", existing.ID)
 			return &clipResult{Item: existing, Group: group, Duplicate: true, Warnings: snapWarn, Snapshot: snap}, 0, "该链接已存在"
 		}
@@ -238,6 +241,7 @@ func (h *ClipHandler) createClip(w http.ResponseWriter, r *http.Request, p *clip
 				group := ""
 				db.DB.QueryRow("SELECT title FROM item_groups WHERE id = ?", found.GroupID).Scan(&group)
 				db.DB.Exec("UPDATE items SET clip_source = ? WHERE id = ? AND clip_source = ''", clipSourceOf(in.Source), found.ID)
+				mergeClipTags(found.ID, in.Tags)
 				auditClip(w, r, p, in.Source, "duplicate", found.ID)
 				return &clipResult{Item: found, Group: group, Duplicate: true, Warnings: warnings, Snapshot: false}, 0, "该链接已存在"
 			}
@@ -266,6 +270,10 @@ func (h *ClipHandler) createClip(w http.ResponseWriter, r *http.Request, p *clip
 		title = "未命名剪藏"
 	}
 	note := trimRunes(strings.TrimSpace(in.Note), 500)
+	if note == "" {
+		// 未填备注时，把「选中文本」作为备注（右键保存选中内容的场景）
+		note = trimRunes(strings.TrimSpace(in.Selection), 500)
+	}
 	desc := note
 	if desc == "" {
 		desc = page.Desc
@@ -307,6 +315,7 @@ func (h *ClipHandler) createClip(w http.ResponseWriter, r *http.Request, p *clip
 		db.DB.Exec("INSERT OR REPLACE INTO clip_requests (token_id, client_id, item_id, created_at) VALUES (?,?,?,?)",
 			p.TokenID, trimRunes(in.ClientID, 64), item.ID, db.NowStr())
 	}
+	mergeClipTags(item.ID, in.Tags)
 
 	// P1 正文快照：按保存方式抓正文、写 clip_contents 并同步全文索引
 	snapshot := false
@@ -321,6 +330,14 @@ func (h *ClipHandler) createClip(w http.ResponseWriter, r *http.Request, p *clip
 	}
 	auditClip(w, r, p, in.Source, "success", item.ID)
 	return &clipResult{Item: item, Group: groupTitle, Warnings: warnings, Snapshot: snapshot}, 0, "已保存"
+}
+
+// mergeClipTags 追加标签：重复保存时不清空已有标签
+func mergeClipTags(itemID int, tags []string) {
+	if itemID <= 0 || len(tags) == 0 {
+		return
+	}
+	_ = setItemTags(itemID, append(loadItemTags(itemID), tags...))
 }
 
 // appendUnique 追加不重复的告警码

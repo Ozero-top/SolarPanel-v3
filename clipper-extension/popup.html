@@ -10,6 +10,7 @@
   <span class="brand">SolarPanel</span>
   <div class="head-nav">
     <a id="openHome" class="link" href="#" target="_blank" rel="noopener">打开主页</a>
+    <a id="openClips" class="link" href="#" target="_blank" rel="noopener">剪藏库</a>
     <a id="openOptions" class="link" href="options.html" target="_blank">设置</a>
   </div>
 </div>
@@ -35,6 +36,10 @@
     <span>备注（可选）</span>
     <textarea id="fNote" rows="2" maxlength="500"></textarea>
   </label>
+  <label class="field">
+    <span>标签（可选，逗号分隔）</span>
+    <input id="fTags" type="text" maxlength="200" placeholder="如：技术, 设计">
+  </label>
 
   <label class="check">
     <input id="fSnapshot" type="checkbox"> 同时保存正文快照
@@ -57,11 +62,29 @@
   <button id="saveBtn" class="btn" type="button">保存到 SolarPanel</button>
   <div id="doneBox" class="hidden">
     <div class="actions">
+      <a id="openRead" class="btn" href="#" target="_blank" rel="noopener">在剪藏库查看</a>
       <a id="openPage" class="btn ghost" href="#" target="_blank">打开原文</a>
+    </div>
+    <div class="actions">
+      <button id="starBtn" class="btn ghost" type="button">☆ 收藏</button>
+      <button id="readBtn" class="btn ghost" type="button">标记未读</button>
+      <button id="refetchBtn" class="btn ghost" type="button">重新抓取正文</button>
+      <button id="delSnapBtn" class="btn ghost" type="button">删除快照</button>
+    </div>
+    <div class="actions">
       <button id="retryShotBtn" class="btn ghost hidden" type="button">重试截图</button>
       <button id="undoBtn" class="btn ghost" type="button">撤销</button>
     </div>
   </div>
+
+  <section class="lib">
+    <div class="lib-head">
+      <span>最近剪藏</span>
+      <a id="libAll" class="link" href="#" target="_blank" rel="noopener">全部 →</a>
+    </div>
+    <input id="libQ" class="lib-q" type="search" placeholder="搜索剪藏（标题 / 正文 / 标签）">
+    <ul id="libList" class="lib-list"></ul>
+  </section>
 
   <div class="foot">
     <span title="可在 chrome://extensions/shortcuts 查看或修改">Alt+Shift+S 快速保存</span>
