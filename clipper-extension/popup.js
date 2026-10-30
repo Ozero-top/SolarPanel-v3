@@ -23,6 +23,18 @@ async function init() {
 
   const data = await chrome.storage.local.get('spClipConfig');
   const cfg = data.spClipConfig || {};
+  // 打开主页：跳到设置里填写的服务器地址；还没配置时改为打开设置页
+  $('openHome').addEventListener('click', (e) => {
+    e.preventDefault();
+    if (!cfg.serverUrl) {
+      chrome.runtime.openOptionsPage();
+      return;
+    }
+    chrome.tabs.create({ url: String(cfg.serverUrl).replace(/\/+$/, '') + '/' });
+  });
+  if (cfg.serverUrl) {
+    $('openHome').href = String(cfg.serverUrl).replace(/\/+$/, '') + '/';
+  }
   if (!cfg.serverUrl || !cfg.token) {
     $('setupView').classList.remove('hidden');
     return;
