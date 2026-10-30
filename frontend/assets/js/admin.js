@@ -1589,6 +1589,7 @@ function fillSettingsForm(s) {
     SP_CLOCK_FONTS.some(f => f.id === s.clock_font) ? s.clock_font : '';
   updateClockFontPreview();
   document.getElementById('s_news_show').value = s.news_show === '0' ? '0' : '1';
+  document.getElementById('s_news_auto_refresh').value = s.news_auto_refresh === '1' ? '1' : '0';
   loadNewsSourceRows(s.news_sources || '', s.news_order || '');
   document.getElementById('s_default_theme').value = ['light', 'dark', 'system'].includes(s.default_theme) ? s.default_theme : 'light';
   document.getElementById('s_theme_style').value = SP_STYLES.includes(s.theme_style) ? s.theme_style : 'liquid-glass';
@@ -2205,7 +2206,7 @@ const SETTING_SECTIONS = {
   theme:  { label: '外观与卡片', keys: ['default_theme', 'theme_style', 'card_style', 'card_opacity', 'content_maxwidth', 'content_pad_lr', 'content_pad_top', 'content_pad_bottom', 'page_font', 'clock_font', 'clock_show', 'weather_show', 'weather_city', 'wallpaper', 'mask_opacity', 'wallpaper_blur', 'wallpaper_source'] },
   search: { label: '导航与搜索', keys: ['search_bar_enabled', 'topbar_desktop_enabled', 'topbar_mobile_enabled', 'search_engines', 'search_default', 'search_width'] },
   access: { label: '访问控制', keys: ['guest_access_enabled', 'guest_password_hash'] },
-  news:   { label: '热点新闻', keys: ['news_show', 'news_sources', 'news_order'] },
+  news:   { label: '热点新闻', keys: ['news_show', 'news_auto_refresh', 'news_sources', 'news_order'] },
   nas:    { label: 'NAS 监控', keys: ['nas_show', 'nas_layout', 'nas_refresh', 'nas_guest', 'nas_disk_paths', 'nas_modal_alpha'] },
   clip:   { label: '剪藏与接入', keys: ['clip_enabled', 'clip_default_group', 'clip_default_capture'] },
 };
@@ -2542,7 +2543,8 @@ function bindBackup() {
       resetBtn.textContent = '恢复中…';
       try {
         const res = await API.post(API_BASE + 'backup.php?action=reset', {});
-        toast('已恢复初始状态：' + res.settings + ' 项默认设置、' + res.groups + ' 个示例分组、' + res.items + ' 张示例卡片，清除 ' + res.files_cleared + ' 个文件，页面即将刷新', 'success');
+        const info = res || {};
+        toast('已恢复初始状态：写入 ' + (info.settings || 0) + ' 项默认设置，清除 ' + (info.files_cleared || 0) + ' 个上传文件，页面即将刷新', 'success');
         setTimeout(() => location.reload(), 1200);
       } catch (err) {
         toast('恢复失败：' + err.message, 'error');

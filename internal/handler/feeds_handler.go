@@ -251,9 +251,23 @@ type newsItem struct {
 type cacheEntry struct {
 	items  []newsItem
 	expire time.Time
+	setAt  time.Time // 最近一次成功抓取时间（前端"x 分钟前更新"用）
 }
 
 var newsCache sync.Map
+
+// 单飞锁：同一数据源同一时刻只真正回源一次，
+// 避免"首屏 all"与"逐源刷新"同时打上游（这也是首屏慢和 429 的主因之一）
+var newsFetchLocks sync.Map
+
+func newsFetchLock(id string) *sync.Mutex {
+	if v, ok := newsFetchLocks.Load(id); ok {
+		return v.(*sync.Mutex)
+	}
+	m := &sync.Mutex{}
+	actual, _ := newsFetchLocks.LoadOrStore(id, m)
+	return actual.(*sync.Mutex)
+}
 
 func cacheGet(srcID string, ttl time.Duration) ([]newsItem, bool) {
 	v, ok := newsCache.Load(srcID)
@@ -262,14 +276,90 @@ func cacheGet(srcID string, ttl time.Duration) ([]newsItem, bool) {
 	}
 	e := v.(cacheEntry)
 	if time.Now().After(e.expire) {
-		newsCache.Delete(srcID)
 		return nil, false
 	}
 	return e.items, true
 }
 
+// cachePeek 取缓存快照（不判断是否过期）：
+// ok=true 表示曾有成功抓取，setAt 为写入时间；配合 stale-while-revalidate 先出内容再回源
+func cachePeek(srcID string) (items []newsItem, setAt time.Time, ok bool) {
+	v, ok := newsCache.Load(srcID)
+	if !ok {
+		return nil, time.Time{}, false
+	}
+	e := v.(cacheEntry)
+	return e.items, e.setAt, true
+}
+
+func cacheStore(srcID string, items []newsItem, ttl time.Duration, setAt time.Time) {
+	newsCache.Store(srcID, cacheEntry{items: items, expire: time.Now().Add(ttl), setAt: setAt})
+}
+
 func cacheSet(srcID string, items []newsItem, ttl time.Duration) {
-	newsCache.Store(srcID, cacheEntry{items: items, expire: time.Now().Add(ttl)})
+	at := time.Now()
+	cacheStore(srcID, items, ttl, at)
+	persistNewsCache(srcID, items, at.Unix())
+}
+
+// ---------- 缓存落盘：重启后首屏直接出上次快照，不必再冷启动 ----------
+
+var newsCacheTableOnce sync.Once
+
+func newsCacheTable() {
+	newsCacheTableOnce.Do(func() {
+		db.DB.Exec(`CREATE TABLE IF NOT EXISTS news_cache (
+			id TEXT PRIMARY KEY,
+			payload TEXT NOT NULL,
+			updated INTEGER NOT NULL
+		)`)
+	})
+}
+
+// persistNewsCache 异步写入快照（失败静默，纯加速手段，不影响功能）
+func persistNewsCache(id string, items []newsItem, updated int64) {
+	if len(items) == 0 {
+		return
+	}
+	payload, err := json.Marshal(items)
+	if err != nil {
+		return
+	}
+	go func() {
+		newsCacheTable()
+		db.DB.Exec(`INSERT INTO news_cache (id, payload, updated) VALUES (?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, updated=excluded.updated`,
+			id, string(payload), updated)
+	}()
+}
+
+var newsCacheLoadOnce sync.Once
+
+// loadNewsCacheRows 启动后首次访问时把落盘快照装回内存（过期但可先展示，由刷新流程更新）
+func loadNewsCacheRows() {
+	newsCacheLoadOnce.Do(func() {
+		newsCacheTable()
+		rows, err := db.DB.Query("SELECT id, payload, updated FROM news_cache")
+		if err != nil {
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id, payload string
+			var updated int64
+			if rows.Scan(&id, &payload, &updated) != nil {
+				continue
+			}
+			var items []newsItem
+			if json.Unmarshal([]byte(payload), &items) != nil {
+				continue
+			}
+			// 按该源自身的 TTL 计算剩余有效期：
+			// 重启前刚抓过的源仍然算新鲜（不会被首轮巡检无谓重抓），已过期的则立即触发刷新
+			at := time.Unix(updated, 0)
+			newsCache.Store(id, cacheEntry{items: items, expire: at.Add(ttlByID(id)), setAt: at})
+		}
+	})
 }
 
 func newsHTTP(method, u string, headers map[string]string, body []byte, timeout time.Duration) (int, []byte, error) {

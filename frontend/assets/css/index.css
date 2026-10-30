@@ -12,6 +12,18 @@
   --group-title-spacing: 0.2px;
 }
 
+/* ---------- 隐藏页面右侧纵向滚动条（滚轮/触控板/键盘滚动照常可用） ---------- */
+html {
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* 旧版 Edge/IE */
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none;                /* Chrome/Edge/Safari */
+}
+
 /* ---------- 背景（默认柔和渐变；设置壁纸后由 JS 叠加遮罩） ---------- */
 .bg-layer {
   position: fixed;
@@ -51,6 +63,10 @@
   border-radius: 999px;
   transition: transform 0.35s cubic-bezier(.4,0,.2,1), opacity 0.35s ease;
   will-change: transform;
+}
+/* 后端设置生效前先隐藏，避免进入页面瞬间闪现品牌与按钮 */
+html:not(.sp-topbar-ready) .topbar {
+  visibility: hidden;
 }
 /* 滚动向下隐藏（只有到顶部才恢复显示，向上滚不弹回） */
 .topbar.hidden-scroll {
@@ -427,9 +443,19 @@
   font-weight: 800;
   letter-spacing: 4px;
   font-variant-numeric: tabular-nums;
+  /* 用最宽的数字样本占位，锁定时钟宽度，避免秒数变化把右侧天气推来推去 */
+  display: inline-grid;
+  justify-items: center;
   line-height: 1.1;
   color: var(--text);
   text-shadow: 0 1px 0 var(--sh-light), 0 12px 28px var(--sh-dark);
+}
+.clock-time > span {
+  grid-area: 1 / 1;
+}
+.clock-ghost {
+  visibility: hidden;
+  pointer-events: none;
 }
 .clock-date {
   font-size: 16px;

@@ -33,6 +33,7 @@ func Defaults() map[string]string {
 		"news_show":              "1",
 		"news_sources":           "",
 		"news_order":             "",
+		"news_auto_refresh":      "0", // 后台定时刷新默认关闭，避免默认开启给上游/自身带来性能压力
 		"nas_show":               "0",
 		"nas_layout":             "right",
 		"nas_refresh":            "3",

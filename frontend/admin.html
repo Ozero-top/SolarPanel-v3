@@ -491,6 +491,14 @@
             </select>
             <div class="form-hint">关闭后主页「📰 热点新闻」入口和新闻视图均不显示，方便暂时停用热点功能。</div>
           </div>
+          <div class="form-item">
+            <label>后台自动刷新</label>
+            <select class="select" id="s_news_auto_refresh">
+              <option value="0">关闭（仅有人访问新闻视图时才更新）</option>
+              <option value="1">开启（按各源更新间隔在后台定时刷新）</option>
+            </select>
+            <div class="form-hint">关闭时后台不做定时抓取，数据只在有人打开新闻视图时按需更新，避免对上游站点和本机造成额外压力（默认关闭）。</div>
+          </div>
           <h4 class="sub-group-title">📊 数据源</h4>
           <div class="form-item">
             <label>数据源（勾选主页新闻视图展示的热榜；未勾选任何数据源时主页入口自动隐藏；拖动行首 ⠿ 或用「上移/下移」调整主页显示顺序，保存后生效）</label>
@@ -1352,7 +1360,7 @@
   </div>
 
   <script src="assets/js/qrcode.min.js"></script>
-  <script src="assets/js/api.js?v=e96b28b4"></script>
-  <script src="assets/js/admin.js?v=48db73c1"></script>
+  <script src="assets/js/api.js?v=a7952a5e"></script>
+  <script src="assets/js/admin.js?v=e500b961"></script>
 </body>
 </html>

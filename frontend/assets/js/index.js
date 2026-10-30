@@ -199,6 +199,13 @@ function initTopbarBySettings(settings) {
       bindTopbarAutoHide();
     }
   }
+
+  // 设置已应用：先关掉过渡再揭示顶栏，避免首帧出现收起/滑动动画
+  topbar.style.transition = 'none';
+  document.documentElement.classList.add('sp-topbar-ready');
+  requestAnimationFrame(() => {
+    topbar.style.transition = '';
+  });
 }
 
 function bindTopbarFab(topbar, fab) {
@@ -221,6 +228,8 @@ async function boot() {
   } catch (e) {
     document.getElementById('groupsWrap').innerHTML =
       '<div class="empty-tip glass">数据加载失败：' + esc(e.message) + '</div>';
+    // 设置拉取失败时不再等待，直接揭示顶栏，避免永久不可见
+    document.documentElement.classList.add('sp-topbar-ready');
     return;
   }
 
@@ -448,12 +457,13 @@ async function renderWeather(city, attempt) {
 /* ---------- 时钟 ---------- */
 function startClock() {
   const timeEl = document.getElementById('clockTime');
+  const timeCur = timeEl && (timeEl.querySelector('.clock-cur') || timeEl);
   const dateEl = document.getElementById('clockDate');
   const week = ['日', '一', '二', '三', '四', '五', '六'];
   const pad = n => String(n).padStart(2, '0');
   const tick = () => {
     const d = new Date();
-    timeEl.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    timeCur.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
     dateEl.textContent = d.getFullYear() + ' 年 ' + (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日 · 星期' + week[d.getDay()];
   };
   tick();
@@ -750,6 +760,9 @@ function renderSearch() {
   // 实时页面内搜索（debounce 200ms，避免每击键全量重绘）
   let _searchDebounce;
   input.addEventListener('input', () => {
+    // 新闻视图没有站内卡片可筛（热榜数据不受站内搜索影响），只保留「搜索」按钮 / 回车的搜索引擎搜索
+    const newsView = document.getElementById('newsView');
+    if (newsView && !newsView.hidden) return;
     const kw = input.value.trim();
     clearTimeout(_searchDebounce);
     _searchDebounce = setTimeout(() => {
@@ -2269,8 +2282,16 @@ async function loadNews() {
     (all.list || []).forEach(l => { newsState.list[l.id] = l; });
     renderNewsCards();
     newsState.loaded = true;
-    // 首屏缓存渲染后，逐源拉取最新数据（并发 3）
-    newsFetchQueue(newsState.sources.map(s => s.id), false);
+    // 首屏缓存渲染后，只补拉"没有内容或已过期"的源：
+    // 后端 all 已返回真实抓取时间，新鲜的源不再重复回源（旧实现每次都全量重拉 24 个源）
+    const secNow = Date.now() / 1000;
+    const staleIds = newsState.sources.filter(def => {
+      const rec = newsState.list[def.id];
+      if (!rec || !(rec.items || []).length) return true;
+      const ttl = Math.max(60, (def.interval || 600) * 0.9);
+      return (secNow - (rec.updated || 0)) >= ttl;
+    }).map(def => def.id);
+    if (staleIds.length) newsFetchQueue(staleIds, false);
   } catch (e) {
     view.innerHTML = '<div class="empty-tip glass">新闻加载失败：' + esc(e.message) + '</div>';
     newsState.sources = [];
@@ -2405,7 +2426,8 @@ function buildNewsItem(def, it, idx) {
   return li;
 }
 
-/** 并发上限 3 的拉取队列；latest=true 强制回源（卡片刷新按钮） */
+/** 并发上限 6 的拉取队列；latest=true 强制回源（卡片刷新按钮）
+ *  后端对同源做了单飞（singleflight），这里的请求会与 all 的后台刷新共享同一次抓取 */
 async function newsFetchQueue(ids, latest) {
   const queue = ids.slice();
   async function worker() {
@@ -2431,7 +2453,7 @@ async function newsFetchQueue(ids, latest) {
       }
     }
   }
-  await Promise.all([worker(), worker(), worker()]);
+  await Promise.all([worker(), worker(), worker(), worker(), worker(), worker()]);
 }
 
 /** 时间戳（毫秒）→ 中文相对时间 */

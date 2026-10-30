@@ -251,6 +251,8 @@ func main() {
 
 	// 后台图标预热（不阻塞启动）
 	handler.StartFaviconPrewarm(cfg)
+	// 后台定时刷新热点新闻（受后台「热点新闻 → 后台自动刷新」开关控制，默认关闭）
+	handler.StartNewsScheduler()
 
 	// ===== 限流中间件（chi 适配器）=====
 	rateLimitMW := func(endpoint string, max, windowSec int) func(http.Handler) http.Handler {
@@ -273,11 +275,13 @@ func main() {
 		api.Get("/install.php", installHandler.Status)
 		api.Post("/install.php", installHandler.Setup)
 		api.With(rateLimitMW("weather", 30, 60)).Get("/weather.php", weatherHandler.Get)
-		api.With(rateLimitMW("news", 30, 60)).Post("/news.php", newsHandler.Dispatch)
-		api.With(rateLimitMW("news", 30, 60)).Get("/news.php", newsHandler.Dispatch)
-		api.With(rateLimitMW("news", 30, 60)).Get("/news/meta", newsHandler.Sources)
-		api.With(rateLimitMW("news", 30, 60)).Get("/news/all", newsHandler.All)
-		api.With(rateLimitMW("news", 30, 60)).Get("/news/source", newsHandler.Source)
+		// 新闻：首屏 = 1 次 all + 每个过期源 1 次 source，24 个源一轮就接近旧上限 30，
+		// 稍有重试/切换视图就会 429；放宽到 120 次/分
+		api.With(rateLimitMW("news", 120, 60)).Post("/news.php", newsHandler.Dispatch)
+		api.With(rateLimitMW("news", 120, 60)).Get("/news.php", newsHandler.Dispatch)
+		api.With(rateLimitMW("news", 120, 60)).Get("/news/meta", newsHandler.Sources)
+		api.With(rateLimitMW("news", 120, 60)).Get("/news/all", newsHandler.All)
+		api.With(rateLimitMW("news", 120, 60)).Get("/news/source", newsHandler.Source)
 		api.With(rateLimitMW("wallpaper", 30, 60)).Post("/wallpaper.php", wallpaperHandler.Dispatch)
 		api.With(rateLimitMW("wallpaper", 30, 60)).Get("/wallpaper.php", wallpaperHandler.Dispatch)
 		// 面板轮询 + 详情弹窗 + 多标签页共享同一出口 IP，限流放宽到 240 次/分

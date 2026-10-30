@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"solarpanel/internal/db"
@@ -175,20 +176,161 @@ func fetchCustomFeed(feedURL string) []newsItem {
 	return parseRSS(body)
 }
 
-func getOrFetch(src newsSourceMeta) []newsItem {
+func newsTTL(src newsSourceMeta) time.Duration {
 	ttl := time.Duration(src.Interval) * time.Second
 	if ttl < 30*time.Second {
 		ttl = 5 * time.Minute
 	}
-	if items, ok := cacheGet(src.ID, ttl); ok {
-		return items
+	return ttl
+}
+
+// ttlByID 按 id 取该源的 TTL（落盘快照恢复时用它计算剩余有效期）
+func ttlByID(id string) time.Duration {
+	if strings.HasPrefix(id, "feed_") {
+		return 10 * time.Minute
+	}
+	for i := range allNewsSources {
+		if allNewsSources[i].ID == id {
+			return newsTTL(allNewsSources[i])
+		}
+	}
+	return 5 * time.Minute
+}
+
+func newsStatus(items []newsItem) string {
+	if len(items) == 0 {
+		return "empty"
+	}
+	return "success"
+}
+
+// fetchSource 单飞回源：同一数据源的并发请求只会真正抓取一次（force=卡片刷新按钮，跳过缓存）
+func fetchSource(src newsSourceMeta, force bool) []newsItem {
+	ttl := newsTTL(src)
+	mu := newsFetchLock(src.ID)
+	mu.Lock()
+	defer mu.Unlock()
+	if !force {
+		if items, ok := cacheGet(src.ID, ttl); ok {
+			return items
+		}
 	}
 	items := runFetch(src)
-	if items == nil {
-		items = []newsItem{}
+	if items != nil {
+		cacheSet(src.ID, items, ttl)
+		return items
 	}
-	cacheSet(src.ID, items, ttl)
-	return items
+	// 抓取失败：保留旧快照，只缩短有效期，避免偶发失败把已有内容清空
+	if old, at, ok := cachePeek(src.ID); ok && len(old) > 0 {
+		cacheStore(src.ID, old, 30*time.Second, at)
+		return old
+	}
+	cacheStore(src.ID, []newsItem{}, time.Minute, time.Now())
+	return []newsItem{}
+}
+
+// fetchCustomFeedCached 自定义 RSS 源的缓存包装（10 分钟 TTL）
+func fetchCustomFeedCached(id, feedURL string, force bool) []newsItem {
+	const ttl = 10 * time.Minute
+	mu := newsFetchLock(id)
+	mu.Lock()
+	defer mu.Unlock()
+	if !force {
+		if items, ok := cacheGet(id, ttl); ok {
+			return items
+		}
+	}
+	items := fetchCustomFeed(feedURL)
+	if items != nil {
+		cacheSet(id, items, ttl)
+		return items
+	}
+	if old, at, ok := cachePeek(id); ok && len(old) > 0 {
+		cacheStore(id, old, 30*time.Second, at)
+		return old
+	}
+	cacheStore(id, []newsItem{}, time.Minute, time.Now())
+	return []newsItem{}
+}
+
+// newsSchedulerInterval 定时巡检间隔；每次巡检只刷新"已过各自 TTL"的源，
+// 所以实际更新频率仍是各源自己的 Interval（5/10/15/30/60 分钟）
+const newsSchedulerInterval = 60 * time.Second
+
+var newsSchedulerOnce sync.Once
+
+// StartNewsScheduler 启动后台定时刷新：开启 news_auto_refresh 后，
+// 即使无人访问页面，数据也会按各源 TTL 自动更新；开关默认关闭，此时后台不产生任何抓取。
+func StartNewsScheduler() {
+	newsSchedulerOnce.Do(func() {
+		go func() {
+			time.Sleep(3 * time.Second) // 等 DB / 路由就绪
+			loadNewsCacheRows()         // 先把上次落盘快照装回内存
+			for {
+				refreshStaleNewsOnce()
+				time.Sleep(newsSchedulerInterval)
+			}
+		}()
+	})
+}
+
+// refreshStaleNewsOnce 单次巡检：把过期（或从未抓过）的源并发刷新一遍
+func refreshStaleNewsOnce() {
+	// 后台自动刷新开关（news_auto_refresh，默认 "0" 关闭）：
+	// 关闭时后台完全不回源，只保留"有人打开新闻视图时按需刷新"的路径
+	if getNewsSetting("news_auto_refresh") != "1" {
+		return
+	}
+	enabled, ids, order := newsEnabledSetting()
+	if !enabled {
+		return
+	}
+	ordered := orderedSources(ids, order)
+	sem := make(chan struct{}, 4) // 巡检并发上限，避免瞬间打满上游
+	var wg sync.WaitGroup
+	cnt := 0
+
+	run := func(fn func()) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			fn()
+		}()
+	}
+
+	for _, src := range ordered {
+		if _, ok := cacheGet(src.ID, newsTTL(src)); ok {
+			continue // 仍在 TTL 内，跳过
+		}
+		run(func() { fetchSource(src, false) })
+		cnt++
+	}
+
+	// 自定义 RSS 源同样按 10 分钟 TTL 巡检（启用/停用实时生效）
+	rows, err := db.DB.Query("SELECT id, url FROM custom_feeds WHERE enabled=1")
+	if err == nil {
+		for rows.Next() {
+			var id int
+			var u string
+			if rows.Scan(&id, &u) != nil || u == "" {
+				continue
+			}
+			sid := "feed_" + strconv.Itoa(id)
+			if _, ok := cacheGet(sid, 10*time.Minute); ok {
+				continue
+			}
+			run(func() { fetchCustomFeedCached(sid, u, false) })
+			cnt++
+		}
+		rows.Close()
+	}
+
+	wg.Wait()
+	if cnt > 0 {
+		log.Printf("[news] 定时刷新完成：%d 个过期源已更新", cnt)
+	}
 }
 
 func getNewsSetting(key string) string { return db.GetSetting(key) }
@@ -303,6 +445,23 @@ func (h *NewsHandler) Source(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	latest := r.URL.Query().Get("latest") == "1"
 
+	// 自定义 RSS 源：id 形如 feed_<id>，按需查 URL 后走带缓存的抓取
+	if strings.HasPrefix(id, "feed_") {
+		var feedURL string
+		if e := db.DB.QueryRow("SELECT url FROM custom_feeds WHERE enabled=1 AND id=?",
+			strings.TrimPrefix(id, "feed_")).Scan(&feedURL); e != nil || feedURL == "" {
+			Fail(w, "未知数据源")
+			return
+		}
+		items := fetchCustomFeedCached(id, feedURL, latest)
+		updated := time.Now().Unix()
+		if _, at, ok := cachePeek(id); ok {
+			updated = at.Unix()
+		}
+		OK(w, map[string]any{"id": id, "status": newsStatus(items), "updated": updated, "items": items})
+		return
+	}
+
 	var target *newsSourceMeta
 	for i := range allNewsSources {
 		if allNewsSources[i].ID == id {
@@ -314,17 +473,12 @@ func (h *NewsHandler) Source(w http.ResponseWriter, r *http.Request) {
 		Fail(w, "未知数据源")
 		return
 	}
-	if latest {
-		newsCache.Delete(id)
+	items := fetchSource(*target, latest)
+	updated := time.Now().Unix()
+	if _, at, ok := cachePeek(id); ok {
+		updated = at.Unix()  // 返回真实抓取时间，前端据此判断是否需要刷新
 	}
-	items := getOrFetch(*target)
-	now := time.Now().Unix()
-	status := "success"
-	if items == nil || len(items) == 0 {
-		status = "error"
-		items = []newsItem{}
-	}
-	OK(w, map[string]any{"id": target.ID, "status": status, "updated": now, "items": items})
+	OK(w, map[string]any{"id": target.ID, "status": newsStatus(items), "updated": updated, "items": items})
 }
 
 func (h *NewsHandler) All(w http.ResponseWriter, r *http.Request) {
@@ -333,21 +487,59 @@ func (h *NewsHandler) All(w http.ResponseWriter, r *http.Request) {
 		OK(w, map[string]any{"enabled": false, "sources": []newsSourcePublic{}, "list": []map[string]any{}})
 		return
 	}
+	// 重启后首次访问：先把落盘快照装回内存，首屏直接有内容（过期由后台刷新）
+	loadNewsCacheRows()
+
 	ordered := orderedSources(ids, order)
-	publics := make([]newsSourcePublic, 0, len(ordered))
+	publics := make([]newsSourcePublic, 0, len(ordered)+4)
 	for _, src := range ordered {
 		publics = append(publics, sourceToPublic(src))
 	}
-	var list []map[string]any
-	now := time.Now().Unix()
-	for _, src := range ordered {
-		items := getOrFetch(src)
-		status := "success"
-		if items == nil || len(items) == 0 {
-			status = "empty"
-			items = []newsItem{}
+
+	// stale-while-revalidate 的槽位：本次响应只读缓存（含过期快照），
+	// 缺失/过期的源在后台并发刷新，前端拿到响应后按"过期源"逐卡补齐
+	type slot struct {
+		mu      sync.Mutex
+		items   []newsItem
+		updated int64
+		status  string
+	}
+	idsList := make([]string, 0, len(ordered)+4)
+	slots := make([]*slot, 0, len(ordered)+4)
+	sem := make(chan struct{}, 8) // 后台并发抓取上限，避免一次性打满上游
+
+	fillFromCache := func(id string, freshFor time.Duration) (*slot, bool) {
+		sl := &slot{status: "loading"}
+		if items, at, ok := cachePeek(id); ok {
+			sl.items = items
+			sl.updated = at.Unix()
+			sl.status = newsStatus(items)
+			if time.Since(at) < freshFor {
+				return sl, true // 仍然新鲜，不需要回源
+			}
 		}
-		list = append(list, map[string]any{"id": src.ID, "status": status, "updated": now, "items": items})
+		return sl, false
+	}
+
+	for _, src := range ordered {
+		sl, fresh := fillFromCache(src.ID, newsTTL(src))
+		idsList = append(idsList, src.ID)
+		slots = append(slots, sl)
+		if fresh {
+			continue
+		}
+		go func(src newsSourceMeta, sl *slot) {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			items := fetchSource(src, false)
+			sl.mu.Lock()
+			sl.items = items
+			if _, at, ok := cachePeek(src.ID); ok {
+				sl.updated = at.Unix()
+			}
+			sl.status = newsStatus(items)
+			sl.mu.Unlock()
+		}(src, sl)
 	}
 
 	var customFeeds []CustomFeedRow
@@ -364,13 +556,36 @@ func (h *NewsHandler) All(w http.ResponseWriter, r *http.Request) {
 	for _, cf := range customFeeds {
 		srcID := "feed_" + strconv.Itoa(cf.ID)
 		publics = append(publics, newsSourcePublic{ID: srcID, Name: cf.Title, Color: "#3498db", Type: "custom_rss", Home: cf.URL, Logo: "", Interval: 600})
-		items := fetchCustomFeed(cf.URL)
-		status := "success"
-		if items == nil || len(items) == 0 {
-			status = "empty"
+		sl, fresh := fillFromCache(srcID, 10*time.Minute)
+		idsList = append(idsList, srcID)
+		slots = append(slots, sl)
+		if fresh {
+			continue
+		}
+		go func(cf CustomFeedRow, srcID string, sl *slot) {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			items := fetchCustomFeedCached(srcID, cf.URL, false)
+			sl.mu.Lock()
+			sl.items = items
+			if _, at, ok := cachePeek(srcID); ok {
+				sl.updated = at.Unix()
+			}
+			sl.status = newsStatus(items)
+			sl.mu.Unlock()
+		}(cf, srcID, sl)
+	}
+
+	list := make([]map[string]any, 0, len(slots))
+	for i, id := range idsList {
+		sl := slots[i]
+		sl.mu.Lock()
+		items := sl.items
+		if items == nil {
 			items = []newsItem{}
 		}
-		list = append(list, map[string]any{"id": srcID, "status": status, "updated": now, "items": items})
+		list = append(list, map[string]any{"id": id, "status": sl.status, "updated": sl.updated, "items": items})
+		sl.mu.Unlock()
 	}
 	OK(w, map[string]any{"enabled": true, "sources": publics, "list": list})
 }

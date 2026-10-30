@@ -684,21 +684,25 @@ func (h *BackupHandler) Reset(w http.ResponseWriter, r *http.Request) {
 		tx.Exec("INSERT INTO settings (config_name, config_value) VALUES (?, ?)", k, v)
 	}
 
-	if err := tx.Commit().Error; err != nil {
+	if err := tx.Commit(); err != nil {
 		Err(w, http.StatusInternalServerError, 1, "重置失败")
 		return
 	}
 
-	h.clearUploadDirPreserveWeather()
+	filesCleared := h.clearUploadDirPreserveWeather()
 	db.RebuildClipFTS()
-	OK(w, nil)
+	OK(w, map[string]any{
+		"settings":      len(defaults),
+		"files_cleared": filesCleared,
+	})
 }
 
-func (h *BackupHandler) clearUploadDirPreserveWeather() {
+func (h *BackupHandler) clearUploadDirPreserveWeather() int {
+	cleared := 0
 	entries, err := os.ReadDir(h.cfg.UploadDir)
 	if err != nil {
 		log.Printf("[backup] 读取上传目录失败: %v", err)
-		return
+		return 0
 	}
 	for _, e := range entries {
 		if e.Name() == "weather" {
@@ -707,8 +711,11 @@ func (h *BackupHandler) clearUploadDirPreserveWeather() {
 		fullPath := filepath.Join(h.cfg.UploadDir, e.Name())
 		if err := os.RemoveAll(fullPath); err != nil {
 			log.Printf("[backup] 删除 %s 失败: %v", fullPath, err)
+			continue
 		}
+		cleared++
 	}
+	return cleared
 }
 
 /* ================= 服务端备份（自动 / 手动） ================= */
