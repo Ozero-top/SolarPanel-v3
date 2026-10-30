@@ -22,9 +22,9 @@
 }
 * { box-sizing: border-box; }
 body {
-  width: 340px;
+  width: 380px;
   margin: 0;
-  padding: 14px;
+  padding: 12px;
   background: var(--bg-grad);
   background-attachment: fixed;
   color: var(--text);
@@ -73,13 +73,42 @@ body::before {
 .link:hover { color: var(--accent); background: var(--surface-2); }
 .hint { color: var(--muted); margin: 8px 0 12px; }
 
-.field { display: block; margin-bottom: 10px; }
-.field > span { display: block; font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 5px; }
-.field input, .field select, .field textarea, .row input, .row select {
-  width: 100%;
-  padding: 9px 11px;
+/* 顶部页签：保存 / 最近剪藏，两个视图都能完整显示、无需滚动 */
+.tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  margin-bottom: 10px;
   border: 1px solid var(--border);
   border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--raised-sm);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+}
+.tab {
+  padding: 6px 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 240ms var(--ease), color 240ms var(--ease);
+}
+.tab:hover { color: var(--accent); }
+.tab.active { background: var(--accent-soft); color: var(--accent); }
+
+.field { display: block; margin-bottom: 8px; }
+.field > span { display: block; font-size: 11.5px; font-weight: 500; color: var(--text-secondary); margin-bottom: 4px; }
+.field input, .field select, .field textarea, .row input, .row select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
   background: rgba(255, 255, 255, 0.62);
   color: var(--text);
   font: inherit;
@@ -89,7 +118,10 @@ body::before {
   -webkit-backdrop-filter: blur(16px) saturate(160%);
   transition: background-color 240ms var(--ease), box-shadow 240ms var(--ease);
 }
-.field textarea { resize: vertical; min-height: 52px; }
+.field textarea { resize: vertical; min-height: 46px; }
+/* 两列紧凑排版：分组 + 截图方式、备注 + 标签 */
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.field-row .field { margin-bottom: 0; }
 .field input:focus, .field select:focus, .field textarea:focus,
 .row input:focus, .row select:focus {
   border-color: var(--border);
@@ -104,7 +136,7 @@ body::before {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin: -2px 0 10px;
+  margin: -2px 0 8px;
 }
 .btn {
   display: block;
@@ -164,12 +196,17 @@ body::before {
 }
 .alert button { border: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; padding: 0; }
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
-.foot { display: flex; justify-content: space-between; margin-top: 10px; font-size: 11px; color: var(--muted); }
-.shortcut-tip { margin: 6px 0 0; font-size: 11px; line-height: 1.55; color: var(--muted); }
+.foot { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: var(--muted); }
+.shortcut-tip { margin: 4px 0 0; font-size: 11px; line-height: 1.55; color: var(--muted); }
+.shortcut-tip > summary { cursor: pointer; list-style: none; }
+.shortcut-tip > summary::-webkit-details-marker { display: none; }
+.shortcut-tip > summary::before { content: '▸ '; color: var(--accent); }
+.shortcut-tip[open] > summary::before { content: '▾ '; }
+.shortcut-tip p { margin: 4px 0 0; }
 .shortcut-tip code { color: var(--text); background: rgba(79, 107, 237, 0.12); padding: 0 5px; border-radius: 5px; }
 
 /* ---------- 最近剪藏 / 搜索 ---------- */
-.lib { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.lib { margin: 0; padding: 0; }
 .lib-head {
   display: flex;
   justify-content: space-between;
@@ -181,8 +218,8 @@ body::before {
 }
 .lib-q {
   width: 100%;
-  padding: 8px 11px;
-  margin-bottom: 8px;
+  padding: 7px 10px;
+  margin-bottom: 6px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.62);
@@ -199,15 +236,15 @@ body::before {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 168px;
+  max-height: none;
   margin: 0;
   padding: 0;
-  overflow-y: auto;
+  overflow: visible;
 }
 .lib-item {
   display: block;
   width: 100%;
-  padding: 7px 9px;
+  padding: 5px 8px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface);
@@ -221,15 +258,15 @@ body::before {
 .lib-item:hover { background: var(--surface-2); }
 .lib-title {
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   font-size: 12px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.lib-meta { display: flex; gap: 6px; align-items: center; margin-top: 2px; font-size: 11px; color: var(--muted); }
-.lib-empty { padding: 10px 0; font-size: 12px; color: var(--muted); text-align: center; }
+.lib-meta { display: flex; gap: 6px; align-items: center; margin-top: 1px; font-size: 10.5px; color: var(--muted); }
+.lib-empty { padding: 8px 0; font-size: 12px; color: var(--muted); text-align: center; }
 .btn.on { color: var(--accent); border-color: var(--accent-soft); background: var(--accent-soft); }
 
 /* ---------- 设置页（options.html 复用同一套变量） ---------- */

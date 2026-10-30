@@ -21,76 +21,93 @@
 </div>
 
 <div id="mainView" class="hidden">
-  <div id="statusBar" class="status"></div>
-
-  <label class="field">
-    <span>标题</span>
-    <input id="fTitle" type="text" maxlength="200">
-  </label>
-  <div class="url" id="fUrl"></div>
-  <label class="field">
-    <span>分组</span>
-    <select id="fGroup"></select>
-  </label>
-  <label class="field">
-    <span>备注（可选）</span>
-    <textarea id="fNote" rows="2" maxlength="500"></textarea>
-  </label>
-  <label class="field">
-    <span>标签（可选，逗号分隔）</span>
-    <input id="fTags" type="text" maxlength="200" placeholder="如：技术, 设计">
-  </label>
-
-  <label class="check">
-    <input id="fSnapshot" type="checkbox"> 同时保存正文快照
-  </label>
-  <label class="field">
-    <span>截图方式</span>
-    <select id="fShotMode">
-      <option value="full">整页截图（滚动拼接）</option>
-      <option value="viewport">仅当前可视区</option>
-      <option value="none">不截图</option>
-    </select>
-  </label>
-
-  <div id="dupBox" class="alert hidden">
-    该链接已存在。
-    <button id="updateShotBtn" type="button">更新已有卡片截图</button>
-    <button id="forceBtn" type="button">仍要另存</button>
+  <div class="tabs" role="tablist">
+    <button id="tabBtnSave" class="tab active" type="button" role="tab">保存当前页</button>
+    <button id="tabBtnLib" class="tab" type="button" role="tab">最近剪藏</button>
   </div>
 
-  <button id="saveBtn" class="btn" type="button">保存到 SolarPanel</button>
-  <div id="doneBox" class="hidden">
-    <div class="actions">
-      <a id="openRead" class="btn" href="#" target="_blank" rel="noopener">在剪藏库查看</a>
-      <a id="openPage" class="btn ghost" href="#" target="_blank">打开原文</a>
+  <div id="tabSave" class="tab-pane">
+    <div id="statusBar" class="status"></div>
+
+    <div id="formFields">
+      <label class="field">
+        <span>标题</span>
+        <input id="fTitle" type="text" maxlength="200">
+      </label>
+      <div class="url" id="fUrl"></div>
+      <div class="field-row">
+        <label class="field">
+          <span>分组</span>
+          <select id="fGroup"></select>
+        </label>
+        <label class="field">
+          <span>截图方式</span>
+          <select id="fShotMode">
+            <option value="full">整页（滚动拼接）</option>
+            <option value="viewport">仅可视区</option>
+            <option value="none">不截图</option>
+          </select>
+        </label>
+      </div>
+      <div class="field-row">
+        <label class="field">
+          <span>备注（可选）</span>
+          <textarea id="fNote" rows="2" maxlength="500"></textarea>
+        </label>
+        <label class="field">
+          <span>标签（可选）</span>
+          <input id="fTags" type="text" maxlength="200" placeholder="技术, 设计">
+        </label>
+      </div>
+      <label class="check">
+        <input id="fSnapshot" type="checkbox"> 同时保存正文快照
+      </label>
     </div>
-    <div class="actions">
-      <button id="starBtn" class="btn ghost" type="button">☆ 收藏</button>
-      <button id="readBtn" class="btn ghost" type="button">标记未读</button>
-      <button id="refetchBtn" class="btn ghost" type="button">重新抓取正文</button>
-      <button id="delSnapBtn" class="btn ghost" type="button">删除快照</button>
+
+    <div id="dupBox" class="alert hidden">
+      该链接已存在。
+      <button id="updateShotBtn" type="button">更新已有卡片截图</button>
+      <button id="forceBtn" type="button">仍要另存</button>
     </div>
-    <div class="actions">
-      <button id="retryShotBtn" class="btn ghost hidden" type="button">重试截图</button>
-      <button id="undoBtn" class="btn ghost" type="button">撤销</button>
+
+    <button id="saveBtn" class="btn" type="button">保存到 SolarPanel</button>
+    <div id="doneBox" class="hidden">
+      <div class="actions">
+        <a id="openRead" class="btn" href="#" target="_blank" rel="noopener">在剪藏库查看</a>
+        <a id="openPage" class="btn ghost" href="#" target="_blank">打开原文</a>
+      </div>
+      <div class="actions">
+        <button id="starBtn" class="btn ghost" type="button">☆ 收藏</button>
+        <button id="readBtn" class="btn ghost" type="button">标记未读</button>
+        <button id="refetchBtn" class="btn ghost" type="button">重新抓取正文</button>
+        <button id="delSnapBtn" class="btn ghost" type="button">删除快照</button>
+      </div>
+      <div class="actions">
+        <button id="retryShotBtn" class="btn ghost hidden" type="button">重试截图</button>
+        <button id="undoBtn" class="btn ghost" type="button">撤销</button>
+      </div>
     </div>
   </div>
 
-  <section class="lib">
-    <div class="lib-head">
-      <span>最近剪藏</span>
-      <a id="libAll" class="link" href="#" target="_blank" rel="noopener">全部 →</a>
-    </div>
-    <input id="libQ" class="lib-q" type="search" placeholder="搜索剪藏（标题 / 正文 / 标签）">
-    <ul id="libList" class="lib-list"></ul>
-  </section>
+  <div id="tabLib" class="tab-pane hidden">
+    <section class="lib">
+      <div class="lib-head">
+        <span>最近剪藏</span>
+        <a id="libAll" class="link" href="#" target="_blank" rel="noopener">全部 →</a>
+      </div>
+      <input id="libQ" class="lib-q" type="search" placeholder="搜索剪藏（标题 / 正文 / 标签）">
+      <ul id="libList" class="lib-list"></ul>
+    </section>
+  </div>
 
   <div class="foot">
     <span title="可在 chrome://extensions/shortcuts 查看或修改">Alt+Shift+S 快速保存</span>
     <span id="ver"></span>
   </div>
-  <p class="shortcut-tip">快捷键无响应或与输入法冲突（如 Alt+Shift 切换语言）时，可在「设置 → 快捷键」改绑，例如 <code>Ctrl+Shift+Y</code>。</p>
+  <details class="shortcut-tip">
+    <summary>快捷键无响应？</summary>
+    <p>与输入法冲突（如 Alt+Shift 切换语言）时，可在「设置 → 快捷键」改绑，例如 <code>Ctrl+Shift+Y</code>。</p>
+  </details>
 </div>
 
 <script src="popup.js"></script>

@@ -45,6 +45,11 @@ async function init() {
       chrome.runtime.openOptionsPage();
     }
   });
+  $('tabBtnSave').addEventListener('click', () => switchTab('save'));
+  $('tabBtnLib').addEventListener('click', () => {
+    switchTab('lib');
+    loadLibrary($('libQ').value.trim());
+  });
   if (!cfg.serverUrl || !cfg.token) {
     $('setupView').classList.remove('hidden');
     return;
@@ -292,6 +297,7 @@ async function undo() {
     await request('/api/v1/clips', 'DELETE', { id: state.item.id });
     setStatus('已撤销，卡片已删除', 'ok');
     $('doneBox').classList.add('hidden');
+    $('formFields').classList.remove('hidden');
     $('retryShotBtn').classList.add('hidden');
     $('saveBtn').classList.remove('hidden');
     $('saveBtn').disabled = false;
@@ -305,6 +311,15 @@ async function undo() {
 
 /* ---------- 保存后：阅读页入口 / 收藏 / 已读 / 正文 / 快照 ---------- */
 
+/** 页签切换：save（保存当前页）/ lib（最近剪藏） */
+function switchTab(name) {
+  const showLib = name === 'lib';
+  $('tabSave').classList.toggle('hidden', showLib);
+  $('tabLib').classList.toggle('hidden', !showLib);
+  $('tabBtnSave').classList.toggle('active', !showLib);
+  $('tabBtnLib').classList.toggle('active', showLib);
+}
+
 function parseTags(s) {
   return String(s || '')
     .split(/[,，;；]/)
@@ -314,6 +329,9 @@ function parseTags(s) {
 }
 
 function showDone(it) {
+  // 保存后收起表单，弹窗保持完整可视、不出现滚动条
+  switchTab('save');
+  $('formFields').classList.add('hidden');
   $('doneBox').classList.remove('hidden');
   $('openPage').href = state.url;
   const id = it && it.id;
@@ -431,7 +449,7 @@ async function loadLibrary(q) {
   if (!base) return;
   $('libAll').href = base + '/clips' + (q ? '?q=' + encodeURIComponent(q) : '');
   try {
-    const params = new URLSearchParams({ sort: 'newest', limit: '8' });
+    const params = new URLSearchParams({ sort: 'newest', limit: '4' });
     if (q) params.set('q', q);
     const d = await request('/api/v1/clips?' + params.toString());
     renderLibrary((d && d.items) || [], q);
