@@ -1,16 +1,19 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#f3f4f6">
 <title>正文快照 · SolarPanel</title>
-<link rel="stylesheet" href="/assets/css/clip-read.css?v=921ec5a7">
+<script>(function(){try{var d=document.documentElement;var s=localStorage.getItem('sp_theme');var t;if(s==='light'||s==='dark'){t=s}else{t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}d.dataset.theme=t;d.dataset.mode=s||'system';var st=localStorage.getItem('sp_style');if(st)d.dataset.style=st;if(localStorage.getItem('sp_rd_night')==='1')d.dataset.rdnight='1';}catch(e){}})();</script>
+<link rel="stylesheet" href="/assets/css/themes.css?v=10bab6a8">
+<link rel="stylesheet" href="/assets/css/clip-read.css?v=817c3c9f">
 </head>
 <body>
+<div class="style-fx" aria-hidden="true"></div>
 <header class="rd-bar">
   <a class="rd-brand" href="/">SolarPanel</a>
-  <a class="rd-back" href="/admin.html">剪藏列表</a>
+  <a class="rd-back" href="/clips">剪藏库</a>
 </header>
 
 <main class="rd-wrap">
@@ -28,6 +31,18 @@
     <p id="rd-summary" class="rd-summary hidden"></p>
     <div id="rd-aitags" class="rd-tags rd-tags-auto hidden"></div>
 
+    <div class="rd-tools">
+      <button id="rd-star" class="rd-tool" type="button">☆ 收藏</button>
+      <div class="rd-font" role="group" aria-label="字号">
+        <button id="rd-font-dec" type="button" title="减小字号">A−</button>
+        <button id="rd-font-reset" type="button" title="恢复默认字号">A</button>
+        <button id="rd-font-inc" type="button" title="增大字号">A+</button>
+      </div>
+      <button id="rd-night" class="rd-tool" type="button">夜间</button>
+      <button id="rd-copy" class="rd-tool" type="button">复制 Markdown</button>
+      <button id="rd-print" class="rd-tool" type="button">打印 / PDF</button>
+    </div>
+
     <div class="rd-actions">
       <a id="rd-origin" class="rd-btn" href="#" target="_blank" rel="noopener noreferrer">打开原文</a>
       <button id="rd-refetch" class="rd-btn ghost" type="button">重新抓取</button>
@@ -39,7 +54,9 @@
       <a id="rd-shot-link" href="#" target="_blank" rel="noopener noreferrer" title="查看完整截图">
         <img id="rd-shot-img" alt="整页截图" loading="lazy">
       </a>
-      <p class="rd-shot-cap">整页截图（点击查看原图）</p>
+      <p class="rd-shot-cap"><span id="rd-shot-meta">整页截图</span> · 点击查看原图 ·
+        <a id="rd-shot-dl" class="rd-shot-dl" href="#" download>下载截图</a>
+      </p>
     </div>
 
     <div id="rd-body" class="rd-body"></div>
@@ -50,7 +67,22 @@
   </article>
 </main>
 
-<script src="/assets/js/api.js?v=a7952a5e"></script>
-<script src="/assets/js/clip-read.js?v=023a220c"></script>
+<div id="rd-lightbox" class="rd-lightbox hidden" role="dialog" aria-modal="true" aria-label="截图预览">
+  <div id="rd-lb-stage" class="rd-lb-stage">
+    <img id="rd-lightbox-img" alt="整页截图" draggable="false">
+  </div>
+  <div class="rd-lb-bar" role="toolbar" aria-label="缩放工具">
+    <button id="rd-lb-out" type="button" title="缩小（-）">−</button>
+    <span id="rd-lb-zoom" class="rd-lb-zoom">100%</span>
+    <button id="rd-lb-in" type="button" title="放大（+）">＋</button>
+    <span class="rd-lb-sep" aria-hidden="true"></span>
+    <button id="rd-lb-fit" type="button" title="适应窗口（0）">适应窗口</button>
+    <button id="rd-lb-actual" type="button" title="查看原始尺寸（1）">原始尺寸</button>
+  </div>
+  <button id="rd-lightbox-close" class="rd-lightbox-close" type="button" aria-label="关闭">×</button>
+</div>
+
+<script src="/assets/js/api.js?v=981037b3"></script>
+<script src="/assets/js/clip-read.js?v=f32a73bb"></script>
 </body>
 </html>

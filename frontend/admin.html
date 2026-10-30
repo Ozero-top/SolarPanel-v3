@@ -6,9 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>管理后台 - SolarPanel</title>
   <link rel="icon" href="favicon.ico?v=1b5d8c6c" type="image/x-icon">
-  <link rel="stylesheet" href="assets/css/common.css?v=14471429">
+  <link rel="stylesheet" href="assets/css/common.css?v=94307f77">
   <link rel="stylesheet" href="assets/css/auth-admin.css?v=0912cc91">
-  <link rel="stylesheet" href="assets/css/themes.css?v=921ca89b">
+  <link rel="stylesheet" href="assets/css/themes.css?v=10bab6a8">
 </head>
 <body>
   <div class="style-fx" aria-hidden="true"></div>
@@ -265,12 +265,12 @@
                 <option value="soft">Soft 柔和浮雕</option>
                 <option value="aurora">Aurora 动态极光（柔光渐变 · 缓慢流动 · 光环描边）</option>
                 <option value="blueprint">Blueprint 工程蓝图（深蓝底 · 白线网格 · 等宽字 · 橙色标注）</option>
-                <option value="clarity">Clarity 清透极简（雾白细线 · 大留白 · 静谧蓝）</option>
                 <option value="corporate-clean">Corporate Clean 企业简洁（白卡细边 · 蓝主色 · 焦点环 · 轻浮起）</option>
                 <option value="iris">IRIS 光圈（深空 HUD · 氙蓝酸绿 · 漂移网格）</option>
+                <option value="neo-brutalist">Neo-Brutalist 新野兽派（纯黑粗框 · 硬边阴影 · 直角 · 高对比撞色）</option>
                 <option value="retro-vintage">Retro Vintage 复古怀旧（羊皮纸 · 粗棕框 · 衬线大写 · 角花）</option>
                 <option value="sketch-style">铅笔手绘风（纸张纹理 · 虚线铅笔框 · 涂黑反白）</option>
-                <option value="soft-utility">Soft Utility 柔和工具（深青主色 · 薄荷状态 · 清晰边界）</option>
+                <option value="soft-utility">Soft Utility 柔和工具（暖灰画布 · 深青主色 · 发丝线 · 小圆角 · 薄荷状态）</option>
               </select>
               <div class="form-hint">主页即时生效；深浅模式可由访客在主页右上角按钮自行切换</div>
             </div>
@@ -848,7 +848,10 @@
     <section class="admin-panel glass" id="tab-clip" hidden>
       <div class="panel-head">
         <h2>✂️ 剪藏与接入</h2>
-        <button class="btn btn-primary btn-sm" type="button" id="saveClipSettingsBtn">保存设置</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <a class="btn btn-sm" href="/clips" target="_blank" rel="noopener">📚 打开剪藏库</a>
+          <button class="btn btn-primary btn-sm" type="button" id="saveClipSettingsBtn">保存设置</button>
+        </div>
       </div>
       <div class="form-hint" style="margin:0 0 10px">
         ⚠️ 该功能尚未经过完整测试，使用中遇到任何问题，请到
@@ -1360,7 +1363,7 @@
   </div>
 
   <script src="assets/js/qrcode.min.js"></script>
-  <script src="assets/js/api.js?v=a7952a5e"></script>
-  <script src="assets/js/admin.js?v=e500b961"></script>
+  <script src="assets/js/api.js?v=981037b3"></script>
+  <script src="assets/js/admin.js?v=e7c6fd33"></script>
 </body>
 </html>

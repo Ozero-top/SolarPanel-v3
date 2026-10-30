@@ -1,17 +1,31 @@
+/* 阅读页：颜色从 themes.css 的主题变量派生，切换主题即跟随 */
 :root {
-  --bg: #f3f4f6;
-  --paper: #ffffff;
-  --text: #1b1f24;
-  --muted: #6b7280;
-  --line: #e5e7eb;
-  --accent: #2563eb;
-  --accent-text: #ffffff;
-  --code-bg: #f5f6f8;
+  --bg: var(--bg-soft, #f3f4f6);
+  --paper: var(--surface, #ffffff);
+  --text: var(--text, #1b1f24);
+  --muted: var(--text-muted, #6b7280);
+  --line: var(--border, #e5e7eb);
+  --accent: var(--accent, #2563eb);
+  --accent-text: var(--bg-soft, #ffffff);
+  --code-bg: color-mix(in srgb, var(--surface, #ffffff) 84%, var(--text, #1b1f24));
   --danger: #b91c1c;
 }
 
+html[data-theme="dark"] {
+  --bg: var(--bg-soft, #0f1115);
+  --paper: var(--surface, #161a20);
+  --text: var(--text, #e6e8ea);
+  --muted: var(--text-muted, #98a1ad);
+  --line: var(--border, #262b33);
+  --accent: var(--accent, #4f8cff);
+  --accent-text: var(--bg-soft, #08111f);
+  --code-bg: color-mix(in srgb, var(--surface, #161a20) 84%, var(--text, #e6e8ea));
+  --danger: #f87171;
+}
+
+/* 无 JS 时按系统深浅色兜底 */
 @media (prefers-color-scheme: dark) {
-  :root {
+  html:not([data-theme]) {
     --bg: #0f1115;
     --paper: #161a20;
     --text: #e6e8ea;
@@ -28,7 +42,8 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--bg-grad, var(--bg));
+  background-attachment: fixed;
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   font-size: 16px;
@@ -44,7 +59,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px max(16px, calc((100% - 760px) / 2));
+  padding: 10px max(16px, calc((100% - 1140px) / 2));
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
@@ -66,7 +81,8 @@ body {
 .rd-back:hover { color: var(--accent); }
 
 .rd-wrap {
-  width: min(760px, 100%);
+  /* 阅读版心：原 760px × 1.5 ≈ 1140px */
+  width: min(1140px, 100%);
   margin: 0 auto;
   padding: 26px 18px 80px;
 }
@@ -199,7 +215,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 14px;
   font-family: "Iowan Old Style", "Songti SC", "Noto Serif SC", Georgia, "Times New Roman", serif;
-  font-size: 17px;
+  font-size: var(--rd-fs, 17px);
   line-height: 1.85;
   overflow-wrap: break-word;
 }
@@ -215,10 +231,10 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
-.rd-body h1 { font-size: 26px; }
-.rd-body h2 { font-size: 22px; }
-.rd-body h3 { font-size: 19px; }
-.rd-body h4, .rd-body h5, .rd-body h6 { font-size: 17px; }
+.rd-body h1 { font-size: 1.5em; }
+.rd-body h2 { font-size: 1.3em; }
+.rd-body h3 { font-size: 1.13em; }
+.rd-body h4, .rd-body h5, .rd-body h6 { font-size: 1em; }
 
 .rd-body p { margin: 0 0 1.1em; }
 
@@ -282,18 +298,186 @@ body {
 
 .rd-empty .rd-btn { margin-top: 10px; }
 
+/* ---------- 阅读工具条：收藏 / 字号 / 夜间 / 复制 / 打印 ---------- */
+.rd-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 2px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.rd-tool,
+.rd-font button {
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.rd-tool:hover,
+.rd-font button:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.rd-tool.on {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.rd-font {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.rd-font button {
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  padding: 6px 10px;
+}
+
+.rd-font button:last-child { border-right: 0; }
+
+.rd-shot-dl {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.rd-shot-dl:hover { text-decoration: underline; }
+
+/* 夜间阅读：无视系统配色，强制深色纸张 */
+html[data-rdnight="1"] {
+  --bg: #101214;
+  --paper: #171a1e;
+  --text: #e2e6eb;
+  --muted: #99a2ae;
+  --line: #2a2f37;
+  --accent: #7ea6ff;
+  --accent-text: #0a1120;
+  --code-bg: #1f242b;
+  --danger: #f87171;
+}
+
+/* 截图画廊灯箱：支持缩放 / 原始尺寸 / 拖拽平移 */
+.rd-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(6, 8, 11, .92);
+  overflow: hidden;
+}
+
+.rd-lb-stage {
+  position: absolute;
+  inset: 0 0 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+
+.rd-lb-stage.dragging { cursor: grabbing; }
+
+.rd-lb-stage img {
+  max-width: none;
+  max-height: none;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, .55);
+  transform-origin: center center;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.rd-lb-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: rgba(24, 28, 36, .86);
+  border: 1px solid rgba(255, 255, 255, .12);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.rd-lb-bar button {
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, .08);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.rd-lb-bar button:hover { background: rgba(255, 255, 255, .18); }
+
+.rd-lb-bar button:active { transform: translateY(1px); }
+
+.rd-lb-zoom {
+  min-width: 58px;
+  text-align: center;
+  color: #dbe2ea;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rd-lb-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: rgba(255, 255, 255, .18);
+}
+
+.rd-lightbox-close {
+  position: fixed;
+  top: 16px;
+  right: 18px;
+  z-index: 2;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .16);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
 .hidden { display: none !important; }
 
 @media (max-width: 600px) {
   .rd-wrap { padding: 18px 12px 60px; }
   .rd-bar { padding-left: 12px; padding-right: 12px; }
   #rd-title { font-size: 23px; }
-  .rd-body { padding: 22px 16px; font-size: 16px; }
+  .rd-body { padding: 22px 16px; }
 }
 
 @media print {
-  .rd-bar, .rd-actions, .rd-msg { display: none !important; }
+  .rd-bar, .rd-actions, .rd-msg, .rd-tools, .rd-shot, .rd-lightbox { display: none !important; }
   body { background: #fff; }
   .rd-wrap { width: 100%; padding: 0; }
-  .rd-body { border: 0; padding: 0; }
+  .rd-body { border: 0; padding: 0; font-size: 12pt; }
 }

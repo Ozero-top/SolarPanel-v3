@@ -26,14 +26,14 @@ const DRY_RUN = process.argv.includes('--dry-run');
 const DISPLAY_NAMES = {
   'soft': 'Soft 柔和浮雕',
   'blueprint': 'Blueprint 工程蓝图（深蓝底 · 白线网格 · 等宽字 · 橙色标注）',
-  'clarity': 'Clarity 清透极简（雾白细线 · 大留白 · 静谧蓝）',
-  'soft-utility': 'Soft Utility 柔和工具（深青主色 · 薄荷状态 · 清晰边界）',
+  'soft-utility': 'Soft Utility 柔和工具（暖灰画布 · 深青主色 · 发丝线 · 小圆角 · 薄荷状态）',
   'aurora': 'Aurora 动态极光（柔光渐变 · 缓慢流动 · 光环描边）',
   'iris': 'IRIS 光圈（深空 HUD · 氙蓝酸绿 · 漂移网格）',
   'sketch-style': '铅笔手绘风（纸张纹理 · 虚线铅笔框 · 涂黑反白）',
   'retro-vintage': 'Retro Vintage 复古怀旧（羊皮纸 · 粗棕框 · 衬线大写 · 角花）',
   'corporate-clean': 'Corporate Clean 企业简洁（白卡细边 · 蓝主色 · 焦点环 · 轻浮起）',
   'liquid-glass': 'Liquid Glass 液态玻璃（默认 · 磨砂透光 · 流动光斑 · 仅浅色）',
+  'neo-brutalist': 'Neo-Brutalist 新野兽派（纯黑粗框 · 硬边阴影 · 直角 · 高对比撞色）',
 };
 
 function displayName(name) {

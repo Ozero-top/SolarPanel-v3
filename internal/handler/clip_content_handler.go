@@ -35,6 +35,7 @@ type clipContentRow struct {
 	Summary        string `json:"summary"`
 	AutoTags       string `json:"auto_tags"`
 	ScreenshotPath string `json:"screenshot_path,omitempty"`
+	ScreenshotMeta string `json:"screenshot_meta,omitempty"`
 }
 
 // clipSearchHit 检索结果行
@@ -144,11 +145,11 @@ func loadClipContent(itemID int) (*clipContentRow, error) {
 	var c clipContentRow
 	err := db.DB.QueryRow(`SELECT item_id, url_key, url_original, source, excerpt, content_md,
 		cover_path, fetched_at, http_status, content_hash, word_count, fetch_error,
-		summary, auto_tags, screenshot_path
+		summary, auto_tags, screenshot_path, screenshot_meta
 		FROM clip_contents WHERE item_id = ?`, itemID).Scan(
 		&c.ItemID, &c.URLKey, &c.URLOriginal, &c.Source, &c.Excerpt, &c.ContentMD,
 		&c.CoverPath, &c.FetchedAt, &c.HTTPStatus, &c.ContentHash, &c.WordCount, &c.FetchError,
-		&c.Summary, &c.AutoTags, &c.ScreenshotPath)
+		&c.Summary, &c.AutoTags, &c.ScreenshotPath, &c.ScreenshotMeta)
 	if err != nil {
 		return nil, err
 	}
@@ -172,9 +173,13 @@ func (h *ClipHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	}
 	var group string
 	db.DB.QueryRow("SELECT title FROM item_groups WHERE id = ?", it.GroupID).Scan(&group)
+	var readAt string
+	var starred int
+	db.DB.QueryRow(`SELECT COALESCE(clip_read_at,''), COALESCE(clip_starred,0) FROM items WHERE id = ?`, id).Scan(&readAt, &starred)
 	resp := map[string]any{
 		"item": it, "group": group, "has_snapshot": false, "content": nil,
 		"tags": loadItemTags(id), "image_domains": clipImageDomains(),
+		"read_at": readAt, "starred": starred == 1,
 	}
 	if c, err := loadClipContent(id); err == nil {
 		resp["has_snapshot"] = c.ContentMD != ""

@@ -53,6 +53,75 @@ var migrations = []Migration{
 
 	// v9: 剪藏「稍后读」收件箱分组排到末尾（早期创建时 sort=0 会顶在最前）
 	{Version: 9, Name: "clip: inbox group last", Fn: migrateV9ClipInboxLast},
+
+	// v10: 剪藏库 — 卡片剪藏标记（来源 / 已读 / 收藏）+ 截图元数据
+	{Version: 10, Name: "clip: library markers + screenshot meta", Fn: migrateV10ClipLibrary},
+}
+
+// migrateV10ClipLibrary 为剪藏库补基础字段：
+//   - items.clip_source / clip_read_at / clip_starred：让剪藏卡片可被列表页可靠筛选
+//   - clip_contents.screenshot_meta：整页截图的模式 / 尺寸等元数据
+//
+// 全部使用 PRAGMA table_info + ALTER，幂等；老库按已有快照回填来源标记。
+func migrateV10ClipLibrary() error {
+	if DB == nil {
+		return nil
+	}
+	ensure := func(table string, cols []struct{ name, def string }) error {
+		existing := map[string]bool{}
+		rows, err := DB.Query(`PRAGMA table_info(` + table + `)`)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var cid, notnull, pk int
+			var name, ctype string
+			var dflt any
+			if rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk) == nil {
+				existing[name] = true
+			}
+		}
+		rows.Close()
+		for _, c := range cols {
+			if existing[c.name] {
+				continue
+			}
+			if _, err := DB.Exec("ALTER TABLE " + table + " ADD COLUMN " + c.name + " " + c.def); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	if err := ensure("items", []struct{ name, def string }{
+		{"clip_source", "TEXT NOT NULL DEFAULT ''"},
+		{"clip_read_at", "TEXT NOT NULL DEFAULT ''"},
+		{"clip_starred", "INTEGER NOT NULL DEFAULT 0"},
+	}); err != nil {
+		return err
+	}
+	if err := ensure("clip_contents", []struct{ name, def string }{
+		{"screenshot_meta", "TEXT NOT NULL DEFAULT ''"},
+	}); err != nil {
+		return err
+	}
+
+	DB.Exec(`CREATE INDEX IF NOT EXISTS idx_items_clip_source ON items(clip_source)`)
+	DB.Exec(`CREATE INDEX IF NOT EXISTS idx_items_clip_read ON items(clip_read_at)`)
+
+	// 回填：已有正文快照的卡片，以及「稍后读 · 剪藏收件箱」里的卡片，都标记为剪藏
+	if _, err := DB.Exec(`UPDATE items SET clip_source = 'api'
+		WHERE clip_source = '' AND id IN (SELECT item_id FROM clip_contents)`); err != nil {
+		return err
+	}
+	if _, err := DB.Exec(`UPDATE items SET clip_source = 'api'
+		WHERE clip_source = '' AND group_id IN (
+			SELECT id FROM item_groups WHERE title = '稍后读' AND description = '剪藏收件箱'
+		)`); err != nil {
+		return err
+	}
+	log.Println("[migrate] v10: 剪藏标记与截图元数据已就绪")
+	return nil
 }
 
 // migrateV9ClipInboxLast 把剪藏自动创建的「稍后读」收件箱分组移到顶级分组最后

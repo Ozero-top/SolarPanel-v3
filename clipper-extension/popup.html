@@ -39,12 +39,18 @@
   <label class="check">
     <input id="fSnapshot" type="checkbox"> 同时保存正文快照
   </label>
-  <label class="check">
-    <input id="fShot" type="checkbox"> 同时保存整页截图
+  <label class="field">
+    <span>截图方式</span>
+    <select id="fShotMode">
+      <option value="full">整页截图（滚动拼接）</option>
+      <option value="viewport">仅当前可视区</option>
+      <option value="none">不截图</option>
+    </select>
   </label>
 
   <div id="dupBox" class="alert hidden">
     该链接已存在。
+    <button id="updateShotBtn" type="button">更新已有卡片截图</button>
     <button id="forceBtn" type="button">仍要另存</button>
   </div>
 
@@ -52,6 +58,7 @@
   <div id="doneBox" class="hidden">
     <div class="actions">
       <a id="openPage" class="btn ghost" href="#" target="_blank">打开原文</a>
+      <button id="retryShotBtn" class="btn ghost hidden" type="button">重试截图</button>
       <button id="undoBtn" class="btn ghost" type="button">撤销</button>
     </div>
   </div>

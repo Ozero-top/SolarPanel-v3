@@ -239,7 +239,10 @@ var schemaDDL = []string{
 		is_hidden INTEGER NOT NULL DEFAULT 0,
 		user_id INTEGER NOT NULL DEFAULT 1,
 		created_at TEXT NOT NULL DEFAULT '',
-		url_key TEXT NOT NULL DEFAULT ''
+		url_key TEXT NOT NULL DEFAULT '',
+		clip_source TEXT NOT NULL DEFAULT '',
+		clip_read_at TEXT NOT NULL DEFAULT '',
+		clip_starred INTEGER NOT NULL DEFAULT 0
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS custom_feeds (
@@ -332,6 +335,7 @@ var schemaDDL = []string{
 		summary      TEXT NOT NULL DEFAULT '',
 		auto_tags    TEXT NOT NULL DEFAULT '',
 		screenshot_path TEXT NOT NULL DEFAULT '',
+		screenshot_meta TEXT NOT NULL DEFAULT '',
 		FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
 	)`,
 

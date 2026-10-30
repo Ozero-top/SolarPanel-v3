@@ -159,6 +159,9 @@ func (h *ClipHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in.Source = "api"
+	if s := strings.TrimSpace(r.Header.Get("X-Clip-Source")); s != "" {
+		in.Source = trimRunes(s, 16)
+	}
 	res, httpCode, msg := h.createClip(w, r, p, in)
 	if httpCode != 0 {
 		Err(w, httpCode, 1, msg)
@@ -199,6 +202,8 @@ func (h *ClipHandler) createClip(w http.ResponseWriter, r *http.Request, p *clip
 				db.DB.Exec("UPDATE items SET title = ? WHERE id = ?", trimRunes(in.Title, 200), existing.ID)
 				existing.Title = trimRunes(in.Title, 200)
 			}
+			// 老卡片补齐剪藏来源标记，让剪藏库能筛选到它
+			db.DB.Exec("UPDATE items SET clip_source = ? WHERE id = ? AND clip_source = ''", clipSourceOf(in.Source), existing.ID)
 			group := ""
 			db.DB.QueryRow("SELECT title FROM item_groups WHERE id = ?", existing.GroupID).Scan(&group)
 			// 已存在但本次要求正文且此前没有快照时，顺手补齐快照
@@ -232,6 +237,7 @@ func (h *ClipHandler) createClip(w http.ResponseWriter, r *http.Request, p *clip
 			if found, _ := findItemByURLKey(canonicalKey); found != nil {
 				group := ""
 				db.DB.QueryRow("SELECT title FROM item_groups WHERE id = ?", found.GroupID).Scan(&group)
+				db.DB.Exec("UPDATE items SET clip_source = ? WHERE id = ? AND clip_source = ''", clipSourceOf(in.Source), found.ID)
 				auditClip(w, r, p, in.Source, "duplicate", found.ID)
 				return &clipResult{Item: found, Group: group, Duplicate: true, Warnings: warnings, Snapshot: false}, 0, "该链接已存在"
 			}
@@ -284,9 +290,9 @@ func (h *ClipHandler) createClip(w http.ResponseWriter, r *http.Request, p *clip
 	db.DB.QueryRow("SELECT COALESCE(MAX(sort), -1) + 1 FROM items WHERE group_id = ?", groupID).Scan(&nextSort)
 
 	res, err := db.DB.Exec(`INSERT INTO items
-		(group_id, title, url, lan_url, description, icon_type, icon_value, icon_bg, open_method, sort, is_hidden, user_id, created_at, url_key)
-		VALUES (?,?,?,'',?,?,?,'',2,?,0,?,?,?)`,
-		groupID, title, raw, desc, iconType, iconValue, nextSort, p.UID, db.NowStr(), key)
+		(group_id, title, url, lan_url, description, icon_type, icon_value, icon_bg, open_method, sort, is_hidden, user_id, created_at, url_key, clip_source)
+		VALUES (?,?,?,'',?,?,?,'',2,?,0,?,?,?,?)`,
+		groupID, title, raw, desc, iconType, iconValue, nextSort, p.UID, db.NowStr(), key, clipSourceOf(in.Source))
 	if err != nil {
 		return nil, http.StatusInternalServerError, "保存卡片失败"
 	}
@@ -551,6 +557,15 @@ func auditClip(w http.ResponseWriter, r *http.Request, p *clipPrincipal, source,
 	}
 	detail := fmt.Sprintf("source=%s via=%s item=%d", source, map[bool]string{true: "token", false: "session"}[p.ViaToken], itemID)
 	auth.AuditLog(w, r, "clip.create", fmt.Sprintf("item:%d", itemID), result, actor, p.Role, detail)
+}
+
+// clipSourceOf 归一化剪藏来源标记：空值视为 api，最长 16 字
+func clipSourceOf(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "api"
+	}
+	return trimRunes(s, 16)
 }
 
 func trimRunes(s string, n int) string {

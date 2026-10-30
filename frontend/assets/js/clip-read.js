@@ -8,6 +8,7 @@ const state = {
   item: null,
   content: null,
   imageDomains: [],
+  starred: false,
 };
 
 document.addEventListener('DOMContentLoaded', init);
@@ -22,7 +23,236 @@ function init() {
   $('rd-refetch').addEventListener('click', () => refetch(false));
   $('rd-capture').addEventListener('click', () => refetch(true));
   $('rd-delete').addEventListener('click', removeSnapshot);
+
+  // 阅读工具条
+  $('rd-star').addEventListener('click', toggleStar);
+  $('rd-font-dec').addEventListener('click', () => setFontScale(-1));
+  $('rd-font-inc').addEventListener('click', () => setFontScale(1));
+  $('rd-font-reset').addEventListener('click', () => setFontScale(0, true));
+  $('rd-night').addEventListener('click', toggleNight);
+  $('rd-copy').addEventListener('click', copyMarkdown);
+  $('rd-print').addEventListener('click', () => window.print());
+
+  // 截图灯箱（缩放 / 原始尺寸 / 拖拽平移）
+  $('rd-shot-link').addEventListener('click', openLightbox);
+  $('rd-lightbox-close').addEventListener('click', closeLightbox);
+  $('rd-lightbox').addEventListener('click', (e) => {
+    if (e.target === $('rd-lightbox')) closeLightbox();
+  });
+  $('rd-lb-in').addEventListener('click', () => zoomBy(1.25));
+  $('rd-lb-out').addEventListener('click', () => zoomBy(1 / 1.25));
+  $('rd-lb-fit').addEventListener('click', lbReset);
+  $('rd-lb-actual').addEventListener('click', actualSize);
+  $('rd-lb-stage').addEventListener('wheel', (e) => {
+    if ($('rd-lightbox').classList.contains('hidden')) return;
+    e.preventDefault();
+    zoomBy(e.deltaY < 0 ? 1.12 : 1 / 1.12);
+  }, { passive: false });
+  $('rd-lb-stage').addEventListener('dblclick', () => {
+    if (LB.scale > lbFitScale() + 0.01) lbReset();
+    else actualSize();
+  });
+  $('rd-lb-stage').addEventListener('pointerdown', (e) => {
+    if (!$('rd-lightbox-img').getAttribute('src')) return;
+    LB.drag = { x: e.clientX - LB.tx, y: e.clientY - LB.ty };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    e.currentTarget.classList.add('dragging');
+  });
+  $('rd-lb-stage').addEventListener('pointermove', (e) => {
+    if (!LB.drag) return;
+    LB.tx = e.clientX - LB.drag.x;
+    LB.ty = e.clientY - LB.drag.y;
+    lbApply();
+  });
+  const endDrag = (e) => {
+    if (!LB.drag) return;
+    LB.drag = null;
+    e.currentTarget.classList.remove('dragging');
+  };
+  $('rd-lb-stage').addEventListener('pointerup', endDrag);
+  $('rd-lb-stage').addEventListener('pointercancel', endDrag);
+  document.addEventListener('keydown', (e) => {
+    if ($('rd-lightbox').classList.contains('hidden')) return;
+    if (e.key === 'Escape') closeLightbox();
+    else if (e.key === '+' || e.key === '=') zoomBy(1.25);
+    else if (e.key === '-') zoomBy(1 / 1.25);
+    else if (e.key === '0') lbReset();
+    else if (e.key === '1') actualSize();
+  });
+
+  restoreReadingPrefs();
+  syncTheme();
   load();
+}
+
+/** 主题：沿用主页逻辑，浏览器里没有 sp_style 缓存时用后端设置补齐风格主题 */
+function syncTheme() {
+  if (typeof applyTheme !== 'function') return;
+  API.get('/api/public.php').then((d) => {
+    if (d && d.settings) applyTheme(d.settings);
+  }).catch(() => { /* 请求失败时沿用本地缓存 */ });
+}
+
+/* ---------- 阅读偏好：字号 / 夜间 ---------- */
+
+const FS_MIN = 14;
+const FS_MAX = 22;
+const FS_DEFAULT = 17;
+
+function restoreReadingPrefs() {
+  let fs = FS_DEFAULT;
+  try {
+    const v = parseInt(localStorage.getItem('sp_rd_fs') || '', 10);
+    if (v >= FS_MIN && v <= FS_MAX) fs = v;
+  } catch (_) { /* 忽略 */ }
+  applyFont(fs);
+  try {
+    if (localStorage.getItem('sp_rd_night') === '1') {
+      document.documentElement.dataset.rdnight = '1';
+    }
+  } catch (_) { /* 忽略 */ }
+  syncNightBtn();
+}
+
+function applyFont(px) {
+  document.documentElement.style.setProperty('--rd-fs', px + 'px');
+}
+
+function setFontScale(delta, reset) {
+  let cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--rd-fs') || String(FS_DEFAULT), 10);
+  if (!cur || Number.isNaN(cur)) cur = FS_DEFAULT;
+  let next = reset ? FS_DEFAULT : Math.min(FS_MAX, Math.max(FS_MIN, cur + delta));
+  applyFont(next);
+  try { localStorage.setItem('sp_rd_fs', String(next)); } catch (_) { /* 忽略 */ }
+}
+
+function toggleNight() {
+  const on = document.documentElement.dataset.rdnight !== '1';
+  if (on) {
+    document.documentElement.dataset.rdnight = '1';
+  } else {
+    delete document.documentElement.dataset.rdnight;
+  }
+  try { localStorage.setItem('sp_rd_night', on ? '1' : '0'); } catch (_) { /* 忽略 */ }
+  syncNightBtn();
+}
+
+function syncNightBtn() {
+  const on = document.documentElement.dataset.rdnight === '1';
+  $('rd-night').textContent = on ? '日间' : '夜间';
+  $('rd-night').classList.toggle('on', on);
+}
+
+/* ---------- 收藏 / 复制 ---------- */
+
+async function toggleStar() {
+  const btn = $('rd-star');
+  btn.disabled = true;
+  try {
+    const res = await API.request('/api/v1/clips/' + state.id, { method: 'PATCH', data: { starred: !state.starred } });
+    state.starred = !!res.starred;
+    syncStarBtn();
+  } catch (e) {
+    setMsg('操作失败：' + (e.message || '未知错误'), 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function syncStarBtn() {
+  const btn = $('rd-star');
+  btn.textContent = state.starred ? '★ 已收藏' : '☆ 收藏';
+  btn.classList.toggle('on', state.starred);
+}
+
+async function copyMarkdown() {
+  const md = state.content && state.content.content_md ? String(state.content.content_md) : '';
+  if (!md) {
+    setMsg('没有可复制的正文', 'error');
+    return;
+  }
+  const ok = async () => {
+    try {
+      await navigator.clipboard.writeText(md);
+    } catch (_) {
+      const ta = document.createElement('textarea');
+      ta.value = md;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+    setMsg('Markdown 已复制到剪贴板', 'ok');
+  };
+  await ok();
+}
+
+/* ---------- 截图灯箱（缩放 / 原始尺寸 / 拖拽） ---------- */
+
+const LB = { scale: 1, tx: 0, ty: 0, natural: { w: 0, h: 0 }, drag: null };
+
+function lbApply() {
+  const img = $('rd-lightbox-img');
+  img.style.transform = 'translate(' + LB.tx + 'px,' + LB.ty + 'px) scale(' + LB.scale + ')';
+  $('rd-lb-zoom').textContent = Math.round(LB.scale * 100) + '%';
+}
+
+/** 适应窗口的缩放比：不放大超过 100%，避免小图被拉糊 */
+function lbFitScale() {
+  const stage = $('rd-lb-stage');
+  const vw = Math.max(1, stage.clientWidth - 40);
+  const vh = Math.max(1, stage.clientHeight - 40);
+  if (!LB.natural.w || !LB.natural.h) return 1;
+  return Math.max(0.05, Math.min(1, Math.min(vw / LB.natural.w, vh / LB.natural.h)));
+}
+
+function lbReset() {
+  LB.scale = lbFitScale();
+  LB.tx = 0;
+  LB.ty = 0;
+  lbApply();
+}
+
+function zoomBy(k) {
+  LB.scale = Math.max(0.1, Math.min(8, LB.scale * k));
+  lbApply();
+}
+
+function actualSize() {
+  LB.scale = 1;
+  lbApply();
+}
+
+function openLightbox(e) {
+  const src = $('rd-shot-img').getAttribute('src');
+  if (!src) return;
+  e.preventDefault();
+  const img = $('rd-lightbox-img');
+  LB.natural = { w: 0, h: 0 };
+  LB.tx = 0;
+  LB.ty = 0;
+  LB.scale = 1;
+  img.onload = () => {
+    LB.natural = { w: img.naturalWidth, h: img.naturalHeight };
+    lbReset();
+  };
+  img.src = src;
+  $('rd-lightbox').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  if (img.complete && img.naturalWidth) {
+    LB.natural = { w: img.naturalWidth, h: img.naturalHeight };
+    lbReset();
+  }
+}
+
+function closeLightbox() {
+  $('rd-lightbox').classList.add('hidden');
+  $('rd-lightbox-img').removeAttribute('src');
+  $('rd-lightbox-img').style.transform = '';
+  document.body.style.overflow = '';
+  LB.drag = null;
 }
 
 async function load() {
@@ -31,7 +261,10 @@ async function load() {
     state.item = data.item;
     state.content = data.content;
     state.imageDomains = Array.isArray(data.image_domains) ? data.image_domains : [];
+    state.starred = !!data.starred;
     render(data);
+    syncStarBtn();
+    if (!data.read_at) markRead();
   } catch (e) {
     if (/登录|401|未授权/.test(e.message || '')) {
       $('rd-error-link').classList.remove('hidden');
@@ -40,6 +273,11 @@ async function load() {
       showError(e.message || '加载失败');
     }
   }
+}
+
+/** 打开即标记已读（失败不影响阅读） */
+function markRead() {
+  API.request('/api/v1/clips/' + state.id, { method: 'PATCH', data: { read: true } }).catch(() => { /* 忽略 */ });
 }
 
 function render(data) {
@@ -96,6 +334,9 @@ function render(data) {
   if (shotPath) {
     $('rd-shot-img').src = shotPath;
     $('rd-shot-link').href = shotPath;
+    $('rd-shot-dl').href = shotPath;
+    $('rd-shot-dl').setAttribute('download', 'clip-' + state.id + (shotPath.indexOf('.jpg') > -1 ? '.jpg' : '.png'));
+    $('rd-shot-meta').textContent = shotMetaText(c && c.screenshot_meta);
     shot.classList.remove('hidden');
   } else {
     shot.classList.add('hidden');
@@ -187,6 +428,17 @@ function hostOf(url) {
   } catch (_) {
     return '';
   }
+}
+
+/** 截图元数据文案：整页 / 可视区 + 尺寸 */
+function shotMetaText(raw) {
+  let m = {};
+  try { m = JSON.parse(raw || '{}') || {}; } catch (_) { m = {}; }
+  const label = m.mode === 'viewport' ? '可视区截图' : '整页截图';
+  if (m.width > 0 && m.height > 0) {
+    return label + ' · ' + m.width + ' × ' + m.height + ' px';
+  }
+  return label;
 }
 
 /* ---------- 轻量 Markdown 渲染：全部通过 DOM 节点构建，不使用 innerHTML ---------- */

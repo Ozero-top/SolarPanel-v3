@@ -9,6 +9,8 @@ const state = {
   clientId: crypto.randomUUID(),
   force: false,
   item: null,
+  dupItem: null,
+  savedText: '',
 };
 
 document.addEventListener('DOMContentLoaded', init);
@@ -52,18 +54,18 @@ async function init() {
   $('fUrl').textContent = state.url;
   $('fUrl').title = state.url;
   $('fTitle').value = state.tab.title || '';
-  $('fSnapshot').checked = !!cfg.snapshot;
-  $('fShot').checked = !!cfg.shot;
+  $('fSnapshot').checked = cfg.snapshot === undefined ? true : !!cfg.snapshot;
+  $('fShotMode').value = cfg.shotMode === 'viewport' || cfg.shotMode === 'none' ? cfg.shotMode : 'full';
   $('fSnapshot').addEventListener('change', async () => {
     const data = await chrome.storage.local.get('spClipConfig');
     const next = data.spClipConfig || {};
     next.snapshot = $('fSnapshot').checked;
     await chrome.storage.local.set({ spClipConfig: next });
   });
-  $('fShot').addEventListener('change', async () => {
+  $('fShotMode').addEventListener('change', async () => {
     const data = await chrome.storage.local.get('spClipConfig');
     const next = data.spClipConfig || {};
-    next.shot = $('fShot').checked;
+    next.shotMode = $('fShotMode').value;
     await chrome.storage.local.set({ spClipConfig: next });
   });
 
@@ -73,10 +75,27 @@ async function init() {
   }
 
   $('saveBtn').addEventListener('click', () => save(false));
+  $('retryShotBtn').addEventListener('click', () => {
+    if (!state.savedText) return;
+    $('retryShotBtn').classList.add('hidden');
+    runShot(state.savedText);
+  });
   $('forceBtn').addEventListener('click', () => {
     state.force = true;
     $('dupBox').classList.add('hidden');
     save(true);
+  });
+  $('updateShotBtn').addEventListener('click', async () => {
+    const it = state.dupItem;
+    if (!it || !it.id) return;
+    state.item = it;
+    state.savedText = '已更新「' + (it.title || '已有卡片') + '」';
+    $('dupBox').classList.add('hidden');
+    $('doneBox').classList.remove('hidden');
+    $('openPage').href = state.url;
+    $('saveBtn').classList.add('hidden');
+    setStatus(state.savedText + '，正在重新截图…', 'ok');
+    await runShot(state.savedText);
   });
   $('undoBtn').addEventListener('click', undo);
 
@@ -193,8 +212,10 @@ async function save(force) {
       return;
     }
     if (res.duplicate && !force) {
+      state.dupItem = res.item;
+      $('updateShotBtn').classList.toggle('hidden', $('fShotMode').value === 'none');
       $('dupBox').classList.remove('hidden');
-      setStatus('该链接已存在，可打开已有卡片或仍要另存');
+      setStatus('该链接已存在，可更新已有卡片截图或仍要另存');
       return;
     }
     state.item = res.item;
@@ -205,28 +226,40 @@ async function save(force) {
     $('saveBtn').classList.add('hidden');
     $('dupBox').classList.add('hidden');
 
-    // 整页截图：失败不影响保存结果，仅提示原因
-    if ($('fShot').checked && state.item && state.item.id) {
-      setStatus(savedText + '，正在生成整页截图…', 'ok');
-      try {
-        const shot = await chrome.runtime.sendMessage({
-          type: 'screenshot',
-          itemId: state.item.id,
-          tabId: state.tab && state.tab.id,
-          windowId: state.tab && state.tab.windowId,
-        });
-        if (shot && shot.ok) {
-          setStatus(savedText + (shot.mode === 'viewport' ? '（截图仅可视区）' : '（含整页截图）'), 'ok');
-        } else {
-          setStatus(savedText + '，截取失败：' + ((shot && shot.error) || '未知原因'), 'ok');
-        }
-      } catch (e) {
-        setStatus(savedText + '，截取失败：' + e.message, 'ok');
-      }
+    state.savedText = savedText;
+    // 截图（整页 / 可视区）：失败不影响保存结果，可点「重试截图」
+    const shotMode = $('fShotMode').value;
+    if (shotMode !== 'none' && state.item && state.item.id) {
+      setStatus(savedText + (shotMode === 'viewport' ? '，正在截取可视区…' : '，正在生成整页截图…'), 'ok');
+      await runShot(savedText);
     }
   } catch (e) {
     setStatus('保存失败：' + e.message, 'err');
     btn.disabled = false;
+  }
+}
+
+/** 截图并回填状态；失败时显示「重试截图」按钮 */
+async function runShot(savedText) {
+  const mode = $('fShotMode').value;
+  try {
+    const shot = await chrome.runtime.sendMessage({
+      type: 'screenshot',
+      itemId: state.item && state.item.id,
+      tabId: state.tab && state.tab.id,
+      windowId: state.tab && state.tab.windowId,
+      mode: mode,
+    });
+    if (shot && shot.ok) {
+      setStatus(savedText + (shot.mode === 'viewport' ? '（截图仅可视区）' : '（含整页截图）'), 'ok');
+      $('retryShotBtn').classList.add('hidden');
+    } else {
+      setStatus(savedText + '，截取失败：' + ((shot && shot.error) || '未知原因'), 'ok');
+      $('retryShotBtn').classList.remove('hidden');
+    }
+  } catch (e) {
+    setStatus(savedText + '，截取失败：' + e.message, 'ok');
+    $('retryShotBtn').classList.remove('hidden');
   }
 }
 
@@ -238,6 +271,7 @@ async function undo() {
     await request('/api/v1/clips', 'DELETE', { id: state.item.id });
     setStatus('已撤销，卡片已删除', 'ok');
     $('doneBox').classList.add('hidden');
+    $('retryShotBtn').classList.add('hidden');
     $('saveBtn').classList.remove('hidden');
     $('saveBtn').disabled = false;
     state.item = null;

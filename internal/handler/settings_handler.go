@@ -38,7 +38,7 @@ var allowedSettingKeys = map[string]struct{}{
 
 // settingValueWhitelist 特定键的取值白名单（与 frontend/themes.json / card_style 可选项保持同步）
 var settingValueWhitelist = map[string]map[string]bool{
-	"theme_style":          {"soft": true, "blueprint": true, "clarity": true, "soft-utility": true, "aurora": true, "iris": true, "sketch-style": true, "retro-vintage": true, "corporate-clean": true, "liquid-glass": true},
+	"theme_style":          {"soft": true, "blueprint": true, "clarity": true, "soft-utility": true, "aurora": true, "iris": true, "sketch-style": true, "retro-vintage": true, "corporate-clean": true, "liquid-glass": true, "neo-brutalist": true},
 	"card_style":           {"nav": true, "navapp": true},
 	"default_lan_mode":     {"auto": true, "public": true, "lan": true},
 	"nas_show":             {"0": true, "1": true},

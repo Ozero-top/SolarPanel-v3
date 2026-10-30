@@ -283,21 +283,13 @@ a:hover {
   color: #1e3a5f;
 }
 /* blueprint/dark 由 themes.css extra_css 覆盖：background:#142840 color:#ffffff */
-:root[data-style='clarity'][data-theme='light'] .select option {
-  background: #ffffff;
-  color: #17181c;
-}
-:root[data-style='clarity'][data-theme='dark'] .select option {
-  background: #17181c;
-  color: #f2f3f5;
-}
 :root[data-style='soft-utility'][data-theme='light'] .select option {
   background: #ffffff;
-  color: #203b40;
+  color: #1f2b27;
 }
 :root[data-style='soft-utility'][data-theme='dark'] .select option {
-  background: #173338;
-  color: #e8f2ef;
+  background: #1f2a27;
+  color: #e7efeb;
 }
 :root[data-style='aurora'][data-theme='light'] .select option {
   background: #ffffff;
@@ -335,6 +327,14 @@ a:hover {
 :root[data-style='liquid-glass'][data-theme='dark'] .select option {
   background: #ffffff;
   color: #202733;
+}
+:root[data-style='neo-brutalist'][data-theme='light'] .select option {
+  background: #ffffff;
+  color: #000000;
+}
+:root[data-style='neo-brutalist'][data-theme='dark'] .select option {
+  background: #151515;
+  color: #f5f5f5;
 }
 
 .input::placeholder,

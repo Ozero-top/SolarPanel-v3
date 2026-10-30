@@ -322,8 +322,8 @@ func main() {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			h := w.Header()
 			h.Set("Access-Control-Allow-Origin", "*")
-			h.Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-CSRF-Token")
+			h.Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-CSRF-Token, X-Clip-Source, X-Shot-Mode, X-Shot-Width, X-Shot-Height")
 			h.Set("Access-Control-Max-Age", "600")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)
@@ -336,7 +336,9 @@ func main() {
 		v1.Use(clipCORS)
 		v1.Use(rateLimitMW("clip", 120, 60))
 		v1.Post("/clips", clipHandler.Create)
+		v1.Get("/clips", clipHandler.List)
 		v1.Delete("/clips", clipHandler.Delete)
+		v1.Patch("/clips/{id}", clipHandler.Update)
 		v1.Get("/clips/search", clipHandler.Search)
 		v1.Get("/clips/{id}", clipHandler.Detail)
 		v1.Post("/clips/{id}/refetch", clipHandler.Refetch)
@@ -395,6 +397,8 @@ func main() {
 
 	// 剪藏落地页 / PWA 分享入口
 	r.Get("/clip", serveEmbed("frontend/clip.html", "text/html; charset=utf-8"))
+	// 剪藏库列表页：需要登录后访问
+	r.With(protectAdminHTML).Get("/clips", serveEmbed("frontend/clips.html", "text/html; charset=utf-8"))
 	r.Get("/clip-share", clipShareHandler.Share)
 	r.Post("/clip-share", clipShareHandler.Share)
 	// 正文快照阅读页（P1）：需要登录后访问

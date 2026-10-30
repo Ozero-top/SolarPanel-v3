@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -84,13 +85,29 @@ func (h *ClipHandler) Screenshot(w http.ResponseWriter, r *http.Request) {
 	}
 	webPath := "/frontend/uploads/clips/shots/" + name
 
+	// 截图元数据（模式 / 宽高），由扩展通过 X-Shot-* 头携带；缺失时留空
+	meta := clipShotMeta{
+		Mode:   strings.ToLower(strings.TrimSpace(r.Header.Get("X-Shot-Mode"))),
+		Width:  atoiHeader(r.Header.Get("X-Shot-Width")),
+		Height: atoiHeader(r.Header.Get("X-Shot-Height")),
+		Bytes:  len(data),
+	}
+	if meta.Mode != "full" && meta.Mode != "viewport" {
+		meta.Mode = ""
+	}
+	metaJSON := ""
+	if b, err := json.Marshal(meta); err == nil && (meta.Mode != "" || meta.Width > 0 || meta.Height > 0) {
+		metaJSON = string(b)
+	}
+
 	// 已有快照则只更新截图字段；没有快照时为卡片补一条最小记录，方便阅读页展示
 	var exists int
 	db.DB.QueryRow(`SELECT COUNT(*) FROM clip_contents WHERE item_id = ?`, id).Scan(&exists)
 	if exists > 0 {
 		var old string
 		db.DB.QueryRow(`SELECT screenshot_path FROM clip_contents WHERE item_id = ?`, id).Scan(&old)
-		if _, err := db.DB.Exec(`UPDATE clip_contents SET screenshot_path = ? WHERE item_id = ?`, webPath, id); err != nil {
+		if _, err := db.DB.Exec(`UPDATE clip_contents SET screenshot_path = ?, screenshot_meta = ? WHERE item_id = ?`,
+			webPath, metaJSON, id); err != nil {
 			os.Remove(filepath.Join(dir, name))
 			Err(w, http.StatusInternalServerError, 1, "保存截图失败")
 			return
@@ -101,9 +118,9 @@ func (h *ClipHandler) Screenshot(w http.ResponseWriter, r *http.Request) {
 	} else {
 		_, err = db.DB.Exec(`INSERT INTO clip_contents
 			(item_id, url_key, url_original, source, excerpt, content_md, cover_path,
-			 fetched_at, http_status, content_hash, word_count, fetch_error, screenshot_path)
-			VALUES (?,?,?,'screenshot','','','',?,0,'',0,'',?)`,
-			id, urlutil.Key(it.URL), it.URL, db.NowStr(), webPath)
+			 fetched_at, http_status, content_hash, word_count, fetch_error, screenshot_path, screenshot_meta)
+			VALUES (?,?,?,'screenshot','','','',?,0,'',0,'',?,?)`,
+			id, urlutil.Key(it.URL), it.URL, db.NowStr(), webPath, metaJSON)
 		if err != nil {
 			os.Remove(filepath.Join(dir, name))
 			Err(w, http.StatusInternalServerError, 1, "保存截图失败")
@@ -112,11 +129,32 @@ func (h *ClipHandler) Screenshot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	auth.AuditLog(w, r, "clip.screenshot", fmt.Sprintf("item:%d", id), "success", clipActor(p), p.Role,
-		fmt.Sprintf("bytes=%d", len(data)))
+		fmt.Sprintf("bytes=%d mode=%s", len(data), meta.Mode))
 	OK(w, map[string]any{
 		"screenshot_path": webPath,
+		"screenshot_meta": metaJSON,
 		"bytes":           len(data),
+		"mode":            meta.Mode,
+		"width":           meta.Width,
+		"height":          meta.Height,
 	})
+}
+
+// clipShotMeta 整页截图元数据：full=整页拼接，viewport=仅可视区
+type clipShotMeta struct {
+	Mode   string `json:"mode"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+	Bytes  int    `json:"bytes"`
+}
+
+// atoiHeader 读取数值型请求头，非法值返回 0
+func atoiHeader(v string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
 }
 
 // shotImageExt 通过文件头判断图片类型，避免把任意内容当图片保存
