@@ -394,6 +394,8 @@ func main() {
 	r.Get("/favicon.ico", serveEmbed("frontend/favicon.ico", "image/x-icon"))
 	r.With(protectLoginHTML).Get("/login.html", serveEmbed("frontend/login.html", "text/html; charset=utf-8"))
 	r.With(protectAdminHTML).Get("/admin.html", serveEmbed("frontend/admin.html", "text/html; charset=utf-8"))
+	// 经典后台：与新控制台并存，登录后可随时切换
+	r.With(protectAdminHTML).Get("/admin-classic.html", serveEmbed("frontend/admin-classic.html", "text/html; charset=utf-8"))
 
 	// 剪藏落地页 / PWA 分享入口
 	r.Get("/clip", serveEmbed("frontend/clip.html", "text/html; charset=utf-8"))
@@ -431,7 +433,7 @@ func main() {
 		}
 		// 防止通过 /frontend/admin.html 绕过登录保护
 		switch cleanPath {
-		case "/admin.html":
+		case "/admin.html", "/admin-classic.html":
 			if sess := auth.GetSessionFromRequest(r); sess == nil || sess.Role == "guest" {
 				http.Redirect(w, r, "/login.html", http.StatusFound)
 				return

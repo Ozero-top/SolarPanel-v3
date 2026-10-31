@@ -38,6 +38,10 @@ func (h *UserHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
 			h.List(w, r)
 			return
 		}
+		if action == "ui_pref" {
+			h.GetUIPref(w, r)
+			return
+		}
 		Fail(w, "未知操作")
 		return
 	}
@@ -56,6 +60,8 @@ func (h *UserHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
 			h.SetRole(w, r)
 		case "set_password":
 			h.SetPassword(w, r)
+		case "ui_pref":
+			h.SetUIPref(w, r)
 		default:
 			Fail(w, "未知操作")
 		}
@@ -386,4 +392,48 @@ func (h *UserHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	db.DB.Exec("UPDATE users SET password=? WHERE id=?", string(hashed), body.ID)
 	OK(w, nil)
+}
+
+// GetUIPref 读取当前账号的后台界面偏好
+func (h *UserHandler) GetUIPref(w http.ResponseWriter, r *http.Request) {
+	sess := auth.GetSessionFromRequest(r)
+	if sess == nil || sess.UID == 0 {
+		Err(w, http.StatusUnauthorized, 1, "未登录")
+		return
+	}
+
+	var ui, ver string
+	if err := db.DB.QueryRow("SELECT admin_ui, admin_ui_ver FROM users WHERE id=?", sess.UID).Scan(&ui, &ver); err != nil {
+		Fail(w, "用户不存在")
+		return
+	}
+	OK(w, map[string]any{"admin_ui": ui, "admin_ui_ver": ver})
+}
+
+// SetUIPref 保存当前账号的后台界面偏好（console / classic），跟随账号跨设备生效
+func (h *UserHandler) SetUIPref(w http.ResponseWriter, r *http.Request) {
+	sess := auth.GetSessionFromRequest(r)
+	if sess == nil || sess.UID == 0 {
+		Err(w, http.StatusUnauthorized, 1, "未登录")
+		return
+	}
+
+	var body struct {
+		UI string `json:"ui"`
+	}
+	if err := BindJSON(r, &body); err != nil {
+		Fail(w, "参数错误")
+		return
+	}
+	ui := strings.TrimSpace(body.UI)
+	if ui != "console" && ui != "classic" {
+		Fail(w, "界面参数不合法")
+		return
+	}
+
+	if _, err := db.DB.Exec("UPDATE users SET admin_ui=?, admin_ui_ver=? WHERE id=?", ui, AppVersion, sess.UID); err != nil {
+		Err(w, http.StatusInternalServerError, 1, "保存失败")
+		return
+	}
+	OK(w, map[string]any{"admin_ui": ui, "admin_ui_ver": AppVersion})
 }

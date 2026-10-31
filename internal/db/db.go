@@ -65,6 +65,8 @@ var expectedColumns = map[string][]struct{ Name, Def string }{
 		{"role", "TEXT NOT NULL DEFAULT 'admin'"},
 		{"totp_secret", "TEXT NOT NULL DEFAULT ''"},
 		{"created_at", "TEXT NOT NULL DEFAULT ''"},
+		{"admin_ui", "TEXT NOT NULL DEFAULT ''"},
+		{"admin_ui_ver", "TEXT NOT NULL DEFAULT ''"},
 	},
 	"settings": {
 		{"config_value", "TEXT"},

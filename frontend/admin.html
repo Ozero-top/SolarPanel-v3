@@ -7,32 +7,148 @@
   <title>管理后台 - SolarPanel</title>
   <link rel="icon" href="favicon.ico?v=1b5d8c6c" type="image/x-icon">
   <link rel="stylesheet" href="assets/css/common.css?v=94307f77">
-  <link rel="stylesheet" href="assets/css/auth-admin.css?v=0912cc91">
+  <link rel="stylesheet" href="assets/css/auth-admin.css?v=53f17a8b">
   <link rel="stylesheet" href="assets/css/themes.css?v=8cac2ef5">
+  <link rel="stylesheet" href="assets/css/console.css?v=7cb17c30">
 </head>
-<body>
-  <div class="style-fx" aria-hidden="true"></div>
-  <div class="admin-wrap">
-    <!-- 顶栏 -->
-    <header class="admin-header glass">
-      <div class="brand">SolarPanel · 管理后台 <span class="ver" id="appVer"></span></div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <span id="whoami" style="font-size:13px;color:var(--text-muted)"></span>
-        <a class="btn btn-sm" href="/" target="_blank" rel="noopener">查看主页</a>
-        <button class="btn btn-sm" id="logoutBtn">退出登录</button>
+<body class="admin-console" data-admin-skin="aurora">
+  <script>(function(){try{var k=localStorage.getItem('sp_admin_skin');if(!k||['aurora','neon','element'].indexOf(k)<0)k='aurora';document.body.dataset.adminSkin=k;document.documentElement.dataset.theme=k==='element'?'light':'dark';document.documentElement.dataset.style='console';}catch(e){}})();</script>
+  <div class="console-glow" aria-hidden="true"></div>
+  <div class="console-shell" id="consoleShell">
+    <!-- 侧栏导航 -->
+    <aside class="console-sidebar" id="consoleSidebar">
+      <div class="cs-brand">
+        <div class="cs-logo">SP</div>
+        <div class="cs-brand-text"><b>SolarPanel</b><span>管理控制台</span></div>
+        <button class="cs-collapse" id="sidebarCollapseBtn" type="button" title="收起侧栏">‹</button>
       </div>
-    </header>
+      <nav class="admin-tabs cs-nav" aria-label="后台导航">
+        <div class="cs-nav-group">概览</div>
+        <button class="tab active" data-tab="dashboard"><span class="cs-ico">◉</span><span class="cs-label">系统状态</span></button>
+        <div class="cs-nav-group">内容</div>
+        <button class="tab" data-tab="items"><span class="cs-ico">▤</span><span class="cs-label">卡片管理</span></button>
+        <button class="tab" data-tab="groups"><span class="cs-ico">▥</span><span class="cs-label">分组管理</span></button>
+        <button class="tab" data-tab="clip"><span class="cs-ico">⌸</span><span class="cs-label">剪藏与接入</span></button>
+        <div class="cs-nav-group">系统</div>
+        <button class="tab" data-tab="settings"><span class="cs-ico">⚙</span><span class="cs-label">站点设置</span></button>
+        <button class="tab" data-tab="account"><span class="cs-ico">◍</span><span class="cs-label">账号管理</span></button>
+        <button class="tab" data-tab="backup"><span class="cs-ico">◫</span><span class="cs-label">系统备份</span></button>
+        <button class="tab" data-tab="audit"><span class="cs-ico">≡</span><span class="cs-label">审计日志</span></button>
+      </nav>
+      <div class="cs-side-foot">
+        <div class="cs-user">
+          <div class="cs-avatar" id="csAvatar">?</div>
+          <div class="cs-user-meta"><b id="whoami">—</b><span>已登录</span></div>
+        </div>
+        <div class="cs-side-actions">
+          <a class="btn btn-sm" href="/" target="_blank" rel="noopener">查看主页</a>
+          <button class="btn btn-sm" id="logoutBtn">退出登录</button>
+        </div>
+        <button class="cs-ui-switch" type="button" data-ui-switch="classic" title="切换到经典后台">⇄ 切换到经典后台</button>
+        <div class="cs-ver">版本 v<span id="appVer"></span></div>
+      </div>
+    </aside>
 
-    <!-- 标签页 -->
-    <nav class="admin-tabs glass">
-      <button class="tab active" data-tab="settings">站点设置</button>
-      <button class="tab" data-tab="items">卡片管理</button>
-      <button class="tab" data-tab="groups">分组管理</button>
-      <button class="tab" data-tab="account">账号管理</button>
-      <button class="tab" data-tab="backup">系统备份</button>
-      <button class="tab" data-tab="clip">剪藏与接入</button>
-      <button class="tab" data-tab="audit">审计日志</button>
-    </nav>
+    <div class="console-backdrop" id="sidebarBackdrop" hidden></div>
+
+    <!-- 主区域 -->
+    <main class="console-main">
+      <header class="console-topbar">
+        <button class="cs-menu-btn" id="sidebarToggleBtn" type="button" aria-label="打开导航">☰</button>
+        <div class="cs-crumb"><span>后台</span><i>/</i><b id="csPageTitle">系统状态</b></div>
+        <div class="cs-top-actions">
+          <div class="cs-live"><span class="cs-dot"></span><span id="csLiveText">运行中</span></div>
+          <div class="cs-clock" id="csClock">--:--:--</div>
+          <button class="cs-icon-btn" id="skinDockBtn" type="button" title="切换控制台风格">◐</button>
+          <a class="cs-icon-btn" href="/" target="_blank" rel="noopener" title="打开主页">↗</a>
+        </div>
+      </header>
+
+      <div class="admin-wrap">
+
+    <!-- ============ 工作台 ============ -->
+    <section class="admin-panel" id="tab-dashboard">
+      <div class="dash-head">
+        <div class="dash-head-text">
+          <h2>系统状态</h2>
+          <p id="dashGreeting">正在汇总站点数据…</p>
+        </div>
+        <div class="dash-head-actions">
+          <button class="btn btn-sm" type="button" id="dashRefreshBtn">刷新数据</button>
+          <button class="btn btn-primary btn-sm" type="button" id="dashAddItemBtn">＋ 新建卡片</button>
+        </div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card tone-blue">
+          <div class="stat-top"><span class="stat-label">卡片总数</span><span class="stat-glyph">▦</span></div>
+          <div class="stat-value" id="statCards">0</div>
+          <div class="stat-foot" id="statCardsFoot">正在读取…</div>
+          <div class="stat-bar"><i id="statCardsBar"></i></div>
+        </div>
+        <div class="stat-card tone-purple">
+          <div class="stat-top"><span class="stat-label">分组总数</span><span class="stat-glyph">▥</span></div>
+          <div class="stat-value" id="statGroups">0</div>
+          <div class="stat-foot" id="statGroupsFoot">正在读取…</div>
+          <div class="stat-bar"><i id="statGroupsBar"></i></div>
+        </div>
+        <div class="stat-card tone-amber">
+          <div class="stat-top"><span class="stat-label">隐藏卡片</span><span class="stat-glyph">◌</span></div>
+          <div class="stat-value" id="statHidden">0</div>
+          <div class="stat-foot" id="statHiddenFoot">正在读取…</div>
+          <div class="stat-bar"><i id="statHiddenBar"></i></div>
+        </div>
+        <div class="stat-card tone-green">
+          <div class="stat-top"><span class="stat-label">内网地址</span><span class="stat-glyph">⌂</span></div>
+          <div class="stat-value" id="statLan">0</div>
+          <div class="stat-foot" id="statLanFoot">正在读取…</div>
+          <div class="stat-bar"><i id="statLanBar"></i></div>
+        </div>
+      </div>
+
+      <div class="dash-grid">
+        <div class="dash-card span-2">
+          <div class="dash-card-head">
+            <div><h3>分组分布</h3><p>按卡片数量排序，展示前 6 个分组</p></div>
+            <span class="dash-chip" id="groupChip">—</span>
+          </div>
+          <div class="donut-row">
+            <div class="donut-wrap">
+              <canvas id="groupDonut" width="200" height="200" role="img" aria-label="分组卡片占比图"></canvas>
+              <div class="donut-center"><b id="donutTotal">0</b><span>卡片</span></div>
+            </div>
+            <div class="legend" id="groupLegend"></div>
+          </div>
+        </div>
+
+        <div class="dash-card">
+          <div class="dash-card-head"><div><h3>打开方式</h3><p>卡片点击后的行为分布</p></div></div>
+          <div class="bar-list" id="openBars"></div>
+          <div class="dash-card-head dash-sub-head"><div><h3>站点概览</h3></div></div>
+          <div class="mini-list" id="overviewList"></div>
+        </div>
+      </div>
+
+      <div class="dash-grid">
+        <div class="dash-card span-2">
+          <div class="dash-card-head">
+            <div><h3>最近添加</h3><p>按录入顺序展示最新卡片</p></div>
+            <button class="btn btn-sm" type="button" id="dashGotoItems">全部卡片</button>
+          </div>
+          <div class="recent-list" id="recentList"></div>
+        </div>
+
+        <div class="dash-card">
+          <div class="dash-card-head"><div><h3>快捷操作</h3><p>常用入口</p></div></div>
+          <div class="quick-grid">
+            <button class="quick-btn" type="button" data-quick="item"><span>＋</span><b>新建卡片</b><i>录入常用链接</i></button>
+            <button class="quick-btn" type="button" data-quick="group"><span>＋</span><b>新建分组</b><i>整理卡片分类</i></button>
+            <button class="quick-btn" type="button" data-quick="clip"><span>⌸</span><b>剪藏与接入</b><i>扩展与令牌</i></button>
+            <button class="quick-btn" type="button" data-quick="settings"><span>⚙</span><b>站点设置</b><i>外观与访问</i></button>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <!-- ============ 卡片管理 ============ -->
     <section class="admin-panel glass" id="tab-items" hidden>
@@ -107,7 +223,7 @@
     </section>
 
     <!-- ============ 站点设置（分区独立保存） ============ -->
-    <section class="admin-panel glass" id="tab-settings">
+    <section class="admin-panel glass" id="tab-settings" hidden>
       <div class="panel-head"><h2>站点设置</h2></div>
 
       <!-- 二级导航：按使用逻辑分组，各分区独立保存 -->
@@ -1083,13 +1199,23 @@
       </div>
     </section>
 
-    <!-- 页脚：项目地址与作者博客 -->
-    <footer class="admin-footer">
-      <span>项目地址：<a href="https://github.com/Ozero-top/SolarPanel-v3" target="_blank" rel="noopener noreferrer">GitHub · SolarPanel-v3</a></span>
-      <span class="admin-footer-dot">·</span>
-      <span>作者博客：<a href="https://www.ozero.top" target="_blank" rel="noopener noreferrer">www.ozero.top</a></span>
-    </footer>
+      <!-- 页脚：项目地址与作者博客 -->
+      <footer class="admin-footer">
+        <span>项目地址：<a href="https://github.com/Ozero-top/SolarPanel-v3" target="_blank" rel="noopener noreferrer">GitHub · SolarPanel-v3</a></span>
+        <span class="admin-footer-dot">·</span>
+        <span>作者博客：<a href="https://www.ozero.top" target="_blank" rel="noopener noreferrer">www.ozero.top</a></span>
+      </footer>
 
+      </div><!-- /.admin-wrap -->
+    </main><!-- /.console-main -->
+  </div><!-- /.console-shell -->
+
+  <!-- 控制台风格切换 -->
+  <div class="skin-dock" id="skinDock" hidden>
+    <div class="skin-dock-title">控制台风格</div>
+    <button class="skin-opt" type="button" data-skin="aurora"><span class="skin-swatch sw-aurora"></span><b>极光暗色</b></button>
+    <button class="skin-opt" type="button" data-skin="neon"><span class="skin-swatch sw-neon"></span><b>赛博霓虹</b></button>
+    <button class="skin-opt" type="button" data-skin="element"><span class="skin-swatch sw-element"></span><b>极简白</b></button>
   </div>
 
   <!-- ============ 历史更新弹窗 ============ -->
@@ -1374,7 +1500,9 @@
   </div>
 
   <script src="assets/js/qrcode.min.js"></script>
-  <script src="assets/js/api.js?v=231e0028"></script>
+  <script src="assets/js/api.js?v=9dcb5a15"></script>
   <script src="assets/js/admin.js?v=83fefd71"></script>
+  <script src="assets/js/admin-console.js?v=a80f180c"></script>
+  <script src="assets/js/admin-ui.js?v=0218fafc"></script>
 </body>
 </html>

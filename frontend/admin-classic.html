@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light" data-style="liquid-glass">
+<head>
+<meta charset="UTF-8">
+<script>(function(){try{var s=localStorage.getItem('sp_theme');var t;if(s==='system'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.mode='system'}else if(s==='light'||s==='dark'){t=s;document.documentElement.dataset.mode=s}else{t='light';document.documentElement.dataset.mode='light'}document.documentElement.dataset.theme=t;var st=localStorage.getItem('sp_style');if(st){document.documentElement.dataset.style=st}}catch(e){}})();</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理后台 - SolarPanel</title>
+  <link rel="icon" href="favicon.ico?v=1b5d8c6c" type="image/x-icon">
+  <link rel="stylesheet" href="assets/css/common.css?v=94307f77">
+  <link rel="stylesheet" href="assets/css/auth-admin.css?v=53f17a8b">
+  <link rel="stylesheet" href="assets/css/themes.css?v=8cac2ef5">
+</head>
+<body>
+  <div class="style-fx" aria-hidden="true"></div>
+  <div class="admin-wrap">
+    <!-- 顶栏 -->
+    <header class="admin-header glass">
+      <div class="brand">SolarPanel · 管理后台 <span class="ver" id="appVer"></span></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span id="whoami" style="font-size:13px;color:var(--text-muted)"></span>
+        <button class="btn btn-sm" type="button" data-ui-switch="console" title="切换到新版控制台">⇄ 新版后台</button>
+        <a class="btn btn-sm" href="/" target="_blank" rel="noopener">查看主页</a>
+        <button class="btn btn-sm" id="logoutBtn">退出登录</button>
+      </div>
+    </header>
+
+    <!-- 标签页 -->
+    <nav class="admin-tabs glass">
+      <button class="tab active" data-tab="settings">站点设置</button>
+      <button class="tab" data-tab="items">卡片管理</button>
+      <button class="tab" data-tab="groups">分组管理</button>
+      <button class="tab" data-tab="account">账号管理</button>
+      <button class="tab" data-tab="backup">系统备份</button>
+      <button class="tab" data-tab="clip">剪藏与接入</button>
+      <button class="tab" data-tab="audit">审计日志</button>
+    </nav>
+
+    <!-- ============ 卡片管理 ============ -->
+    <section class="admin-panel glass" id="tab-items" hidden>
+      <div class="panel-head">
+        <h2>卡片管理</h2>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input class="input" id="itemSearch" type="search" placeholder="搜索标题 / 网址" style="width:170px">
+          <select class="select" id="itemParentFilter" style="width:auto;min-width:130px"></select>
+          <select class="select" id="itemSubFilter" style="width:auto;min-width:150px"></select>
+          <button class="btn btn-sm" id="itemFilterReset" type="button">重置</button>
+          <button class="btn btn-primary" id="addItemBtn">＋ 添加卡片</button>
+        </div>
+      </div>
+      <div class="form-hint" id="itemsFilterInfo" style="margin:4px 0 10px"></div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:56px">图标</th>
+            <th>标题</th>
+            <th>地址</th>
+            <th style="width:110px">分组</th>
+            <th style="width:120px">打开方式</th>
+            <th style="width:230px">操作</th>
+          </tr>
+        </thead>
+        <tbody id="itemsTbody"></tbody>
+      </table>
+      <div class="form-hint" id="itemsOrderHint" style="margin-top:8px">提示：卡片显示顺序请在前端主页调整：管理员登录后分组右侧显示排序按钮，点击进入排序模式，拖拽卡片后保存排序。</div>
+      <div class="pager" id="itemsPager" hidden></div>
+    </section>
+
+    <!-- ============ 分组管理 ============ -->
+    <section class="admin-panel glass" id="tab-groups" hidden>
+      <div class="panel-head">
+        <h2>分组管理</h2>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" id="addGroupBtn">＋ 添加分组</button>
+          <button class="btn btn-save-order" id="saveGroupsOrderBtn" hidden>💾 保存排序</button>
+          <button class="btn" id="resetGroupsOrderBtn" hidden>放弃更改</button>
+        </div>
+      </div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:36px"></th>
+            <th>名称</th>
+            <th>描述</th>
+            <th style="width:80px">卡片数</th>
+            <th style="width:170px">前端显示</th>
+            <th style="width:230px">操作</th>
+          </tr>
+        </thead>
+        <tbody id="groupsTbody"></tbody>
+      </table>
+      <div class="form-hint" style="margin-top:8px">提示：拖动行首 ⠿ 可调整分组顺序（即主页分组排列顺序），点击「保存排序」生效。</div>
+
+      <!-- ============ 书签导入（按分组批量建卡，放在分组管理页底部） ============ -->
+      <div class="account-card" style="margin-top:20px">
+        <div class="account-card-title">📥 浏览器书签导入</div>
+        <div class="form-hint" style="margin-bottom:10px">从 Chrome / Edge / Firefox / Safari 导出的 bookmarks.html 导入，按分组自动创建卡片；http / https 链接有效。<br>增量导入保留现有数据，已有链接不重复；覆盖导入会先删除全部分组和卡片，再导入本次文件。</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select class="select" id="bookmarksMode" style="max-width:190px">
+            <option value="merge">增量导入（保留现有）</option>
+            <option value="overwrite">覆盖导入（清空现有）</option>
+          </select>
+          <input type="file" id="bookmarksFile" accept=".html" hidden>
+          <button class="btn" type="button" id="openBookmarksBtn">📂 选择 bookmarks.html</button>
+          <span id="bookmarksPreview" style="font-size:13px;color:var(--text-muted)"></span>
+          <button class="btn btn-primary" type="button" id="applyBookmarksBtn" hidden>➡️ 导入到数据库</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 站点设置（分区独立保存） ============ -->
+    <section class="admin-panel glass" id="tab-settings">
+      <div class="panel-head"><h2>站点设置</h2></div>
+
+      <!-- 二级导航：按使用逻辑分组，各分区独立保存 -->
+      <nav class="settings-subnav" id="settingsSubnav" aria-label="设置分区">
+        <button type="button" class="subtab" data-panel="basic">🏠 站点信息</button>
+        <button type="button" class="subtab" data-panel="theme">🎨 外观与卡片</button>
+        <button type="button" class="subtab" data-panel="search">🧭 导航与搜索</button>
+        <button type="button" class="subtab" data-panel="access">🔐 访问控制</button>
+        <button type="button" class="subtab" data-panel="news">📰 热点新闻</button>
+        <button type="button" class="subtab" data-panel="nas">🖥️ NAS 监控</button>
+      </nav>
+
+      <!-- 站点信息（基本信息 / 公告 / 备案） -->
+      <div class="settings-section">
+        <div class="section-head">
+          <h3>🏠 站点信息</h3>
+          <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-basic">保存</button>
+        </div>
+        <form id="sf-basic" data-section="basic" autocomplete="off">
+          <h4 class="sub-group-title">🏠 基本信息</h4>
+          <div class="form-row">
+            <div class="form-item">
+              <label>站点标题</label>
+              <input class="input" id="s_site_title" type="text" maxlength="50">
+            </div>
+            <div class="form-item">
+              <label>站点地址（「退出登录」将跳转到此）</label>
+              <input class="input" id="s_site_url" type="text" placeholder="如 https://nav.example.com 或 http://192.168.1.10">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-item">
+              <label>页脚文字</label>
+              <input class="input" id="s_footer" type="text" maxlength="100">
+            </div>
+            <div class="form-item">
+              <label>站点 Logo</label>
+              <div class="upload-row">
+                <img class="setting-preview" id="p_site_logo" alt="">
+                <input class="input" id="s_site_logo" type="text" placeholder="图片地址，或点击上传">
+                <button class="btn" type="button" data-upload="s_site_logo">上传图片</button>
+              </div>
+            </div>
+          </div>
+
+          <h4 class="sub-group-title">📢 公告</h4>
+          <div class="form-row">
+            <div class="form-item" style="flex:2">
+              <label>公告内容（需打开右侧公告开关才会显示）</label>
+              <textarea class="textarea" id="s_announcement" maxlength="500"></textarea>
+            </div>
+            <div class="form-item" style="flex:1">
+              <label>公告开关（默认关闭）</label>
+              <select class="select" id="s_announcement_show">
+                <option value="0">关闭（不在主页显示）</option>
+                <option value="1">开启（主页顶栏显示公告）</option>
+              </select>
+            </div>
+          </div>
+
+          <h4 class="sub-group-title">📋 备案信息</h4>
+          <div class="form-row">
+            <div class="form-item">
+              <label>ICP 备案</label>
+              <select class="select" id="s_icp_show">
+                <option value="0">关闭（底部不显示）</option>
+                <option value="1">开启（底部显示）</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label>ICP 备案号</label>
+              <input class="input" id="s_icp_number" type="text" placeholder="如：京ICP证12345678 号">
+            </div>
+            <div class="form-item">
+              <label>ICP 备案链接（点击备案号跳转，留空则不链）</label>
+              <input class="input" id="s_icp_link" type="text" placeholder="如 https://beian.miit.gov.cn/">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-item">
+              <label>公安备案</label>
+              <select class="select" id="s_police_show">
+                <option value="0">关闭（底部不显示）</option>
+                <option value="1">开启（底部显示）</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label>公安备案号</label>
+              <input class="input" id="s_police_number" type="text" placeholder="如：京公网安备 110102001234 号">
+            </div>
+            <div class="form-item">
+              <label>公安备案链接（点击备案号跳转，留空则不链）</label>
+              <input class="input" id="s_police_link" type="text" placeholder="如 https://beian.mps.gov.cn/">
+            </div>
+          </div>
+
+          <h4 class="sub-group-title">🌐 内网 / 外网访问</h4>
+          <div class="form-row">
+            <div class="form-item">
+              <label>卡片打开地址模式</label>
+              <select class="select" id="s_default_lan_mode">
+                <option value="auto">🌐 自动识别（默认，按当前访问网络自动切换）</option>
+                <option value="public">外网地址模式（始终打开卡片公网域名）</option>
+                <option value="lan">内网地址模式（始终打开卡片内网 IP）</option>
+              </select>
+              <div class="form-hint">每张卡片可单独填「内网地址」（编辑卡片 → 内网地址）。此设置决定点卡片时打开哪一个。</div>
+            </div>
+            <div class="form-item">
+              <label>自动识别补充域名（Split DNS 场景）</label>
+              <input type="text" class="input" id="s_lan_hostnames" placeholder="如 home.local, nas, 192.168.1.10">
+            </div>
+          </div>
+          <div class="form-item">
+            <div class="form-hint">
+              <strong>只有上面的「卡片打开地址模式」选「自动识别」时，这里才起作用</strong>；选外网 / 内网模式时填了也不生效。<br>
+              系统怎么判断你在内网还是外网：看你<strong>打开这个导航页时地址栏里的域名</strong>。<br>
+              <strong>需要填的情况：</strong>你在家里也是用公网域名（例如 <code>nav.xxx.com</code>）打开导航页的。这种域名系统认不出来，就会以为你在外网、给你打开外网地址；把该域名填进来，在家就会被当作内网（这正是常说的 Split DNS 场景）。<br>
+              <strong>怎么填：</strong>可以填域名，也可以填主机名或 IP；多个用英文逗号隔开，例如 <code>nav.xxx.com, nas, 192.168.1.10</code>。<br>
+              <strong>不用填的：</strong>用 <code>localhost</code>、<code>xxx.local</code> / <code>xxx.lan</code> / <code>xxx.home</code>，或用 <code>192.168.x.x</code>、<code>10.x.x.x</code>、<code>172.16~31.x.x</code>、<code>100.64~127.x.x</code>（Tailscale 等）这类内网 IP 打开导航页的，系统本来就认得。<br>
+              <strong>想一次匹配所有子域名：</strong>写 <code>.xxx.com</code> 或 <code>*.xxx.com</code>，例如 <code>.xxx.com</code> 同时涵盖 <code>nav.xxx.com</code>、<code>app.xxx.com</code>。<br>
+              <strong>判断错了也不怕：</strong>点卡片时会先试着连内网地址，连不上会自动改开外网地址，不需要手动切。
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <!-- 外观与卡片（主题 + 卡片 + 布局 + 时钟天气 + 壁纸） -->
+      <div class="settings-section">
+        <div class="section-head">
+          <h3>🎨 外观与卡片</h3>
+          <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-theme">保存</button>
+        </div>
+        <form id="sf-theme" data-section="theme" autocomplete="off">
+          <nav class="settings-subnav theme-subnav" id="themeSubnav" aria-label="外观与卡片分类">
+            <button class="subtab active" type="button" data-subpane="appearance">🎨 外观设置</button>
+            <button class="subtab" type="button" data-subpane="wallpaper">🖼️ 壁纸与每日图</button>
+          </nav>
+
+          <div class="subpane" data-pane="appearance">
+          <h4 class="sub-group-title">🎭 主题与卡片</h4>
+          <div class="form-row">
+            <div class="form-item">
+              <label>默认主题（深浅模式）</label>
+              <select class="select" id="s_default_theme">
+                <option value="dark">🌙 深色</option>
+                <option value="light">🌞 浅色</option>
+                <option value="system">🖥️ 跟随系统</option>
+              </select>
+              <div class="form-hint" id="s_default_theme_note"></div>
+            </div>
+            <div class="form-item">
+              <label>风格主题</label>
+              <select class="select" id="s_theme_style">
+                <option value="liquid-glass">Liquid Glass 液态玻璃（默认 · 磨砂透光 · 流动光斑 · 仅浅色）</option>
+                <option value="wetab">Tab标签页（仿新标签页 · 壁纸主视觉  · 左悬浮分组条 · 底部 Dock · 图标间距 / 大小 / 内容宽度可调）</option>
+                <option value="soft">Soft 柔和浮雕（柔光弥散 · 流动光斑 · 大圆角 · 轻投影 · 通透卡片）</option>
+                <option value="aurora">Aurora 动态极光（柔光渐变 · 缓慢流动 · 光环描边）</option>
+                <option value="blueprint">Blueprint 工程蓝图（深蓝底 · 白线网格 · 等宽字 · 橙色标注）</option>
+                <option value="corporate-clean">Corporate Clean 企业简洁（白卡细边 · 蓝主色 · 焦点环 · 轻浮起）</option>
+                <option value="iris">IRIS 光圈（深空 HUD · 氙蓝酸绿 · 漂移网格）</option>
+                <option value="neo-brutalist">Neo-Brutalist 新野兽派（纯黑粗框 · 硬边阴影 · 直角 · 高对比撞色）</option>
+                <option value="retro-vintage">Retro Vintage 复古怀旧（羊皮纸 · 粗棕框 · 衬线大写 · 角花）</option>
+                <option value="sketch-style">铅笔手绘风（纸张纹理 · 虚线铅笔框 · 涂黑反白）</option>
+                <option value="soft-utility">Soft Utility 柔和工具（暖灰画布 · 深青主色 · 发丝线 · 小圆角 · 薄荷状态）</option>
+              </select>
+              <div class="form-hint">主页即时生效；深浅模式可由访客在主页右上角按钮自行切换</div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-item">
+              <label>卡片样式</label>
+              <select class="select" id="s_card_style">
+                <option value="nav">导航栏（分组标签切换）</option>
+                <option value="navapp">导航栏·应用（标签切换 + 小图标标题）</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label>卡片背景透明度：<span class="range-val" id="v_card_opacity">100</span>%</label>
+              <input type="range" class="range" id="s_card_opacity" min="40" max="100" step="5" value="100">
+              <div class="form-hint">仅调整卡片底色透明度，文字与图标不受影响；40% 最透，100% 为主题默认底色。</div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-item">
+              <label>默认显示分组</label>
+              <select class="select" id="s_default_group">
+                <option value="">自动（第一个有内容的分组）</option>
+              </select>
+              <div class="form-hint">打开主页时默认定位到该分组；可选一级或二级分组，选「自动」则显示第一个有内容的分组。</div>
+            </div>
+          </div>
+
+          <h4 class="sub-group-title">📐 布局与内容</h4>
+          <div class="form-item">
+            <label>内容区域（控制主页卡片区域的宽度与边距，拖动滑块调整，单位 px）</label>
+            <div class="form-row">
+              <div class="form-item">
+                <label>最大宽度：<span class="range-val" id="v_content_maxwidth">1200</span> px</label>
+                <input type="range" class="range" id="s_content_maxwidth" min="300" max="4000" step="10" value="1200">
+              </div>
+              <div class="form-item">
+                <label>两侧边距：<span class="range-val" id="v_content_pad_lr">20</span> px</label>
+                <input type="range" class="range" id="s_content_pad_lr" min="0" max="300" step="2" value="20">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-item">
+                <label>顶部边距：<span class="range-val" id="v_content_pad_top">0</span> px</label>
+                <input type="range" class="range" id="s_content_pad_top" min="0" max="300" step="2" value="0">
+              </div>
+              <div class="form-item">
+                <label>底部边距：<span class="range-val" id="v_content_pad_bottom">40</span> px</label>
+                <input type="range" class="range" id="s_content_pad_bottom" min="0" max="300" step="2" value="40">
+              </div>
+            </div>
+            <div class="form-hint">保存后刷新主页生效；若未生效多为浏览器缓存，可强制刷新（Ctrl+F5）。</div>
+          </div>
+
+          <h4 class="sub-group-title">🔤 页面字体</h4>
+          <div class="form-item">
+            <label>整体页面字体（12 款免费设计字体）</label>
+            <select class="select" id="s_page_font"></select>
+            <div class="form-hint">作用于主页正文、卡片标题与描述、顶栏等；中文字体按需加载字形子集，首次切换稍慢；离线时回退系统字体。时钟/天气的专用字体在下方「时钟与天气」设置。</div>
+            <div class="font-preview" id="pageFontPreview">SolarPanel 导航 · 12:30 · 晴 24°C · 今天也要加油呀</div>
+          </div>
+
+          <h4 class="sub-group-title">🕒 时钟与天气</h4>
+          <div class="form-row">
+            <div class="form-item">
+              <label>显示时钟</label>
+              <select class="select" id="s_clock_show">
+                <option value="1">显示</option>
+                <option value="0">隐藏</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label>天气显示</label>
+              <select class="select" id="s_weather_show">
+                <option value="1">显示（与时间横向并排）</option>
+                <option value="0">隐藏</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label>天气城市（留空 = 按访客 IP 自动定位）</label>
+              <input class="input" id="s_weather_city" type="text" placeholder="如：北京 / Shanghai（留空自动定位）">
+            </div>
+          </div>
+          <div class="form-item">
+            <label>时钟 / 天气字体（12 款免费设计字体）</label>
+            <select class="select" id="s_clock_font"></select>
+            <div class="form-hint">留空时继承「页面字体」；中文字体按需加载，离线回退系统字体。</div>
+            <div class="font-preview" id="clockFontPreview">12:30 <span>晴 24°C · 10月24日 周六</span></div>
+          </div>
+          </div><!-- /appearance -->
+
+          <div class="subpane" data-pane="wallpaper" hidden>
+          <div class="form-item">
+            <label>主页壁纸（填写地址或点击「图库」选择，上传的壁纸自动进入图库）</label>
+            <div class="wallpaper-pick">
+              <img class="setting-preview" id="p_wallpaper" alt="">
+              <div class="upload-row">
+                <input class="input" id="s_wallpaper" type="text" placeholder="壁纸地址，留空使用默认渐变背景">
+                <button class="btn" type="button" data-upload="s_wallpaper">上传壁纸</button>
+                <button class="btn" type="button" id="openGalleryBtn">🖼️ 图库</button>
+                <button class="btn btn-danger btn-sm" type="button" id="clearWallpaperBtn">清空</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-item">
+              <label>壁纸遮罩透明度：<span class="range-val" id="v_mask_opacity">0.35</span>（0~1，越大越暗）</label>
+              <input type="range" class="range" id="s_mask_opacity" min="0" max="1" step="0.05" value="0.35">
+            </div>
+            <div class="form-item">
+              <label>壁纸模糊：<span class="range-val" id="v_wallpaper_blur">6</span> px（0~30，0 = 不模糊）</label>
+              <input type="range" class="range" id="s_wallpaper_blur" min="0" max="30" step="1" value="6">
+              <div class="form-hint">保存后刷新主页生效</div>
+            </div>
+          </div>
+
+          <div class="form-item">
+            <label>每日壁纸源（开启后主页静态壁纸将被每日自动更新的壁纸覆盖；留空 = 禁用）</label>
+            <div class="upload-row">
+              <select class="select" id="s_wallpaper_source">
+                <option value="">禁用（使用上方静态壁纸）</option>
+                <option value="bing_cn">🇨🇳 Bing 中文（zh-CN，默认）</option>
+                <option value="picsum">📷 Lorem Picsum（每日一张固定精选风景）</option>
+              </select>
+              <button class="btn" type="button" id="dailyPreviewBtn">🔍 预览 / 切换</button>
+            </div>
+            <div class="form-hint">切换源后下一次访问会重新抓取新源并各自缓存。旧值 bing / bing_en / bing_jp 自动归一化为 bing_cn。</div>
+          </div>
+          </div><!-- /wallpaper -->
+
+        </form>
+      </div>
+
+      <!-- 导航与搜索 -->
+      <div class="settings-section">
+        <div class="section-head">
+          <h3>🧭 导航与搜索</h3>
+          <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-search">保存</button>
+        </div>
+        <form id="sf-search" data-section="search" autocomplete="off">
+          <h4 class="sub-group-title">🧭 顶栏与搜索栏</h4>
+          <div class="form-row">
+            <div class="form-item">
+              <label>搜索引擎搜索栏</label>
+              <select class="select" id="s_search_bar_enabled">
+                <option value="1">显示（主页顶部）</option>
+                <option value="0">隐藏</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label>桌面端顶栏（品牌/按钮）</label>
+              <select class="select" id="s_topbar_desktop_enabled">
+                <option value="0">隐藏</option>
+                <option value="1">显示（向下滚动自动收起）</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label>移动端顶栏（品牌/按钮）</label>
+              <select class="select" id="s_topbar_mobile_enabled">
+                <option value="0">默认隐藏（右上角悬浮按钮切换）</option>
+                <option value="1">始终显示</option>
+              </select>
+            </div>
+          </div>
+
+          <h4 class="sub-group-title">🔍 搜索引擎</h4>
+          <div class="form-row">
+            <div class="form-item">
+              <label>默认搜索引擎</label>
+              <select class="select" id="s_search_default"></select>
+            </div>
+          </div>
+          <div class="form-item">
+            <label>搜索栏宽度（滑块调整，单位 px）</label>
+            <input type="range" class="range" id="s_search_width" min="360" max="1200" step="10" value="640">
+            <div class="form-hint">当前：<span class="range-val" id="v_search_width">640</span> px（默认 640，保存后刷新主页生效）</div>
+          </div>
+          <div class="form-item">
+            <label>搜索引擎列表（主页搜索框按此显示）</label>
+            <div id="engineRows"></div>
+            <button class="btn btn-sm" type="button" id="addEngineBtn">＋ 添加引擎</button>
+            <div class="form-hint">搜索地址中使用 %s 作为关键词占位符，例如：https://www.baidu.com/s?wd=%s</div>
+          </div>
+        </form>
+      </div>
+
+      <!-- 访问控制 -->
+      <div class="settings-section">
+        <div class="section-head">
+          <h3>🔐 访问控制</h3>
+          <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-access">保存</button>
+        </div>
+        <form id="sf-access" data-section="access" autocomplete="off">
+          <div class="form-row">
+            <div class="form-item">
+              <label>访客访问开关（默认关闭）</label>
+              <select class="select" id="s_guest_access_enabled">
+                <option value="0">关闭（访客可直接访问主页）</option>
+                <option value="1">开启（未登录访客需先输入密码）</option>
+              </select>
+              <div class="form-hint">开启后，访客访问主页将先看到密码锁屏；已登录管理员不受影响。密码使用 bcrypt 存储（不在表单中回显）。</div>
+            </div>
+            <div class="form-item">
+              <label>访客密码（留空则保持原密码不变；仅在开启时有效）</label>
+              <input class="input" id="s_guest_password" type="password" placeholder="输入访客密码（留空 = 不改）" autocomplete="off">
+              <div class="form-hint">访客密码与本站访客密码保持一致（bcrypt(10) 哈希存储）。</div>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <!-- 热点新闻 -->
+      <div class="settings-section">
+        <div class="section-head">
+          <h3>📰 热点新闻</h3>
+          <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-news">保存</button>
+        </div>
+        <form id="sf-news" data-section="news" autocomplete="off">
+          <h4 class="sub-group-title">📰 新闻视图</h4>
+          <div class="form-item">
+            <label>热点新闻</label>
+            <select class="select" id="s_news_show">
+              <option value="1">开启（主页新闻视图展示）</option>
+              <option value="0">关闭（主页导航与视图入口全部隐藏）</option>
+            </select>
+            <div class="form-hint">关闭后主页「📰 热点新闻」入口和新闻视图均不显示，方便暂时停用热点功能。</div>
+          </div>
+          <div class="form-item">
+            <label>后台自动刷新</label>
+            <select class="select" id="s_news_auto_refresh">
+              <option value="0">关闭（仅有人访问新闻视图时才更新）</option>
+              <option value="1">开启（按各源更新间隔在后台定时刷新）</option>
+            </select>
+            <div class="form-hint">关闭时后台不做定时抓取，数据只在有人打开新闻视图时按需更新，避免对上游站点和本机造成额外压力（默认关闭）。</div>
+          </div>
+          <h4 class="sub-group-title">📊 数据源</h4>
+          <div class="form-item">
+            <label>数据源（勾选主页新闻视图展示的热榜；未勾选任何数据源时主页入口自动隐藏；拖动行首 ⠿ 或用「上移/下移」调整主页显示顺序，保存后生效）</label>
+            <div style="display:flex;gap:8px;margin:4px 0 10px">
+              <button class="btn btn-sm" type="button" id="newsSelectAll">全选</button>
+              <button class="btn btn-sm" type="button" id="newsSelectInvert">反选</button>
+            </div>
+            <div id="newsSourceRows" class="news-source-wrap">
+              <div class="form-hint">数据源加载中…</div>
+            </div>
+          </div>
+          <h4 class="sub-group-title">📌 自定义 RSS / Atom 源</h4>
+          <div class="form-item">
+            <div class="form-hint" style="margin-bottom:8px">在下方添加任意 RSS 或 Atom 订阅源，将作为额外的热点卡片在新闻视图展示。URL 必须以 http:// 或 https:// 开头；此列表新增 / 删除即时生效，无需点击上方保存。</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+              <input class="input" id="feedTitle" type="text" placeholder="标题（建议 ≤12 字）" style="max-width:200px">
+              <input class="input" id="feedURL" type="text" placeholder="RSS / Atom 订阅地址，如 https://hnrss.org/newest" style="flex:1;min-width:300px">
+              <button class="btn btn-primary" type="button" id="addFeedBtn">＋ 添加</button>
+            </div>
+            <table class="table" id="feedsTable">
+              <thead>
+                <tr>
+                  <th style="width:40px">ID</th>
+                  <th>标题</th>
+                  <th>URL</th>
+                  <th style="width:60px">启用</th>
+                  <th style="width:80px">排序</th>
+                  <th style="width:160px">操作</th>
+                </tr>
+              </thead>
+              <tbody id="feedsTbody"></tbody>
+            </table>
+          </div>
+        </form>
+      </div>
+
+      <!-- NAS 监控 -->
+      <div class="settings-section">
+        <div class="section-head">
+          <h3>🖥️ NAS 监控</h3>
+          <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-nas">保存</button>
+        </div>
+        <form id="sf-nas" data-section="nas" autocomplete="off">
+          <h4 class="sub-group-title">🖥️ 面板开关与位置</h4>
+          <div class="form-row">
+            <div class="form-item">
+              <label>NAS 信息面板</label>
+              <select class="select" id="s_nas_show">
+                <option value="1">开启（主页展示 NAS 与容器状态）</option>
+                <option value="0">关闭（不展示，也不采集）</option>
+              </select>
+              <div class="form-hint">数据来自宿主机 /proc、/sys 与 Docker API，需按部署说明挂载宿主机根目录与 docker.sock。</div>
+            </div>
+            <div class="form-item">
+              <label>面板放置方式</label>
+              <select class="select" id="s_nas_layout">
+                <option value="right">右侧悬浮（推荐）</option>
+                <option value="left">左侧悬浮（会隐藏左侧分组目录）</option>
+                <option value="both">左右双侧（左主机指标 / 右容器列表）</option>
+                <option value="banner">卡片下方状态条（单行概览 + 迷你曲线）</option>
+              </select>
+              <div class="form-hint">悬浮模式可点击箭头收起为竖条；状态条模式固定在卡片区下方，点击「查看详情」打开完整弹窗。移动端（≤768px）统一自动使用状态条，悬浮模式不生效。</div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-item">
+              <label>刷新间隔（秒）</label>
+              <input class="input" id="s_nas_refresh" type="number" min="2" max="60" step="1">
+              <div class="form-hint">建议 3~5 秒；间隔越短，对 NAS 与 Docker 的采集压力越大。</div>
+            </div>
+            <div class="form-item">
+              <label>访客可见</label>
+              <select class="select" id="s_nas_guest">
+                <option value="0">否（仅登录用户可见）</option>
+                <option value="1">是（访客也能看到）</option>
+              </select>
+              <div class="form-hint">面板含主机名、存储路径等信息，公网部署建议保持关闭。</div>
+            </div>
+          </div>
+          <h4 class="sub-group-title">💾 存储池</h4>
+          <div class="form-item">
+            <label>自定义存储挂载点（可选，逗号分隔）</label>
+            <input class="input" id="s_nas_disk_paths" type="text" placeholder="留空自动识别；如需固定可填 /volume1,/share/CACHEDEV1_DATA">
+            <div class="form-hint">自动识别覆盖群晖 /volume*、绿联 /volume*、飞牛 /vol*、威联通 /share/CACHEDEV*_DATA、极空间 /volume*、OpenWrt 系 /overlay 与 /mnt/* 等常见路径。</div>
+          </div>
+          <h4 class="sub-group-title">🪟 详情弹窗外观</h4>
+          <div class="form-row">
+            <div class="form-item">
+              <label>弹窗不透明度 <span id="nasAlphaVal">100%</span></label>
+              <input class="range" id="s_nas_modal_alpha" type="range" min="40" max="100" step="1" value="100">
+              <div class="form-hint">调低可透出壁纸，调高文字对比更强；建议 80%~100%。</div>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <!-- 系统备份：已提升为一级导航（tab-backup） -->
+    </section>
+
+    <!-- ============ 账号 ============ -->
+    <section class="admin-panel glass" id="tab-account" hidden>
+      <div class="panel-head"><h2>账号设置</h2></div>
+      <div class="account-grid">
+        <div class="account-card">
+          <div class="account-card-title">账号信息</div>
+          <div class="acc-inline-row">
+            <div class="acc-inline-item">
+              <span class="k">用户名</span>
+              <span class="v" id="accUsername">—</span>
+            </div>
+            <div class="acc-inline-item">
+              <span class="k">权限组</span>
+              <span class="v"><span class="role-badge" id="accRoleBadge">—</span></span>
+            </div>
+            <div class="acc-inline-item acc-inline-grow">
+              <span class="k">显示名称</span>
+              <div class="acc-input-wrap">
+                <input class="input" id="accName" type="text" maxlength="50">
+                <button class="btn acc-save-btn" id="saveNameBtn" type="button">保存</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <form id="pwdForm" class="account-card" autocomplete="off">
+          <div class="account-card-title">修改密码</div>
+          <div class="acc-inline-row">
+            <div class="acc-inline-item">
+              <span class="k">原密码</span>
+              <input class="input" id="oldPwd" type="password" autocomplete="current-password" required>
+            </div>
+            <div class="acc-inline-item">
+              <span class="k">新密码</span>
+              <input class="input" id="newPwd" type="password" autocomplete="new-password" required>
+            </div>
+            <div class="acc-inline-item">
+              <span class="k">确认新密码</span>
+              <input class="input" id="newPwd2" type="password" autocomplete="new-password" required>
+            </div>
+            <div class="acc-inline-item acc-inline-btn">
+              <button class="btn btn-primary" type="submit" id="savePwdBtn">修改密码</button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <!-- ============ 两步验证 (2FA) ============ -->
+      <div class="account-card" style="margin-top:20px" id="twofaCard">
+        <div class="account-card-title">🔐 两步验证 (2FA)</div>
+        <div id="twofaStatus" style="font-size:13px;color:var(--text-muted);margin-bottom:12px">状态：加载中…</div>
+        <div id="twofaSetup" hidden style="margin-bottom:16px">
+          <div id="twofaQR" style="text-align:center;margin-bottom:10px"></div>
+          <div id="twofaSecret" style="text-align:center;font-family:monospace;font-size:13px;color:var(--text-muted);margin-bottom:8px"></div>
+          <div style="display:flex;gap:8px">
+            <input class="input" id="twofaCode" type="text" placeholder="输入验证器中的 6 位动态码" maxlength="6" autocomplete="off" style="flex:1">
+            <button class="btn btn-primary" type="button" id="twofaEnableBtn">✅ 开启 2FA</button>
+            <button class="btn" type="button" id="twofaCancelBtn">取消</button>
+          </div>
+        </div>
+        <div id="twofaActions">
+          <button class="btn btn-primary" type="button" id="twofaSetupBtn" style="display:none">🚀 开启 2FA</button>
+          <button class="btn btn-danger" type="button" id="twofaDisableBtn" style="display:none">🛑 关闭 2FA</button>
+        </div>
+        <div class="form-hint" style="margin-top:10px">密钥仅在本次页面显示；开启后每次登录需输入动态码。推荐使用 Google Authenticator / Microsoft Authenticator / Authy / 1Password 等应用。</div>
+      </div>
+
+      <!-- ============ 受信任设备 ============ -->
+      <div class="account-card" style="margin-top:20px" id="trustedDevicesCard" hidden>
+        <div class="account-card-title">📱 受信任设备</div>
+        <div id="trustedDevicesBody">加载中…</div>
+      </div>
+
+      <div style="margin-top:36px" id="userManageBlock">
+        <div class="panel-head">
+          <h2>用户管理（新增 / 删除用户，重置密码，分配权限组）</h2>
+        </div>
+        <div class="perm-legend">
+          <span class="role-badge role-admin">管理员</span> 全部权限
+          <span class="role-badge role-editor">编辑者</span> 可管理分组、卡片与上传，不能改站点设置和账号
+          <span class="role-badge role-viewer">只读</span> 可查看全部后台内容与设置（均为灰色不可操作），不能修改密码、新增 / 删除用户或分配权限
+        </div>
+        <form id="userAddForm" autocomplete="off" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+          <input class="input" id="u_username" type="text" placeholder="用户名（2~50 位）" style="max-width:180px" required>
+          <input class="input" id="u_name" type="text" placeholder="显示名称（可选）" style="max-width:160px">
+          <input class="input" id="u_password" type="password" placeholder="密码（至少 6 位）" style="max-width:180px" required>
+          <select class="select" id="u_role" style="max-width:140px">
+            <option value="admin">管理员（全部）</option>
+            <option value="editor">编辑者</option>
+            <option value="viewer">只读</option>
+          </select>
+          <button class="btn btn-primary" type="submit" id="userAddBtn">＋ 新增用户</button>
+        </form>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>用户名</th>
+              <th>显示名称</th>
+              <th>权限组</th>
+              <th style="width:280px">操作</th>
+            </tr>
+          </thead>
+          <tbody id="usersTbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ 审计日志 ============ -->
+    <section class="admin-panel glass" id="tab-audit" hidden>
+      <div class="panel-head">
+        <h2>📋 审计日志</h2>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select class="select" id="auditFilterType" style="width:auto;min-width:140px">
+            <option value="">全部类型</option>
+            <option value="auth">登录认证</option>
+            <option value="2fa">2FA</option>
+            <option value="guest">访客访问</option>
+            <option value="item">卡片操作</option>
+            <option value="group">分组操作</option>
+            <option value="settings">保存设置</option>
+            <option value="audit">审计管理</option>
+          </select>
+          <button class="btn" type="button" id="auditRefreshBtn">🔄 刷新</button>
+          <button class="btn btn-danger" type="button" id="auditClearBtn">🗑️ 清空当前筛选</button>
+        </div>
+      </div>
+      <div class="form-hint" style="margin-bottom:10px">记录登录、访客访问（IP + 国家省市）与关键写操作（卡片 / 分组 / 设置 / 账号 / 2FA）；仅管理员可见；每页 20 条。</div>
+      <table class="table audit-table">
+        <thead>
+          <tr>
+            <th style="width:150px">时间</th>
+            <th style="width:70px">类型</th>
+            <th style="width:80px">用户</th>
+            <th style="width:140px">动作</th>
+            <th>对象</th>
+            <th style="width:80px">结果</th>
+            <th style="width:120px">IP</th>
+            <th style="width:180px">地区</th>
+          </tr>
+        </thead>
+        <tbody id="auditTbody"></tbody>
+      </table>
+      <div class="pager" id="auditPager" hidden></div>
+    </section>
+
+    <!-- ============ 系统备份 ============ -->
+    <section class="admin-panel glass" id="tab-backup" hidden>
+      <div class="panel-head"><h2>系统备份</h2></div>
+      <div class="backup-actions">
+
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>导出配置</b>
+            <span>JSON：完整备份，包含全部分组、卡片、站点设置及所有图标 / Logo / 壁纸 / favicon 文件。HTML：浏览器书签格式（不含图片资源），可直接导入 Chrome / Edge 收藏夹。</span>
+          </div>
+          <div class="backup-row-actions">
+            <select class="select" id="exportFormatSel" style="width:auto;min-width:140px" title="导出格式">
+              <option value="json">JSON 备份（默认）</option>
+              <option value="html">HTML 书签</option>
+            </select>
+            <button class="btn btn-primary" type="button" id="exportBackupBtn">⬇️ 导出配置</button>
+          </div>
+        </div>
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>导入配置</b>
+            <span class="danger-text">将清空当前全部分组、卡片、站点设置和图标 / 壁纸文件，然后用备份文件恢复（用户账号不受影响）。操作前建议先导出一份当前配置。支持 SolarPanel 备份，也支持 Sun Panel 导出的 <code>.sun-panel.json</code>（自动转换，旧站上传的相对路径图标会回退为站点图标自动抓取）。</span>
+          </div>
+          <button class="btn btn-danger" type="button" id="importBackupBtn">⬆️ 导入配置</button>
+        </div>
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>清空恢复初始状态</b>
+            <span class="danger-text">将删除全部分组、卡片、自定义站点设置和图标 / 壁纸文件，恢复到刚安装时的默认状态（用户账号不受影响）。此操作不可撤销，建议先导出备份。</span>
+          </div>
+          <button class="btn btn-danger" type="button" id="resetBackupBtn">🗑️ 恢复初始状态</button>
+        </div>
+        <input type="file" id="importBackupFile" accept=".json,application/json" hidden>
+        <div class="form-hint">导入配置或恢复初始状态前，建议先「导出配置」备份一次。</div>
+
+        <!-- 自动备份 -->
+        <div class="backup-row" style="margin-top:18px">
+          <div class="backup-info">
+            <b>自动备份</b>
+            <span>默认关闭。开启后按设定间隔自动备份站点设置与卡片数据（不含图片文件），自动备份与手动备份各最多保留 5 份，超出后自动删除最早的备份。</span>
+          </div>
+          <div class="backup-row-actions">
+            <label class="form-hint" style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+              <input type="checkbox" id="autoBackupToggle"> 开启
+            </label>
+            <select class="select" id="autoBackupIntervalSel" style="width:auto;min-width:120px" title="自动备份间隔">
+              <option value="1">每 1 天</option>
+              <option value="3">每 3 天</option>
+              <option value="5">每 5 天</option>
+              <option value="7">每 7 天</option>
+              <option value="9">每 9 天</option>
+            </select>
+            <button class="btn" type="button" id="manualBackupBtn">立即备份</button>
+          </div>
+        </div>
+        <div class="backup-list-block">
+          <div class="backup-list-head">
+            <span>自动备份（最多 5 份）</span>
+          </div>
+          <div class="backup-list" id="autoBackupList"><div class="backup-list-empty">暂无自动备份</div></div>
+          <div class="backup-list-head">
+            <span>手动备份（最多 5 份）</span>
+          </div>
+          <div class="backup-list" id="manualBackupList"><div class="backup-list-empty">暂无手动备份</div></div>
+        </div>
+        <div class="backup-row" style="margin-top:12px">
+          <div class="backup-info">
+            <b>剪藏快照占用</b>
+            <span>正文快照与整页截图会随 JSON 备份一起导出；导出体积过大时，建议先在阅读页清理不需要的快照。</span>
+          </div>
+          <div class="backup-row-actions">
+            <span class="form-hint" id="clipStorageHint" style="margin:0">统计中…</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 更新日志 -->
+      <div class="backup-row" style="margin-top:18px;align-items:center">
+        <div class="backup-info">
+          <b>更新日志</b>
+          <span>当前版本 <b id="appVer2"></b><span id="updateState" style="margin-left:8px"></span></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <label class="form-hint" style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+            <input type="checkbox" id="updateCheckToggle"> 自动检查更新
+          </label>
+          <select class="select" id="updateIntervalSel" style="width:auto;min-width:120px" title="检查间隔">
+            <option value="1">每 1 小时</option>
+            <option value="3">每 3 小时</option>
+            <option value="6">每 6 小时</option>
+            <option value="12">每 12 小时</option>
+            <option value="24">每 24 小时</option>
+          </select>
+          <button class="btn" type="button" id="checkUpdateBtn">🔄 检查更新</button>
+          <button class="btn" type="button" id="changelogHistoryBtn">📜 历史更新</button>
+        </div>
+      </div>
+      <div id="updateNotice" class="form-hint" style="margin-bottom:10px" hidden></div>
+      <div id="changelogDetail" class="changelog"></div>
+    </section>
+
+    <!-- ============ 剪藏与接入 ============ -->
+    <section class="admin-panel glass" id="tab-clip" hidden>
+      <div class="panel-head">
+        <h2>✂️ 剪藏与接入</h2>
+        <div style="display:flex;gap:8px;align-items:center">
+          <a class="btn btn-sm" href="/clips" target="_blank" rel="noopener">📚 打开剪藏库</a>
+          <button class="btn btn-primary btn-sm" type="button" id="saveClipSettingsBtn">保存设置</button>
+        </div>
+      </div>
+      <div class="form-hint" style="margin:0 0 10px">
+        ⚠️ 该功能尚未经过完整测试，使用中遇到任何问题，请到
+        <a href="https://github.com/Ozero-top/SolarPanel-v3/issues" target="_blank" rel="noopener noreferrer">GitHub Issues</a>
+        提交反馈。
+      </div>
+      <nav class="settings-subnav" id="clipSubnav" aria-label="剪藏与接入分类">
+        <button class="subtab active" type="button" data-subpane="basic">🧩 基础设置</button>
+        <button class="subtab" type="button" data-subpane="enhance">✨ 摘要与图片</button>
+        <button class="subtab" type="button" data-subpane="search">🔍 快照检索</button>
+        <button class="subtab" type="button" data-subpane="token">🔑 令牌与地址</button>
+        <button class="subtab" type="button" data-subpane="clients">🔌 各端接入</button>
+      </nav>
+      <div class="backup-actions">
+
+        <div class="subpane" data-pane="basic">
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>剪藏开关</b>
+            <span>关闭后，扩展、iOS 快捷指令、Android 分享与网页入口都无法保存新卡片；已保存的卡片不受影响。</span>
+          </div>
+          <div class="backup-row-actions">
+            <label class="form-hint" style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+              <input type="checkbox" id="s_clip_enabled"> 启用剪藏
+            </label>
+          </div>
+        </div>
+
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>默认分组</b>
+            <span>剪藏时未指定分组则进入该分组；选择「自动」时使用已有的「稍后读」，不存在则自动创建。</span>
+          </div>
+          <div class="backup-row-actions">
+            <select class="select" id="s_clip_default_group" style="width:auto;min-width:180px"></select>
+          </div>
+        </div>
+
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>默认保存方式</b>
+            <span>「卡片 + 正文」会在保存时抓取正文并转成 Markdown 快照，支持站内全文检索；正文快照平均占用几十 KB 到几百 KB。</span>
+          </div>
+          <div class="backup-row-actions">
+            <select class="select" id="s_clip_default_capture" style="width:auto;min-width:160px">
+              <option value="card">仅导航卡片</option>
+              <option value="snapshot">卡片 + 正文快照</option>
+            </select>
+          </div>
+        </div>
+        </div>
+
+        <div class="subpane" data-pane="enhance" hidden>
+        <div class="backup-row backup-row-stack">
+          <div class="backup-info">
+            <b>摘要与自动标签</b>
+            <span>保存正文快照时自动生成摘要与标签。默认使用本地词频规则；选择「外部 API」并填写 OpenAI 兼容接口后改用外部模型，调用失败会自动回退本地规则。</span>
+          </div>
+          <div class="backup-row-actions clip-ai-actions">
+            <label class="form-hint" style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+              <input type="checkbox" id="s_clip_ai_enabled"> 启用摘要与自动标签
+            </label>
+            <select class="select" id="s_clip_ai_provider">
+              <option value="local">本地规则（默认，不联网）</option>
+              <option value="api">外部 API（OpenAI 兼容）</option>
+            </select>
+            <div class="clip-ai-api" id="clipAiApiFields" hidden>
+              <div class="form-item">
+                <label for="s_clip_ai_base_url">接口地址</label>
+                <input class="input" id="s_clip_ai_base_url" placeholder="https://api.openai.com/v1">
+              </div>
+              <div class="form-item">
+                <label for="s_clip_ai_api_key">API Key</label>
+                <input class="input" id="s_clip_ai_api_key" type="password" placeholder="仅管理员可见">
+              </div>
+              <div class="form-item">
+                <label for="s_clip_ai_model">模型</label>
+                <input class="input" id="s_clip_ai_model" placeholder="gpt-4o-mini">
+              </div>
+              <span class="form-hint">需兼容 /chat/completions，超时 20 秒；调用失败自动回退本地规则。</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>快照图片域名白名单</b>
+            <span>限制阅读页自动加载的图片域名，列表外的图片只显示外链，避免向第三方泄露阅读者信息。留空表示不限制，多个域名用逗号或空格分隔（子域自动放行）。</span>
+          </div>
+          <div class="backup-row-actions">
+            <input class="input" id="s_clip_image_domains" placeholder="example.com, cdn.example.com" style="width:280px">
+          </div>
+        </div>
+        </div>
+
+        <div class="subpane" data-pane="search" hidden>
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>正文快照检索</b>
+            <span>只检索已保存正文的剪藏；中文两个字也能查，英文按关键词匹配，多个关键词用空格分隔。</span>
+          </div>
+          <div class="backup-row-actions">
+            <input class="input" id="clipSearchInput" placeholder="搜索标题或正文" style="width:240px">
+            <button class="btn btn-primary" type="button" id="clipSearchBtn">检索</button>
+          </div>
+        </div>
+
+        <div id="clipSearchWrap" hidden>
+          <table class="table" style="margin-top:10px">
+            <thead>
+              <tr>
+                <th>标题</th>
+                <th style="width:110px">分组</th>
+                <th style="width:80px">字数</th>
+                <th style="width:150px">抓取时间</th>
+                <th style="width:70px">操作</th>
+              </tr>
+            </thead>
+            <tbody id="clipSearchTbody"></tbody>
+          </table>
+          <div class="form-hint" id="clipSearchEmpty" hidden>没有匹配的快照内容。</div>
+        </div>
+        </div>
+
+        <div class="subpane" data-pane="token" hidden>
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>个人访问令牌（Token）</b>
+            <span>桌面扩展、iOS 快捷指令与脚本使用 Bearer Token 调用 <code>/api/v1/clips</code>。Token 只在创建时显示一次，服务端仅保存 SHA-256 哈希，可随时吊销。</span>
+          </div>
+          <div class="backup-row-actions">
+            <input class="input" id="tokenNameInput" maxlength="50" placeholder="令牌名称，如 Chrome 扩展" style="width:180px">
+            <select class="select" id="tokenExpiresSel" style="width:auto;min-width:120px">
+              <option value="0">永不过期</option>
+              <option value="30">30 天</option>
+              <option value="90">90 天</option>
+              <option value="365">365 天</option>
+            </select>
+            <button class="btn btn-primary" type="button" id="createTokenBtn">生成 Token</button>
+          </div>
+        </div>
+
+        <div id="tokenRevealBox" class="form-hint" style="display:none;padding:12px;border:1px solid var(--line, #e5e7eb);border-radius:10px">
+          <b>请立即复制，关闭后无法再次查看。</b>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+            <input class="input" id="tokenValueText" readonly style="flex:1;font-family:ui-monospace,Consolas,monospace">
+            <button class="btn" type="button" id="copyTokenBtn">复制</button>
+          </div>
+        </div>
+
+        <table class="table" style="margin-top:14px">
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th style="width:110px">归属</th>
+              <th style="width:150px">权限</th>
+              <th style="width:130px">有效期</th>
+              <th style="width:140px">最近使用</th>
+              <th>令牌</th>
+              <th style="width:90px">状态</th>
+              <th style="width:90px">操作</th>
+            </tr>
+          </thead>
+          <tbody id="tokensTbody"></tbody>
+        </table>
+        <div class="form-hint" id="tokensEmptyHint" hidden>还没有令牌，先生成一个用于扩展或快捷指令。</div>
+
+        <div class="backup-row" style="margin-top:18px">
+          <div class="backup-info">
+            <b>服务器地址</b>
+            <span>扩展与快捷指令里填写的地址，公网 HTTPS 与内网 HTTP 均可。</span>
+          </div>
+          <div class="backup-row-actions">
+            <input class="input" id="clipServerAddrText" readonly style="width:240px">
+            <button class="btn" type="button" id="copyServerAddrBtn">复制</button>
+          </div>
+        </div>
+        </div>
+
+        <div class="subpane" data-pane="clients" hidden>
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>Chrome / Edge 扩展（zip 侧载）</b>
+            <span>从 GitHub Releases 下载 <code>solarpanel-clipper-v*.zip</code>，解压到固定目录后，在 <code>chrome://extensions</code> 或 <code>edge://extensions</code> 开启开发者模式，选择「加载已解压的扩展程序」。首次使用在扩展选项里填服务器地址与 Token。</span>
+          </div>
+          <div class="backup-row-actions">
+            <a class="btn" id="clipperReleaseLink" href="https://github.com/Ozero-top/SolarPanel-v3/releases" target="_blank" rel="noopener">打开下载页</a>
+          </div>
+        </div>
+
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>Android 系统分享</b>
+            <span>用 Chrome 打开本站并「添加到主屏幕」，安装后即可在系统分享面板看到 SolarPanel。HTTP 局域网环境不支持 PWA 分享时，请使用网页入口或书签小工具。</span>
+          </div>
+        </div>
+
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>iOS 快捷指令</b>
+            <span>在「快捷指令」App 新建快捷指令：接收 Safari 分享的 URL → 获取 URL 内容 → 使用「获取 URL 内容」的 POST 方法请求 <code>/api/v1/clips</code>，请求头加 <code>Authorization: Bearer &lt;Token&gt;</code> 与 <code>Content-Type: application/json</code>，请求体为 <code>{"url":"...","title":"..."}</code>。也可直接用 Safari 打开本站的「网页快速添加」。</span>
+          </div>
+        </div>
+
+        <div class="backup-row">
+          <div class="backup-info">
+            <b>书签小工具</b>
+            <span>把下面的代码存成书签，在任意网页点击即可打开剪藏页（不依赖页面脚本与 CORS）。</span>
+          </div>
+          <div class="backup-row-actions" style="flex:1;max-width:520px">
+            <input class="input" id="bookmarkletCode" readonly style="flex:1;font-family:ui-monospace,Consolas,monospace">
+            <button class="btn" type="button" id="copyBookmarkletBtn">复制</button>
+          </div>
+        </div>
+
+        <div class="form-hint">Firefox 仅代码兼容：未签名扩展只能用 about:debugging 临时载入，重启浏览器后失效；Firefox 用户建议使用书签小工具或网页快速添加。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 页脚：项目地址与作者博客 -->
+    <footer class="admin-footer">
+      <span>项目地址：<a href="https://github.com/Ozero-top/SolarPanel-v3" target="_blank" rel="noopener noreferrer">GitHub · SolarPanel-v3</a></span>
+      <span class="admin-footer-dot">·</span>
+      <span>作者博客：<a href="https://www.ozero.top" target="_blank" rel="noopener noreferrer">www.ozero.top</a></span>
+    </footer>
+
+  </div>
+
+  <!-- ============ 历史更新弹窗 ============ -->
+  <div class="modal" id="changelogHistoryModal" data-dismiss-bg>
+    <div class="modal-box glass-strong" style="max-width:640px">
+      <div class="modal-head">
+        <h3>📜 全部更新历史</h3>
+        <button class="btn btn-sm" data-close="changelogHistoryModal">✕</button>
+      </div>
+      <div id="changelogHistoryList" class="changelog"></div>
+      <div class="modal-foot">
+        <button class="btn" type="button" data-close="changelogHistoryModal">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 卡片编辑弹窗 ============ -->
+  <div class="modal" id="itemModal">
+    <div class="modal-box glass-strong">
+      <div class="modal-head">
+        <h3 id="itemModalTitle">添加卡片</h3>
+        <button class="btn btn-sm" data-close="itemModal">✕</button>
+      </div>
+      <form id="itemForm" autocomplete="off">
+        <input type="hidden" id="i_id">
+        <div class="form-row">
+          <div class="form-item">
+            <label>所属分组</label>
+            <select class="select" id="i_group"></select>
+          </div>
+          <div class="form-item">
+            <label>打开方式</label>
+            <select class="select" id="i_open">
+              <option value="2">新窗口打开</option>
+              <option value="1">当前页打开</option>
+              <option value="3">弹层内嵌打开</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row" style="align-items:center;margin-top:12px">
+          <div class="form-item" style="display:flex;align-items:center">
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:0">
+              <input type="checkbox" id="i_hidden" value="1">
+              <span>设为隐藏（访客和只读用户不可见）</span>
+            </label>
+          </div>
+          <div class="form-item" style="flex:0 0 auto;display:flex;align-items:center">
+            <button class="btn btn-sm" type="button" id="i_fetchMeta">自动获取信息</button>
+          </div>
+        </div>
+        <div class="form-item">
+          <label>标题</label>
+          <input class="input" id="i_title" type="text" maxlength="50" required>
+        </div>
+        <div class="form-item">
+          <label>地址</label>
+          <input class="input" id="i_url" type="text" placeholder="https://…">
+        </div>
+        <div class="form-item">
+          <label>内网地址（可选，用于主页「内网模式」；失焦或回车自动获取）</label>
+          <input class="input" id="i_lan" type="text" placeholder="http://192.168.x.x:port">
+        </div>
+        <div class="form-item">
+          <label>描述（可选）</label>
+          <input class="input" id="i_desc" type="text" maxlength="1000">
+        </div>
+        <div class="form-item">
+          <label>标签（可选，逗号或空格分隔，最多 20 个）</label>
+          <input class="input" id="i_tags" type="text" maxlength="400" placeholder="例如：前端, 待读, 教程">
+        </div>
+        <div class="form-item">
+          <label>图标类型</label>
+          <div class="radio-group" id="i_itype">
+            <label><input type="radio" name="itype" value="favicon" checked> 自动获取站点图标</label>
+            <label><input type="radio" name="itype" value="image"> 图片地址 / 上传</label>
+            <label><input type="radio" name="itype" value="text"> 文字图标</label>
+          </div>
+        </div>
+        <div class="form-item">
+          <label>图标</label>
+          <div class="upload-row">
+            <span class="icon-preview" id="i_preview"></span>
+            <input class="input" id="i_icon" type="text" placeholder="图标图片地址（选择「图片」类型时使用）">
+            <button class="btn" type="button" data-upload="i_icon">上传图标</button>
+            <button class="btn" type="button" id="i_useFavicon" hidden>获取站点图标</button>
+          </div>
+          <!-- 文字图标手动输入（type=text 时显示） -->
+          <div class="form-item" style="margin-top:10px" id="i_textWrap">
+            <label>手动文字（留空自动取卡片标题）</label>
+            <input class="input" id="i_iconText" type="text" maxlength="4" placeholder="支持中文 4 字 / 英文 2 个字母">
+          </div>
+          <!-- 颜色面板（text/image 都可设置；favicon 时隐藏） -->
+          <div class="form-item" style="margin-top:10px" id="i_bgWrap">
+            <label>图标背景色</label>
+            <div class="upload-row" style="gap:8px;flex-wrap:nowrap">
+              <input type="color" id="i_color" value="#0969da" style="width:44px;height:34px;padding:2px;border-radius:6px;cursor:pointer">
+              <span style="font-size:12px;color:var(--text-muted);white-space:nowrap">透明度</span>
+              <input type="range" id="i_alpha" min="0" max="100" value="0" style="flex:1">
+              <span id="i_alphaLabel" style="font-size:12px;color:var(--text-muted);min-width:32px;text-align:right">0%</span>
+              <!-- 隐藏字段：JS 用 buildBgCss 合成后写入 -->
+              <input type="hidden" id="i_bg" value="">
+            </div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" type="button" data-close="itemModal">取消</button>
+          <button class="btn btn-primary" type="submit" id="itemSaveBtn">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ 分组编辑弹窗 ============ -->
+  <div class="modal" id="groupModal">
+    <div class="modal-box glass-strong" style="max-width:440px">
+      <div class="modal-head">
+        <h3 id="groupModalTitle">添加分组</h3>
+        <button class="btn btn-sm" data-close="groupModal">✕</button>
+      </div>
+      <form id="groupForm" autocomplete="off">
+        <input type="hidden" id="g_id">
+        <input type="hidden" id="g_icon">
+        <input type="hidden" id="g_sort">
+        <div class="form-item">
+          <label>分组级别</label>
+          <select class="select" id="g_level">
+            <option value="0">一级分组（顶级）</option>
+            <option value="1">二级分组（挂在某个一级下）</option>
+          </select>
+        </div>
+        <div class="form-item" id="g_parent_wrap" style="display:none">
+          <label>所属一级分组</label>
+          <select class="select" id="g_parent_id">
+            <!-- JS 动态填充：顶级分组列表 -->
+          </select>
+          <div class="form-hint">只能挂到一级分组下，项目不支持超过两级的分组嵌套。</div>
+        </div>
+        <div class="form-item">
+          <label>分组名称</label>
+          <div class="g-name-row">
+            <button class="g-icon-pick" type="button" id="gIconPick" title="选择分组图标"><span class="g-icon-placeholder">图标</span></button>
+            <input class="input" id="g_title" type="text" maxlength="50" required>
+          </div>
+        </div>
+        <div class="form-item">
+          <label>描述（可选）</label>
+          <input class="input" id="g_desc" type="text" maxlength="1000">
+        </div>
+        <div class="modal-foot">
+          <button class="btn" type="button" data-close="groupModal">取消</button>
+          <button class="btn btn-primary" type="submit" id="groupSaveBtn">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ 分组图标选择弹窗 ============ -->
+  <div class="modal" id="groupIconModal">
+    <div class="modal-box glass-strong">
+      <div class="modal-head">
+        <h3>选择分组图标</h3>
+        <button class="btn btn-sm" data-close="groupIconModal">✕</button>
+      </div>
+      <input class="input gic-search" id="gicSearch" type="text" placeholder="搜索图标名称…" autocomplete="off">
+      <div id="gicBody"></div>
+      <div class="modal-foot">
+        <button class="btn" type="button" id="gicClear">移除图标</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 重置用户密码弹窗 ============ -->
+  <div class="modal" id="userPwdModal">
+    <div class="modal-box glass-strong" style="max-width:380px">
+      <div class="modal-head">
+        <h3 id="userPwdTitle">重置密码</h3>
+        <button class="btn btn-sm" data-close="userPwdModal">✕</button>
+      </div>
+      <form id="userPwdForm" autocomplete="off">
+        <input type="hidden" id="up_id">
+        <div class="form-item">
+          <label>新密码（至少 6 位）</label>
+          <input class="input" id="up_password" type="password" autocomplete="new-password" required>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" type="button" data-close="userPwdModal">取消</button>
+          <button class="btn btn-primary" type="submit" id="userPwdSaveBtn">确认重置</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ 用户权限组弹窗 ============ -->
+  <div class="modal" id="userRoleModal">
+    <div class="modal-box glass-strong" style="max-width:420px">
+      <div class="modal-head">
+        <h3 id="userRoleTitle">权限分配</h3>
+        <button class="btn btn-sm" data-close="userRoleModal">✕</button>
+      </div>
+      <form id="userRoleForm" autocomplete="off">
+        <input type="hidden" id="ur_id">
+        <div class="form-item">
+          <label>权限组</label>
+          <select class="select" id="ur_role">
+            <option value="admin">管理员 — 全部权限（站点设置 / 账号 / 内容）</option>
+            <option value="editor">编辑者 — 管理分组、卡片与上传</option>
+            <option value="viewer">只读 — 仅查看分组与卡片</option>
+          </select>
+        </div>
+        <p class="form-hint">保存后该用户重新登录后台即可按新权限工作。</p>
+        <div class="modal-foot">
+          <button class="btn" type="button" data-close="userRoleModal">取消</button>
+          <button class="btn btn-primary" type="submit" id="userRoleSaveBtn">保存权限</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ 壁纸图库弹窗 ============ -->
+  <div class="modal" id="wpGalleryModal">
+    <div class="modal-box glass-strong" style="max-width:760px">
+      <div class="modal-head">
+        <h3>壁纸图库</h3>
+        <button class="btn btn-sm" data-close="wpGalleryModal">✕</button>
+      </div>
+      <div class="wp-tabs" id="wpGalleryTabs" role="tablist">
+        <button class="wp-tab active" type="button" data-wp-tab="uploaded" role="tab" aria-selected="true">📤 我的上传 <span class="wp-count" id="wpCountUploaded">0</span></button>
+        <button class="wp-tab" type="button" data-wp-tab="preset" role="tab" aria-selected="false">📦 内置壁纸 <span class="wp-count" id="wpCountPreset">0</span></button>
+      </div>
+      <div class="wp-gallery wp-gallery-modal" id="wpGallery">
+        <div class="wp-gallery-empty" id="wpGalleryEmpty">图库为空，上传壁纸后自动加入</div>
+      </div>
+      <div class="form-hint" style="margin-top:10px">「我的上传」可删除；「内置壁纸」为系统自带，只能选用不可删除。点击壁纸即可选用并关闭弹窗。</div>
+    </div>
+  </div>
+
+  <!-- ============ 每日壁纸源预览弹窗 ============ -->
+  <div class="modal" id="dailyWpModal">
+    <div class="modal-box glass-strong" style="max-width:860px">
+      <div class="modal-head">
+        <h3>每日壁纸源 · 随机预览</h3>
+        <button class="btn btn-sm" data-close="dailyWpModal">✕</button>
+      </div>
+      <div id="dailyWpGrid"></div>
+      <div class="form-hint" style="margin-top:10px">预览只加载远程缩略图，不占用服务器；点「换一批」重新随机 10 张。点击任意图片后才会下载原图并设为壁纸，主页刷新即生效。</div>
+      <div class="modal-foot">
+        <button class="btn btn-danger" type="button" id="dailyWpDisable">禁用每日壁纸</button>
+        <button class="btn" type="button" data-close="dailyWpModal">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 未保存排序确认弹窗 ============ -->
+  <div class="modal" id="orderGuardModal" data-dismiss-bg>
+    <div class="modal-box glass-strong" style="max-width:430px">
+      <div class="modal-head">
+        <h3>有未保存的排序更改</h3>
+        <button class="btn btn-sm" data-close="orderGuardModal">✕</button>
+      </div>
+      <p style="margin:0;color:var(--text-muted);font-size:13.5px;line-height:1.7">排序尚未保存。请选择处理方式，切换后未保存的顺序将恢复为上次保存的状态。</p>
+      <div class="modal-foot">
+        <button class="btn" type="button" id="guardStayBtn">留在此页</button>
+        <button class="btn btn-danger" type="button" id="guardDiscardBtn">放弃并切换</button>
+        <button class="btn btn-primary" type="button" id="guardSaveAndSwitchBtn">💾 保存并切换</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 通用确认弹窗（替代浏览器原生 confirm：与主题风格同步 + 居中） ============ -->
+  <div class="modal" id="confirmModal" data-dismiss-bg>
+    <div class="modal-box glass-strong" style="max-width:430px">
+      <div class="modal-head">
+        <h3 id="confirmTitle">确认操作</h3>
+        <button class="btn btn-sm" type="button" id="confirmXBtn">✕</button>
+      </div>
+      <p id="confirmText" style="margin:0;color:var(--text-muted);font-size:13.5px;line-height:1.7;white-space:pre-line"></p>
+      <div class="modal-foot">
+        <button class="btn" type="button" id="confirmCancelBtn">取消</button>
+        <button class="btn btn-primary" type="button" id="confirmOkBtn">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/js/qrcode.min.js"></script>
+  <script src="assets/js/api.js?v=9dcb5a15"></script>
+  <script src="assets/js/admin.js?v=83fefd71"></script>
+  <script src="assets/js/admin-ui.js?v=0218fafc"></script>
+</body>
+</html>

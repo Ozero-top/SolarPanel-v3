@@ -1669,3 +1669,151 @@ tr.drag-over-bottom td {
   /* 拖拽把手加大触摸热区 */
   .drag-handle { padding: 6px 10px; }
 }
+
+/* ============================================================
+   后台界面选择（新旧后台并存）
+   ============================================================ */
+.ui-chooser {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(6, 10, 18, 0.58);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.ui-chooser-card {
+  width: 100%;
+  max-width: 640px;
+  padding: 26px 26px 20px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--edge);
+  border-radius: 24px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+}
+.ui-chooser-card h2 {
+  margin: 0 0 6px;
+  font-size: 19px;
+}
+.ui-chooser-sub {
+  margin: 0 0 18px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+.ui-chooser-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.ui-opt {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  text-align: left;
+  color: var(--text);
+  background: var(--bg-soft, rgba(127, 127, 127, 0.06));
+  border: 1px solid var(--edge);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: transform var(--tr) var(--ease), border-color var(--tr) var(--ease),
+    box-shadow var(--tr) var(--ease);
+}
+.ui-opt:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.15);
+}
+.ui-opt-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14.5px;
+  font-weight: 700;
+}
+.ui-opt-title em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--accent);
+}
+.ui-opt-desc {
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--text-muted);
+}
+.ui-chooser-foot {
+  margin: 14px 0 0;
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* 两套后台的缩略预览 */
+.ui-mock {
+  display: flex;
+  gap: 6px;
+  height: 74px;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(127, 127, 127, 0.12);
+  border: 1px solid var(--edge);
+}
+.ui-mock-side {
+  width: 26%;
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--accent), transparent 88%);
+  opacity: 0.85;
+}
+.ui-mock-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 6px;
+}
+.ui-mock-main i {
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--edge);
+}
+.ui-mock-classic {
+  flex-direction: column;
+}
+.ui-mock-bar {
+  height: 14px;
+  border-radius: 999px;
+  background: rgba(127, 127, 127, 0.28);
+}
+.ui-mock-body {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+}
+.ui-mock-body i {
+  flex: 1;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--edge);
+}
+
+@media (max-width: 640px) {
+  .ui-chooser-card {
+    padding: 20px 16px 16px;
+    border-radius: 18px;
+  }
+  .ui-chooser-grid {
+    grid-template-columns: 1fr;
+  }
+  .ui-mock {
+    height: 62px;
+  }
+}
