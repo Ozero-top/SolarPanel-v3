@@ -17,6 +17,10 @@
 - Docker Hub：<https://hub.docker.com/r/ovitor/solarpanel-v3>
 - DEMO：<https://demo.ozero.top>
 
+<div align=center>
+<img src="https://raw.githubusercontent.com/Ozero-top/SolarPanel-v3/refs/heads/main/docs/IMG.png" width="1920" height="1386"> 
+</div>
+
 ## ✨ 特性
 
 - **零依赖单二进制** — Go + 纯 Go SQLite（`modernc.org/sqlite`），无 CGO、无外部数据库；三架构镜像约 14MB
