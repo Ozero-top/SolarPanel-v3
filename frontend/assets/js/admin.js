@@ -2432,7 +2432,7 @@ function bindBackup() {
     fileInput.value = '';
     if (!file) return;
     if (!/\.json$/i.test(file.name)) {
-      toast('请选择导出生成的 .json 备份文件', 'error');
+      toast('请选择 .json 备份文件（SolarPanel 备份或 Sun Panel 导出）', 'error');
       return;
     }
     if (!await uiConfirm('导入将【清空】当前全部分组、卡片、站点设置和图标 / 壁纸文件，然后用「' + file.name + '」恢复。\n用户账号不受影响。\n\n确定继续吗？', { danger: true })) return;
@@ -2447,6 +2447,7 @@ function bindBackup() {
       const res = await API.postForm(API_BASE + 'backup.php?action=import', fd);
       let msg = '导入完成：' + res.groups + ' 个分组、' + res.items + ' 张卡片、' + res.settings + ' 项设置、' + res.files + ' 个文件，页面即将刷新';
       if (res.orphan_items) msg += '（跳过 ' + res.orphan_items + ' 张引用失效分组的卡片）';
+      if (res.sunpanel) msg += '（已自动从 Sun Panel 备份转换）';
       toast(msg, 'success');
       setTimeout(() => location.reload(), 1200);
     } catch (err) {

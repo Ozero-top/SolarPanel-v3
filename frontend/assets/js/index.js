@@ -1710,8 +1710,9 @@ function initWetabRail() {
 
 /* ---------- WeTab 界面设置：图标间距 / Dock 标题（localStorage，本地生效） ---------- */
 const WETAB_PREFS_KEY = 'sp_wetab_prefs';
-const WETAB_PREFS_DEFAULT = { rowGap: 12, colGap: 12, iconSize: 54, contentWidth: null, dockTitle: true, dockMode: 'show', dockBg: 100 };
+const WETAB_PREFS_DEFAULT = { rowGap: 12, colGap: 12, iconSize: 54, contentWidth: null, dockTitle: true, dockMode: 'show', dockBg: 100, themeMode: 'light' };
 const WETAB_DOCK_MODES = ['show', 'hide', 'auto'];
+const WETAB_THEME_MODES = ['light', 'dark', 'system'];
 
 function wetabPrefs() {
   const p = Object.assign({}, WETAB_PREFS_DEFAULT);
@@ -1725,6 +1726,7 @@ function wetabPrefs() {
       if (typeof raw.dockTitle === 'boolean') p.dockTitle = raw.dockTitle;
       if (WETAB_DOCK_MODES.indexOf(raw.dockMode) >= 0) p.dockMode = raw.dockMode;
       if (Number.isFinite(Number(raw.dockBg))) p.dockBg = Math.min(100, Math.max(0, Number(raw.dockBg)));
+      if (WETAB_THEME_MODES.indexOf(raw.themeMode) >= 0) p.themeMode = raw.themeMode;
     }
   } catch (e) { /* 损坏的本地配置按默认值处理 */ }
   return p;
@@ -1747,6 +1749,19 @@ function applyWetabPrefs(p) {
   document.body.classList.toggle('wetab-dock-auto', p.dockMode === 'auto');
   if (p.dockMode !== 'auto') document.body.classList.remove('wetab-dock-peek');
   wetabDockModeCur = p.dockMode;
+  applyWetabThemeMode(p.themeMode);
+}
+
+/** wetab 本机明暗模式：浅色 / 深色 / 跟随系统；只改界面明暗，不影响壁纸文字自动取色 */
+function applyWetabThemeMode(mode) {
+  const root = document.documentElement;
+  if (root.dataset.style !== 'wetab') return;
+  const m = WETAB_THEME_MODES.indexOf(mode) >= 0 ? mode : 'light';
+  const dark = m === 'dark' || (m === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  root.dataset.theme = dark ? 'dark' : 'light';
+  root.dataset.mode = m;
+  state.theme = m;
+  if (typeof updateThemeBtn === 'function') updateThemeBtn();
 }
 
 function syncWetabPrefsInputs(p) {
@@ -1761,6 +1776,7 @@ function syncWetabPrefsInputs(p) {
   setVal('wpContentWidth', cw);
   setVal('wpDockMode', p.dockMode);
   setVal('wpDockBg', p.dockBg);
+  setVal('wpThemeMode', p.themeMode);
   const dock = document.getElementById('wpDockTitle');
   if (dock) dock.checked = p.dockTitle;
   bind('wpRowGapVal', p.rowGap);
@@ -1800,12 +1816,9 @@ function syncWetabPrefsBtn() {
   const faqBtn = document.getElementById('faqBtn');
   if (faqBtn) faqBtn.hidden = !on;
 
-  // 后台管理入口：仅 wetab + 管理员 / 编辑
+  // 后台管理入口：wetab 下所有人可见（只读 / 访客也可点击，进入后按后台登录态处理）
   const adminBtn = document.getElementById('wpAdminBtn');
-  if (adminBtn) {
-    const canAdmin = state.user && (state.user.role === 'admin' || state.user.role === 'editor');
-    adminBtn.hidden = !(on && canAdmin);
-  }
+  if (adminBtn) adminBtn.hidden = !on;
   if (!on) {
     const faq = document.getElementById('wetabFaq');
     if (faq) faq.hidden = true;
@@ -1827,6 +1840,16 @@ function initWetabPrefs() {
   syncWetabPrefsInputs(p);
   syncWetabPrefsBtn();
 
+  // 面板顶部显示当前版本，点击打开更新日志弹窗
+  const verBtn = document.getElementById('wpVersionBtn');
+  if (verBtn) {
+    verBtn.textContent = typeof APP_VERSION !== 'undefined' ? APP_VERSION : '';
+    verBtn.addEventListener('click', () => {
+      if (panel) panel.hidden = true;
+      openChangelogModal();
+    });
+  }
+
   if (btn && btn.dataset.bound !== '1') {
     btn.dataset.bound = '1';
     btn.addEventListener('click', (e) => {
@@ -1846,6 +1869,8 @@ function initWetabPrefs() {
   if (width) width.addEventListener('input', () => setWetabPrefs({ contentWidth: Number(width.value) }));
   if (dock) dock.addEventListener('change', () => setWetabPrefs({ dockTitle: dock.checked }));
   if (mode) mode.addEventListener('change', () => setWetabPrefs({ dockMode: mode.value }));
+  const themeMode = document.getElementById('wpThemeMode');
+  if (themeMode) themeMode.addEventListener('change', () => setWetabPrefs({ themeMode: themeMode.value }));
   const dockBg = document.getElementById('wpDockBg');
   if (dockBg) dockBg.addEventListener('input', () => setWetabPrefs({ dockBg: Number(dockBg.value) }));
 
@@ -2092,8 +2117,9 @@ function syncWetabTextTone() {
   const bgImage = bg ? bg.style.backgroundImage : '';
   const m = bgImage && bgImage.match(/url\(["']?([^"')]+)["']?\)/);
   if (!m) {
-    // 未设置壁纸时 wetab 使用深色渐变底，直接采用浅色文字
-    applyTone(0);
+    // 未设置壁纸时不再强制浅色字：交回主题文字色，随浅色 / 深色模式自动适配
+    root.style.removeProperty('--wetab-auto-text');
+    root.style.removeProperty('--wetab-auto-shadow');
     return;
   }
   const url = m[1];
@@ -2618,6 +2644,7 @@ function bindGlobal() {
     state.theme = next;
     localStorage.setItem('sp_theme', next);
     setThemeMode(next);
+    if (document.documentElement.dataset.style === 'wetab') setWetabPrefs({ themeMode: next });
     updateThemeBtn();
   };
 

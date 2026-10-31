@@ -469,24 +469,25 @@ func (h *BackupHandler) Import(w http.ResponseWriter, r *http.Request) {
 	}
 
 	text := strings.TrimSpace(string(body))
-	var payload backupPayload
-
+	raw := body
 	if decoded, err := base64.StdEncoding.DecodeString(text); err == nil {
-		if err := json.Unmarshal(decoded, &payload); err != nil {
-			Fail(w, "备份文件内容不是有效的 JSON")
-			return
-		}
-	} else {
-		if err := json.Unmarshal(body, &payload); err != nil {
-			Fail(w, "备份文件格式无效（base64 或纯 JSON）")
-			return
-		}
+		raw = decoded
+	}
+
+	// Sun Panel 导出文件会在这里自动转换，其余按 SolarPanel 备份解析
+	payload, fromSunPanel, err := parseUploadedBackup(raw)
+	if err != nil {
+		Fail(w, "备份文件格式无效（需为 SolarPanel 备份、Sun Panel 导出或 base64 包裹的 JSON）")
+		return
 	}
 
 	counts, err := h.applyPayload(payload)
 	if err != nil {
 		Err(w, http.StatusInternalServerError, 1, "导入失败: "+err.Error())
 		return
+	}
+	if fromSunPanel {
+		counts["sunpanel"] = 1
 	}
 	OK(w, counts)
 }
