@@ -353,6 +353,13 @@
       return;
     }
 
+    // 已登录才显示后台入口，避免公开页暴露后台地址
+    const backAdmin = document.getElementById('backAdmin');
+    if (backAdmin) {
+      backAdmin.href = '/admin.html';
+      backAdmin.hidden = false;
+    }
+
     if (!state.me.clip_enabled) {
       show('result');
       renderResult({ status: 'error', reason: 'disabled' });

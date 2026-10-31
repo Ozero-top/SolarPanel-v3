@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -24,7 +25,20 @@ const (
 	trustedDeviceCookie     = "trusted_device"
 	trustedDeviceMaxAge     = 86400 * 30
 	trustedDeviceMaxPerUser = 10
+
+	// 登录失败：同一账号 + IP 前 4 次正常返回错误，之后按次数递增锁定（最长 15 分钟）
+	loginFailFree   = 4
+	loginLockStep   = 30 * time.Second
+	loginLockMax    = 15 * time.Minute
+	loginFailWindow = 30 * time.Minute
 )
+
+// loginFailState 单个「账号 + IP」的失败计数与锁定截止时间
+type loginFailState struct {
+	count       int
+	last        time.Time
+	lockedUntil time.Time
+}
 
 type AuthHandler struct {
 	Store *auth.Store
@@ -32,6 +46,9 @@ type AuthHandler struct {
 
 	rateMu       sync.Mutex
 	rateAttempts map[string][]time.Time
+
+	failMu   sync.Mutex
+	failures map[string]*loginFailState
 }
 
 // dummyPasswordHash 用户不存在时也执行一次 bcrypt 比对，避免通过响应耗时枚举用户名
@@ -42,6 +59,7 @@ func NewAuthHandler(store *auth.Store, cfg *config.Config) *AuthHandler {
 		Store:        store,
 		cfg:          cfg,
 		rateAttempts: make(map[string][]time.Time),
+		failures:     make(map[string]*loginFailState),
 	}
 	go h.rateGC()
 	return h
@@ -65,6 +83,16 @@ func (h *AuthHandler) rateGC() {
 			}
 		}
 		h.rateMu.Unlock()
+
+		// 清理超窗口且已解锁的失败计数
+		h.failMu.Lock()
+		now := time.Now()
+		for key, f := range h.failures {
+			if now.Sub(f.last) > loginFailWindow && !now.Before(f.lockedUntil) {
+				delete(h.failures, key)
+			}
+		}
+		h.failMu.Unlock()
 	}
 }
 
@@ -85,6 +113,66 @@ func (h *AuthHandler) checkRate(ip string) bool {
 	arr = append(arr, time.Now())
 	h.rateAttempts[ip] = arr
 	return true
+}
+
+func loginFailKey(username, ip string) string {
+	return strings.ToLower(strings.TrimSpace(username)) + "|" + ip
+}
+
+// lockRemaining 返回剩余锁定秒数，0 表示未锁定
+func (h *AuthHandler) lockRemaining(username, ip string) int {
+	h.failMu.Lock()
+	defer h.failMu.Unlock()
+
+	f := h.failures[loginFailKey(username, ip)]
+	if f == nil {
+		return 0
+	}
+	if remain := time.Until(f.lockedUntil); remain > 0 {
+		return int(remain.Seconds()) + 1
+	}
+	return 0
+}
+
+// recordLoginFail 记录一次失败；超过阈值后按次数翻倍锁定，并写审计日志
+func (h *AuthHandler) recordLoginFail(w http.ResponseWriter, r *http.Request, username, ip string) {
+	key := loginFailKey(username, ip)
+	now := time.Now()
+
+	h.failMu.Lock()
+	f := h.failures[key]
+	if f == nil || now.Sub(f.last) > loginFailWindow {
+		f = &loginFailState{}
+		h.failures[key] = f
+	}
+	f.count++
+	f.last = now
+
+	var lock time.Duration
+	if f.count > loginFailFree {
+		lock = loginLockStep
+		for i := 0; i < f.count-loginFailFree-1 && lock < loginLockMax; i++ {
+			lock *= 2
+		}
+		if lock > loginLockMax {
+			lock = loginLockMax
+		}
+		f.lockedUntil = now.Add(lock)
+	}
+	count := f.count
+	h.failMu.Unlock()
+
+	if lock > 0 {
+		auth.AuditLog(w, r, "auth.login.lock", username, "locked", username, "",
+			fmt.Sprintf("同一账号+IP 连续失败 %d 次，锁定 %d 秒", count, int(lock.Seconds())))
+	}
+}
+
+// clearLoginFail 密码验证通过后清空该账号+IP 的失败计数
+func (h *AuthHandler) clearLoginFail(username, ip string) {
+	h.failMu.Lock()
+	delete(h.failures, loginFailKey(username, ip))
+	h.failMu.Unlock()
 }
 
 // ===== Me / 当前用户 =====
@@ -135,6 +223,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip := auth.ClientIP(r)
+	if wait := h.lockRemaining(body.Username, ip); wait > 0 {
+		Fail(w, fmt.Sprintf("尝试过于频繁，请 %d 秒后再试", wait))
+		return
+	}
 	if !h.checkRate(ip) {
 		Fail(w, "尝试过于频繁，请 60 秒后再试")
 		return
@@ -145,6 +237,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		&u.ID, &u.Username, &u.Name, &u.Password, &u.Status, &u.Role, &u.TOTPSecret)
 	if err != nil {
 		bcrypt.CompareHashAndPassword(dummyPasswordHash, []byte(body.Password))
+		h.recordLoginFail(w, r, body.Username, ip)
 		auth.AuditLog(w, r, "auth.login", body.Username, "fail", body.Username, "", "用户不存在或密码错误")
 		Fail(w, "用户名或密码错误")
 		return
@@ -155,10 +248,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(body.Password)); err != nil {
+		h.recordLoginFail(w, r, body.Username, ip)
 		auth.AuditLog(w, r, "auth.login", u.Username, "fail", u.Username, u.Role, "密码错误")
 		Fail(w, "用户名或密码错误")
 		return
 	}
+	h.clearLoginFail(body.Username, ip)
 
 	if u.TOTPSecret != "" && u.Role == "admin" && body.Code == "" {
 		if verifyTrustedDevice(uint(u.ID), r) {

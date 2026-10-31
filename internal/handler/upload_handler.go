@@ -1,15 +1,22 @@
 package handler
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/gen2brain/webp"
 
 	"solarpanel/internal/auth"
 	"solarpanel/internal/config"
@@ -44,6 +51,23 @@ func randomHex(n int) string {
 	b := make([]byte, n)
 	rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// convertWallpaperToWebP 将静态壁纸（jpg/png/gif 首帧）转为 WebP，失败返回 nil 保留原图
+func convertWallpaperToWebP(data []byte) []byte {
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil
+	}
+	var buf bytes.Buffer
+	if err := webp.Encode(&buf, img, webp.Options{Quality: 82, Method: 4}); err != nil {
+		return nil
+	}
+	return buf.Bytes()
+}
+
+var webpConvertibleExt = map[string]bool{
+	"jpg": true, "jpeg": true, "png": true, "gif": true,
 }
 
 func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
@@ -98,20 +122,34 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ts := time.Now().Format("20060102150405")
-	filename := fmt.Sprintf("%s_%s.%s", ts, randomHex(4), ext)
-	targetPath := filepath.Join(targetDir, filename)
-
-	// SVG 可携带脚本，落盘前统一清洗（与 favicon / 备份导入保持一致）
+	// 先处理内容（壁纸转 WebP 会改变扩展名），再确定落盘文件名
 	var content io.Reader = file
 	if ext == "svg" {
+		// SVG 可携带脚本，落盘前统一清洗（与 favicon / 备份导入保持一致）
 		raw, err := io.ReadAll(io.LimitReader(file, limit))
 		if err != nil {
 			Err(w, http.StatusInternalServerError, 1, "读取文件失败")
 			return
 		}
 		content = strings.NewReader(string(sanitizeSVG(raw)))
+	} else if typ == "wallpaper" && webpConvertibleExt[ext] {
+		raw, err := io.ReadAll(io.LimitReader(file, limit))
+		if err != nil {
+			Err(w, http.StatusInternalServerError, 1, "读取文件失败")
+			return
+		}
+		if converted := convertWallpaperToWebP(raw); converted != nil {
+			ext = "webp"
+			content = bytes.NewReader(converted)
+		} else {
+			// 解码失败（如动画 WebP 误判）时保留原图，不阻断上传
+			content = bytes.NewReader(raw)
+		}
 	}
+
+	ts := time.Now().Format("20060102150405")
+	filename := fmt.Sprintf("%s_%s.%s", ts, randomHex(4), ext)
+	targetPath := filepath.Join(targetDir, filename)
 
 	dst, err := os.Create(targetPath)
 	if err != nil {

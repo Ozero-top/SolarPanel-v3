@@ -3,22 +3,24 @@ module solarpanel
 go 1.25.0
 
 require (
+	codeberg.org/readeck/go-readability/v2 v2.1.3
+	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.2
 	github.com/go-chi/chi/v5 v5.4.0
+	github.com/ledongthuc/pdf v0.0.0-20261020125853-5e46805f718e
 	golang.org/x/crypto v0.52.0
 	modernc.org/sqlite v1.34.5
 )
 
 require (
-	codeberg.org/readeck/go-readability/v2 v2.1.3 // indirect
 	github.com/JohannesKaufmann/dom v0.3.1 // indirect
-	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.2 // indirect
 	github.com/andybalholm/cascadia v1.3.4 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/ebitengine/purego v0.10.1 // indirect
+	github.com/gen2brain/webp v0.6.4 // indirect
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c // indirect
 	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/itlightning/dateparse v0.2.1 // indirect
-	github.com/ledongthuc/pdf v0.0.0-20261020125853-5e46805f718e // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect

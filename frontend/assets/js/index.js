@@ -2091,6 +2091,8 @@ function wetabWpTile(name, url) {
     const img = document.createElement('img');
     img.src = assetUrl(url);
     img.alt = name;
+    img.loading = 'lazy';
+    img.decoding = 'async';
     b.appendChild(img);
   } else {
     const span = document.createElement('span');
@@ -2158,7 +2160,6 @@ function initWetabWallpaper() {
   const file = document.getElementById('wwFile');
   if (!btn || !modal || !presetGrid) return;
 
-  buildWetabWallpaperGrids(WETAB_PRESET_FALLBACK, []);
   syncWetabWallpaperSelected();
 
   if (btn.dataset.bound !== '1') {
@@ -2166,6 +2167,7 @@ function initWetabWallpaper() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       modal.hidden = false;
+      // 打开面板时才拉取图库：预置壁纸都是 4K 大图，不能在首屏就预加载
       loadWetabWallpaperGallery();
     });
   }
@@ -2206,12 +2208,46 @@ function initWetabWallpaper() {
 
 /* ---------- WeTab 卡片文字颜色：按壁纸亮度自动取深/浅色 ---------- */
 const wetabToneCache = new Map();
+const WETAB_TONE_KEY = 'sp_wp_tone';
+const WETAB_TONE_MAX = 60;
+
+/** 读取本地持久化的壁纸亮度：避免每次打开首页都把 4K 壁纸再解码一遍 */
+function readToneStore() {
+  try {
+    const all = JSON.parse(localStorage.getItem(WETAB_TONE_KEY) || '{}');
+    return all && typeof all === 'object' ? all : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveToneStore(url, lum) {
+  try {
+    const all = readToneStore();
+    if (!(url in all)) {
+      const keys = Object.keys(all);
+      // 每日壁纸会一天一条，超出上限时按写入顺序淘汰最早的
+      while (keys.length >= WETAB_TONE_MAX) delete all[keys.shift()];
+    }
+    all[url] = lum;
+    localStorage.setItem(WETAB_TONE_KEY, JSON.stringify(all));
+  } catch (e) { /* 隐私模式 / 存储满时忽略 */ }
+}
 
 function sampleWallpaperLuminance(url) {
   if (wetabToneCache.has(url)) return Promise.resolve(wetabToneCache.get(url));
+  const stored = readToneStore();
+  if (typeof stored[url] === 'number') {
+    wetabToneCache.set(url, stored[url]);
+    return Promise.resolve(stored[url]);
+  }
   return new Promise((resolve) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    // 本站壁纸走同源，无需 CORS 模式，可复用浏览器已解码的缓存；
+    // 外链壁纸才开 anonymous，避免 canvas 被污染导致取样异常
+    if (/^(https?:)?\/\//i.test(url) && url.indexOf(location.origin) !== 0) {
+      img.crossOrigin = 'anonymous';
+    }
     img.onload = () => {
       try {
         const canvas = document.createElement('canvas');
@@ -2233,6 +2269,7 @@ function sampleWallpaperLuminance(url) {
         lums.sort((a, b) => a - b);
         const lum = lums.length ? lums[Math.floor(lums.length / 2)] : 0;
         wetabToneCache.set(url, lum);
+        saveToneStore(url, lum);
         resolve(lum);
       } catch (e) {
         resolve(null); // 跨域图片无法取样（canvas 被污染）
