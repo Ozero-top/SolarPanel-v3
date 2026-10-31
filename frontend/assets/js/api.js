@@ -3,8 +3,20 @@
  */
 
 /* ================= 应用版本与更新日志（每次更新只需改这里） ================= */
-const APP_VERSION = 'v3.5.0';
+const APP_VERSION = 'v3.6.0';
 const APP_CHANGELOG = [
+  { ver: 'v3.6.0', date: '2026-10-31', items: [
+    '🗂️ 新增 Tab标签页主题（内部标识 wetab）：仿新标签页布局，壁纸主视觉，卡片与分组去底色，只留图标与标题',
+    '🧭 左侧悬浮分组条：默认收起，悬停 ≡ 自动浮出、移开自动收起；分组名外置于条外，选中仅高亮图标底框',
+    '🖱️ 页面任意位置滚轮逐级切换分组：先遍历当前一级下的二级分组，到末尾再切下一级，反向同理',
+    '🧷 底部 Dock 常用栏：右键卡片固定 / 移除，标题显隐，显示 / 隐藏 / 自动隐藏三态，自动隐藏时移到底部浮出',
+    '⚙️ 界面设置：图标上下 / 左右间距、图标大小、内容宽度（800–2600px）、Dock 背景（0–100 磨砂）；访客只读',
+    '🖼️ 管理员壁纸更换：居中弹窗，预置 / 已上传分区，支持上传壁纸与恢复默认渐变',
+    '🎨 卡片、分组、时钟、天气文字随壁纸亮度自动换深 / 浅色，亮底深字、暗底浅字',
+    '❓ 常见问题移入 ⚙ 面板，点击弹出居中悬浮窗，再次点击 / Esc / 点空白返回导航页',
+    '🔀 后台主题下拉顺序调整为液态玻璃 → Tab标签页 → 柔和浮雕 → 其余按名称排序，并补齐主题说明',
+    '🐛 修复 Dock 滚动切组图标闪烁、内容宽度默认满宽、侧栏展开蒙版遮挡图标',
+  ]},
   { ver: 'v3.5.0', date: '2026-10-30', items: [
     '📚 新增剪藏库 /clips：搜索、未读 / 收藏 / 正文 / 截图筛选、分组与标签分面、排序、网格 / 列表视图与分页',
     '⭐ 剪藏支持未读 / 收藏标记，打开阅读页自动标记已读',
@@ -405,7 +417,7 @@ function buildBgCss(color, alphaPercent) {
 }
 
 /** 可选风格主题（与 themes.css 的 html[data-style] 对应） */
-const SP_STYLES = ['liquid-glass', 'soft', 'aurora', 'blueprint', 'clarity', 'corporate-clean', 'iris', 'retro-vintage', 'sketch-style', 'soft-utility'];
+const SP_STYLES = ['liquid-glass', 'wetab', 'soft', 'aurora', 'blueprint', 'corporate-clean', 'iris', 'neo-brutalist', 'retro-vintage', 'sketch-style', 'soft-utility'];
 
 /** 时钟/天气可选字体：12 款免费开源（OFL）设计字体，中文自动回退系统黑体 */
 const SP_CLOCK_FONTS = [

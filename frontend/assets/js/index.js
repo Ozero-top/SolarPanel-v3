@@ -14,6 +14,7 @@ const state = {
   groupIntroDone: false, // 首屏分组入场动画只播一次（后续重绘不闪动画）
   cardsIntroDone: false, // 首屏卡片入场动画只播一次（后续重绘不闪动画）
   navActiveGroupIdx: 0,  // 导航栏模式（card_style=nav）当前激活顶级分组索引
+  wetabSectionIdx: 0,    // wetab 滚轮切组时，当前顶级分组内所处的二级分组序号
   activeTopId: 0,        // 当前激活的顶级分组 id（两种模式共享：sidebar 模式用它决定渲染哪个顶级的子 section；navbar 模式和 navActiveGroupIdx 同步）
   activeChildId: 0,      // 当前激活的子分组 id（侧边栏点击二级定位主内容）
   searchKeyword: '',     // 实时页面内搜索关键词（空 = 全量渲染）
@@ -238,6 +239,7 @@ async function boot() {
     state.settings = data.settings || {};
     initTopbarBySettings(state.settings);
     state.theme = applyTheme(state.settings);
+    applyWetabPrefs(wetabPrefs());
     updateThemeBtn();
     renderBase();
     startClock();
@@ -250,6 +252,7 @@ async function boot() {
   state.groups = data.groups || [];
   state.user = data.user || null;
   state.theme = applyTheme(state.settings);
+  applyWetabPrefs(wetabPrefs()); // 图标间距 / Dock 标题：本地偏好先于首屏渲染生效
   updateThemeBtn();
 
   // 按 parent_id 构建父子树（parent_id=0 → 顶级，非零 → 子级）
@@ -318,11 +321,14 @@ function renderBase() {
   const applyWp = (url) => {
     if (url) bg.style.backgroundImage = 'url("' + assetUrl(url).replace(/"/g, '%22') + '")';
     else bg.style.backgroundImage = '';
+    syncWetabTextTone(); // 壁纸确定后同步卡片文字明暗
   };
   if (s.wallpaper_source) {
     applyDailyWallpaper(s.wallpaper_source, applyWp, s.wallpaper || '');
   } else if (s.wallpaper) {
     applyWp(s.wallpaper);
+  } else {
+    syncWetabTextTone(); // 无壁纸（渐变背景）时恢复主题默认文字颜色
   }
 
   // 内容区域尺寸（最大宽度 / 左右边距 / 顶部边距 / 底部边距）
@@ -930,6 +936,11 @@ function toggleGroupCards(gid) {
 function renderGroups() {
   const wrap = document.getElementById('groupsWrap');
   const styleApp = isAppCardStyle();
+  // 导航栏·应用模式：给 body 打标，供各主题统一切除卡片/分组背景（只留图标与标题）
+  document.body.classList.toggle('sp-card-app', styleApp);
+  syncWetabRailHandle(); // wetab 左侧导航把手显隐与当前主题/卡片样式同步
+  syncWetabPrefsBtn();   // wetab 界面设置入口显隐
+  syncWetabTextTone();   // wetab 卡片文字颜色随壁纸明暗自适应
   cardIconEagerLeft = CARD_ICON_EAGER_LIMIT; // 每次重绘重置首屏图标直载预算
 
   // 导航栏模式：由 renderGroupsNavbar 统一渲染（入口）
@@ -1320,11 +1331,18 @@ function renderGroupsNavbar() {
     const btn = document.createElement('button');
     btn.className = 'ntab-btn' + (vIdx === state.navActiveGroupIdx ? ' active' : '');
     btn.type = 'button';
-    if (g.icon) btn.appendChild(document.createTextNode(g.icon + ' '));
-    btn.appendChild(document.createTextNode(g.title));
+    const ic = document.createElement('span');
+    ic.className = 'ntab-ic';
+    ic.textContent = g.icon || '📁';
+    const lb = document.createElement('span');
+    lb.className = 'ntab-lb';
+    lb.textContent = g.title;
+    btn.appendChild(ic);
+    btn.appendChild(lb);
     btn.onclick = () => {
       state.navActiveGroupIdx = vIdx;
       state.activeTopId = g.id;  // 两种模式共享当前顶级
+      state.wetabSectionIdx = 0;
       state.searchKeyword = '';
       state.groupIntroDone = true;
       state.cardsIntroDone = true;
@@ -1352,6 +1370,7 @@ function renderGroupsNavbar() {
       item.onclick = () => {
         state.navActiveGroupIdx = vIdx;
         state.activeTopId = g.id;
+        state.wetabSectionIdx = 0;
         state.searchKeyword = '';
         state.groupIntroDone = true;
         state.cardsIntroDone = true;
@@ -1419,7 +1438,669 @@ function renderNavbarCardsOnly() {
   });
   state.groupIntroDone = true;
   state.cardsIntroDone = true;
+  renderWetabDock();
   syncCardSortable(); // 导航栏模式重绘后同样重建拖拽实例
+}
+
+/* ---------- WeTab Dock：管理员自定义常用卡片（纯前端 localStorage，无后端） ---------- */
+const WETAB_DOCK_KEY = 'sp_wetab_dock';
+
+function wetabDockIds() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(WETAB_DOCK_KEY) || '[]');
+    return Array.isArray(raw) ? raw.map(Number).filter(n => n > 0) : [];
+  } catch (e) { return []; }
+}
+
+function setWetabDockIds(ids) {
+  try { localStorage.setItem(WETAB_DOCK_KEY, JSON.stringify(ids)); } catch (e) { /* ignore */ }
+  renderWetabDock();
+}
+
+/** 管理员在 wetab 主题下固定/取消固定卡片到 Dock */
+function toggleWetabDockItem(item) {
+  const id = Number(item.id);
+  if (!id) return;
+  const ids = wetabDockIds();
+  const idx = ids.indexOf(id);
+  if (idx >= 0) {
+    ids.splice(idx, 1);
+    toast('已从 Dock 移除', 'info');
+  } else {
+    if (ids.length >= 16) { toast('Dock 最多固定 16 个常用卡片', 'error'); return; }
+    ids.push(id);
+    toast('已固定到 Dock：' + (item.title || '该卡片'), 'success');
+  }
+  setWetabDockIds(ids);
+}
+
+/** 仅管理员可在 wetab 主题下自定义 Dock */
+function canPinWetabDock() {
+  return document.documentElement.dataset.style === 'wetab'
+    && state.user && state.user.role === 'admin';
+}
+
+function wetabItemById(id) {
+  for (const g of (state.groups || [])) {
+    const hit = (g.items || []).find(it => Number(it.id) === Number(id));
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/** WeTab 风格：底部 Dock —— 已固定的常用卡片；未固定时回退为当前分组的卡片 */
+const wetabDockNodes = new Map(); // 卡片 id → { sig, node }：复用已有节点，避免滚动切换分组时图标重建闪烁
+let wetabDockSig = '';
+
+function renderWetabDock() {
+  const dock = document.getElementById('wetabDock');
+  if (!dock) return;
+  if (document.documentElement.dataset.style !== 'wetab') {
+    dock.hidden = true;
+    dock.innerHTML = '';
+    wetabDockSig = '';
+    return;
+  }
+
+  // 优先渲染管理员固定的常用卡片（localStorage，最多 16 个）
+  let items = wetabDockIds().map(wetabItemById).filter(Boolean);
+  if (!items.length) {
+    const visibleTop = state._navbarVisibleTop || [];
+    const tg = visibleTop[state.navActiveGroupIdx];
+    if (!tg) { dock.hidden = true; dock.innerHTML = ''; wetabDockSig = ''; return; }
+    (tg.items || []).forEach(it => items.push(it));
+    ((state.childrenMap || {})[tg.id] || []).forEach(k => (k.items || []).forEach(it => items.push(it)));
+  }
+  if (!items.length) { dock.hidden = true; dock.innerHTML = ''; wetabDockSig = ''; return; }
+
+  // 最多 16 个，超出横向滚动，避免 Dock 变成第二张卡片墙
+  const shown = items.slice(0, 16);
+  const itemSig = (it) => [it.title || '', it.icon_type || '', it.icon_value || '', it.icon_bg || '', it.url || ''].join(':');
+  const sig = shown.map(it => Number(it.id) + ':' + itemSig(it)).join('|');
+
+  // 列表没变且 DOM 仍在：直接复用，滚轮连续切分组时不重建图标
+  if (sig === wetabDockSig && !dock.hidden && dock.childElementCount) return;
+  wetabDockSig = sig;
+
+  const frag = document.createDocumentFragment();
+  shown.forEach(it => {
+    const key = Number(it.id);
+    const s = itemSig(it);
+    let entry = wetabDockNodes.get(key);
+    if (!entry || entry.sig !== s) {
+      const card = buildCard(it, true);
+      card.classList.add('dock-card');
+      // Dock 标题只显示前 8 个字符，超出截断
+      const titleEl = card.querySelector('.info .t');
+      if (titleEl) {
+        const chars = Array.from(titleEl.textContent || '');
+        if (chars.length > 8) titleEl.textContent = chars.slice(0, 8).join('') + '…';
+      }
+      entry = { sig: s, node: card };
+      wetabDockNodes.set(key, entry);
+    }
+    frag.appendChild(entry.node);
+  });
+  dock.innerHTML = '';
+  dock.appendChild(frag);
+  dock.hidden = false;
+}
+
+/* ---------- WeTab 左侧分组导航：默认收起，鼠标悬停把手 / 滚轮时浮出 ---------- */
+let wetabRailTimer = null;
+let wetabRailLeaveTimer = null;
+
+function wetabRailActive() {
+  return document.documentElement.dataset.style === 'wetab' && isNavbarStyle();
+}
+
+function wetabRailShow(autoHide) {
+  if (!wetabRailActive()) return;
+  const rail = document.getElementById('navbarTabs');
+  const wrap = document.getElementById('groupsWrap');
+  if (!rail || rail.hidden || !wrap || wrap.hidden) return;
+  document.body.classList.add('wetab-rail-open');
+  clearTimeout(wetabRailTimer);
+  if (autoHide) wetabRailTimer = setTimeout(wetabRailHide, 2600);
+}
+
+function wetabRailHide() {
+  clearTimeout(wetabRailTimer);
+  clearTimeout(wetabRailLeaveTimer);
+  wetabRailTimer = null;
+  wetabRailLeaveTimer = null;
+  document.body.classList.remove('wetab-rail-open');
+}
+
+/** 指针离开把手 / 导航栏后延时收起 */
+function scheduleWetabRailLeave() {
+  clearTimeout(wetabRailLeaveTimer);
+  wetabRailLeaveTimer = setTimeout(() => {
+    wetabRailLeaveTimer = null;
+    const rail = document.getElementById('navbarTabs');
+    if (rail && rail.matches(':hover')) return;
+    wetabRailHide();
+  }, 420);
+}
+
+/** 主题/卡片样式变化后同步把手显隐；非 wetab 或非导航栏模式一律收起 */
+function syncWetabRailHandle() {
+  const btn = document.getElementById('wetabRailHandle');
+  if (!btn) return;
+  const wrap = document.getElementById('groupsWrap');
+  const on = wetabRailActive() && wrap && !wrap.hidden;
+  btn.hidden = !on;
+  if (!on) wetabRailHide();
+}
+
+/** 当前顶级分组下按顺序排列的分组（顶级自身 + 可见子分组），与页面 section 顺序一致 */
+function wetabGroupSections(tg) {
+  if (!tg) return [];
+  const out = [];
+  if ((tg.items || []).length > 0) out.push(tg);
+  const kids = ((state.childrenMap || {})[tg.id] || [])
+    .filter(k => (k.items || []).length > 0 || k.is_visible !== 0);
+  kids.forEach(k => out.push(k));
+  return out;
+}
+
+/** 滚动定位到指定分组 section（block:start） */
+function wetabScrollToGroup(g, smooth) {
+  if (!g) return;
+  const el = document.getElementById('group-' + g.id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: smooth === false ? 'auto' : 'smooth', block: 'start' });
+}
+
+/** 滚轮切换：先在当前顶级分组内逐个二级分组滚动，走到首/尾后才切换到上/下一个顶级分组 */
+function wetabStepGroup(dir) {
+  const vt = state._navbarVisibleTop || [];
+  const tg = vt[state.navActiveGroupIdx];
+  const secs = wetabGroupSections(tg);
+  if (!tg || (vt.length < 2 && secs.length < 2)) return;
+
+  let si = Number(state.wetabSectionIdx) || 0;
+  if (si >= secs.length) si = Math.max(0, secs.length - 1);
+
+  // 当前顶级分组内还有下一个 / 上一个二级分组：仅滚动定位，不切顶级
+  const nextSec = si + dir;
+  if (secs.length > 1 && nextSec >= 0 && nextSec < secs.length) {
+    state.wetabSectionIdx = nextSec;
+    wetabScrollToGroup(secs[nextSec], true);
+    return;
+  }
+
+  const next = (state.navActiveGroupIdx + dir + vt.length) % vt.length;
+  const g = vt[next];
+  if (!g) return;
+  state.navActiveGroupIdx = next;
+  state.activeTopId = g.id;
+  state.searchKeyword = '';
+  state.groupIntroDone = true;
+  state.cardsIntroDone = true;
+  const nextSecs = wetabGroupSections(g);
+  // 向后切换从新分组首段开始；向前切换落在新分组最后一段
+  state.wetabSectionIdx = dir > 0 ? 0 : Math.max(0, nextSecs.length - 1);
+  renderTabsOnly();
+  renderNavbarCardsOnly();
+  renderGroupNav();
+  wetabScrollToGroup(nextSecs[state.wetabSectionIdx], false);
+}
+
+function initWetabRail() {
+  const handle = document.getElementById('wetabRailHandle');
+  const rail = document.getElementById('navbarTabs');
+  if (handle && handle.dataset.bound !== '1') {
+    handle.dataset.bound = '1';
+    handle.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      wetabRailShow(false); // 触屏 / 键盘场景下的展开
+    });
+    // 鼠标移到左侧把手即自动浮出导航栏；移开则延时自动收起
+    handle.addEventListener('mouseenter', () => {
+      clearTimeout(wetabRailLeaveTimer);
+      wetabRailShow(false);
+    });
+    handle.addEventListener('mouseleave', () => scheduleWetabRailLeave());
+  }
+
+  if (rail && rail.dataset.hoverBound !== '1') {
+    rail.dataset.hoverBound = '1';
+    rail.addEventListener('mouseenter', () => {
+      clearTimeout(wetabRailLeaveTimer);
+      wetabRailShow(false);
+    });
+    rail.addEventListener('mouseleave', () => scheduleWetabRailLeave());
+  }
+
+  // 点击导航栏以外的地方收起
+  document.addEventListener('click', (e) => {
+    if (!document.body.classList.contains('wetab-rail-open')) return;
+    if (e.target.closest('#navbarTabs') || e.target.closest('#wetabRailHandle')) return;
+    wetabRailHide();
+  }, true);
+
+  // 选中分组后收起
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#navbarTabs .ntab-btn')) return;
+    setTimeout(wetabRailHide, 240);
+  }, true);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') wetabRailHide();
+  });
+
+  // 页面任意位置滚轮：浮出导航栏并切换分组
+  let lock = 0;
+  document.addEventListener('wheel', (e) => {
+    if (!wetabRailActive() || e.ctrlKey || e.metaKey) return;
+    const wrap = document.getElementById('groupsWrap');
+    if (!wrap || wrap.hidden) return; // 新闻视图不切换分组
+    if (e.target && e.target.closest && e.target.closest('.modal')) return; // 弹窗内部滚动不切组
+    if (Math.abs(e.deltaY) < 6) return;
+    e.preventDefault();
+    wetabRailShow(true);
+    const now = Date.now();
+    if (now - lock < 420) return;
+    lock = now;
+    wetabStepGroup(e.deltaY > 0 ? 1 : -1);
+  }, { passive: false });
+}
+
+/* ---------- WeTab 界面设置：图标间距 / Dock 标题（localStorage，本地生效） ---------- */
+const WETAB_PREFS_KEY = 'sp_wetab_prefs';
+const WETAB_PREFS_DEFAULT = { rowGap: 12, colGap: 12, iconSize: 54, contentWidth: null, dockTitle: true, dockMode: 'show', dockBg: 100 };
+const WETAB_DOCK_MODES = ['show', 'hide', 'auto'];
+
+function wetabPrefs() {
+  const p = Object.assign({}, WETAB_PREFS_DEFAULT);
+  try {
+    const raw = JSON.parse(localStorage.getItem(WETAB_PREFS_KEY) || '{}');
+    if (raw) {
+      if (Number.isFinite(Number(raw.rowGap))) p.rowGap = Math.min(40, Math.max(1, Number(raw.rowGap)));
+      if (Number.isFinite(Number(raw.colGap))) p.colGap = Math.min(40, Math.max(1, Number(raw.colGap)));
+      if (Number.isFinite(Number(raw.iconSize))) p.iconSize = Math.min(72, Math.max(32, Number(raw.iconSize)));
+      if (Number.isFinite(Number(raw.contentWidth))) p.contentWidth = Math.min(2600, Math.max(800, Number(raw.contentWidth)));
+      if (typeof raw.dockTitle === 'boolean') p.dockTitle = raw.dockTitle;
+      if (WETAB_DOCK_MODES.indexOf(raw.dockMode) >= 0) p.dockMode = raw.dockMode;
+      if (Number.isFinite(Number(raw.dockBg))) p.dockBg = Math.min(100, Math.max(0, Number(raw.dockBg)));
+    }
+  } catch (e) { /* 损坏的本地配置按默认值处理 */ }
+  return p;
+}
+
+let wetabDockModeCur = 'show';
+
+function applyWetabPrefs(p) {
+  const root = document.documentElement;
+  root.style.setProperty('--wetab-row-gap', p.rowGap + 'px');
+  root.style.setProperty('--wetab-col-gap', p.colGap + 'px');
+  root.style.setProperty('--wetab-icon-size', p.iconSize + 'px');
+  root.style.setProperty('--wetab-dock-alpha', String(p.dockBg));
+  // 内容宽度：滑杆值优先；未设置时沿用后台「内容区域最大宽度」
+  if (p.contentWidth != null && Number.isFinite(Number(p.contentWidth))) root.style.setProperty('--wetab-content-width', p.contentWidth + 'px');
+  else root.style.removeProperty('--wetab-content-width');
+  document.body.classList.toggle('wetab-dock-hide-title', !p.dockTitle);
+  document.body.classList.toggle('wetab-dock-hidden', p.dockMode === 'hide');
+  document.body.classList.toggle('wetab-dock-glass-off', Number(p.dockBg) === 0);
+  document.body.classList.toggle('wetab-dock-auto', p.dockMode === 'auto');
+  if (p.dockMode !== 'auto') document.body.classList.remove('wetab-dock-peek');
+  wetabDockModeCur = p.dockMode;
+}
+
+function syncWetabPrefsInputs(p) {
+  const bind = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  setVal('wpRowGap', p.rowGap);
+  setVal('wpColGap', p.colGap);
+  setVal('wpIconSize', p.iconSize);
+  const cw = p.contentWidth != null && Number.isFinite(Number(p.contentWidth))
+    ? Number(p.contentWidth)
+    : (parseInt(state.settings && state.settings.content_maxwidth, 10) || 1200);
+  setVal('wpContentWidth', cw);
+  setVal('wpDockMode', p.dockMode);
+  setVal('wpDockBg', p.dockBg);
+  const dock = document.getElementById('wpDockTitle');
+  if (dock) dock.checked = p.dockTitle;
+  bind('wpRowGapVal', p.rowGap);
+  bind('wpColGapVal', p.colGap);
+  bind('wpIconSizeVal', p.iconSize);
+  bind('wpContentWidthVal', cw);
+  bind('wpDockBgVal', p.dockBg);
+}
+
+function setWetabPrefs(patch) {
+  const p = Object.assign(wetabPrefs(), patch);
+  try { localStorage.setItem(WETAB_PREFS_KEY, JSON.stringify(p)); } catch (e) { /* 忽略 */ }
+  applyWetabPrefs(p);
+  syncWetabPrefsInputs(p);
+}
+
+/** 设置入口/面板仅在 wetab 主题可见；壁纸入口仅管理员可见 */
+function syncWetabPrefsBtn() {
+  const btn = document.getElementById('wetabPrefsBtn');
+  if (!btn) return;
+  const on = document.documentElement.dataset.style === 'wetab';
+  btn.hidden = !on;
+
+  // 访客 / 只读账号可以打开面板查看，但不能调整参数
+  const panel = document.getElementById('wetabPrefs');
+  if (panel) {
+    const canEdit = !!(state.user && (state.user.role === 'admin' || state.user.role === 'editor'));
+    panel.dataset.readonly = canEdit ? '0' : '1';
+    panel.querySelectorAll('input, select').forEach((el) => { el.disabled = !canEdit; });
+  }
+
+  // 更换壁纸入口：仅 wetab + 管理员
+  const wpBtn = document.getElementById('wpWallpaperBtn');
+  if (wpBtn) wpBtn.hidden = !(on && state.user && state.user.role === 'admin');
+
+  // 常见问题按钮：仅 wetab 主题显示，切走后自动关闭悬浮窗
+  const faqBtn = document.getElementById('faqBtn');
+  if (faqBtn) faqBtn.hidden = !on;
+
+  // 后台管理入口：仅 wetab + 管理员 / 编辑
+  const adminBtn = document.getElementById('wpAdminBtn');
+  if (adminBtn) {
+    const canAdmin = state.user && (state.user.role === 'admin' || state.user.role === 'editor');
+    adminBtn.hidden = !(on && canAdmin);
+  }
+  if (!on) {
+    const faq = document.getElementById('wetabFaq');
+    if (faq) faq.hidden = true;
+    const wp = document.getElementById('wetabWallpaper');
+    if (wp) wp.hidden = true;
+  }
+
+  if (!on) {
+    const panel = document.getElementById('wetabPrefs');
+    if (panel) panel.hidden = true;
+  }
+}
+
+function initWetabPrefs() {
+  const btn = document.getElementById('wetabPrefsBtn');
+  const panel = document.getElementById('wetabPrefs');
+  const p = wetabPrefs();
+  applyWetabPrefs(p);
+  syncWetabPrefsInputs(p);
+  syncWetabPrefsBtn();
+
+  if (btn && btn.dataset.bound !== '1') {
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (panel) panel.hidden = !panel.hidden;
+    });
+  }
+  const row = document.getElementById('wpRowGap');
+  const col = document.getElementById('wpColGap');
+  const size = document.getElementById('wpIconSize');
+  const width = document.getElementById('wpContentWidth');
+  const dock = document.getElementById('wpDockTitle');
+  const mode = document.getElementById('wpDockMode');
+  if (row) row.addEventListener('input', () => setWetabPrefs({ rowGap: Number(row.value) }));
+  if (col) col.addEventListener('input', () => setWetabPrefs({ colGap: Number(col.value) }));
+  if (size) size.addEventListener('input', () => setWetabPrefs({ iconSize: Number(size.value) }));
+  if (width) width.addEventListener('input', () => setWetabPrefs({ contentWidth: Number(width.value) }));
+  if (dock) dock.addEventListener('change', () => setWetabPrefs({ dockTitle: dock.checked }));
+  if (mode) mode.addEventListener('change', () => setWetabPrefs({ dockMode: mode.value }));
+  const dockBg = document.getElementById('wpDockBg');
+  if (dockBg) dockBg.addEventListener('input', () => setWetabPrefs({ dockBg: Number(dockBg.value) }));
+
+  // Dock 自动隐藏：鼠标移到页面下方时浮出，移开后收起
+  document.addEventListener('mousemove', (e) => {
+    if (wetabDockModeCur !== 'auto') return;
+    if (e.clientY >= window.innerHeight - 96) document.body.classList.add('wetab-dock-peek');
+    else if (e.clientY < window.innerHeight - 140) document.body.classList.remove('wetab-dock-peek');
+  });
+
+  // 点击面板以外收起
+  document.addEventListener('click', (e) => {
+    if (!panel || panel.hidden) return;
+    if (e.target.closest('#wetabPrefs') || e.target.closest('#wetabPrefsBtn')) return;
+    panel.hidden = true;
+  }, true);
+
+  initWetabFaq();
+  initWetabWallpaper();
+}
+
+/* ---------- WeTab 常见问题悬浮窗（再次点击按钮返回导航页） ---------- */
+function initWetabFaq() {
+  const btn = document.getElementById('faqBtn');
+  const box = document.getElementById('wetabFaq');
+  const close = document.getElementById('wetabFaqClose');
+  if (!btn || !box || btn.dataset.bound === '1') return;
+  btn.dataset.bound = '1';
+
+  const toggle = (e) => {
+    if (e) e.stopPropagation();
+    if (document.documentElement.dataset.style !== 'wetab') return;
+    box.hidden = !box.hidden;
+  };
+  btn.addEventListener('click', toggle);
+  if (close) close.addEventListener('click', toggle);
+  // 点击遮罩空白处关闭
+  box.addEventListener('click', (e) => { if (e.target === box) toggle(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !box.hidden) box.hidden = true;
+  });
+}
+
+/* ---------- WeTab 更换壁纸（预置壁纸 / 已上传壁纸 分组展示，仅管理员） ---------- */
+// 图库接口不可用时的预置兜底
+const WETAB_PRESET_FALLBACK = [
+  { name: '晴空云朵', url: '/frontend/uploads/weather/云-天空-晴空.webp' },
+  { name: '云海风光', url: '/frontend/uploads/weather/风光-云朵-天空.webp' },
+  { name: '山峦', url: '/frontend/uploads/weather/mountain-landscape.webp' },
+  { name: '雪山', url: '/frontend/uploads/weather/snow-mountains.webp' },
+  { name: '暗色极简', url: '/frontend/uploads/weather/dark-background.webp' },
+  { name: '粉色动漫', url: '/frontend/uploads/weather/二次元-动漫-粉背景.webp' },
+  { name: '梦幻粉发', url: '/frontend/uploads/weather/梦幻-粉色头发.webp' },
+  { name: '三星平板', url: '/frontend/uploads/weather/samsung-galaxy-tab.webp' },
+];
+
+function syncWetabWallpaperSelected() {
+  const cur = (state.settings && state.settings.wallpaper) || '';
+  document.querySelectorAll('#wetabWallpaper .ww-item').forEach(el => {
+    el.classList.toggle('active', (el.dataset.url || '') === cur);
+  });
+}
+
+/** 生成一个壁纸缩略图按钮 */
+function wetabWpTile(name, url) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'ww-item';
+  b.dataset.url = url;
+  b.title = name;
+  if (url) {
+    const img = document.createElement('img');
+    img.src = assetUrl(url);
+    img.alt = name;
+    b.appendChild(img);
+  } else {
+    const span = document.createElement('span');
+    span.className = 'ww-none';
+    span.textContent = '默认渐变';
+    b.appendChild(span);
+  }
+  b.addEventListener('click', () => saveWetabWallpaper(url));
+  return b;
+}
+
+/** 预置壁纸 / 已上传壁纸分区渲染 */
+function buildWetabWallpaperGrids(presets, uploads) {
+  const presetGrid = document.getElementById('wwPresetGrid');
+  const userGrid = document.getElementById('wwUserGrid');
+  const empty = document.getElementById('wwUserEmpty');
+  if (!presetGrid || !userGrid) return;
+  presetGrid.innerHTML = '';
+  presetGrid.appendChild(wetabWpTile('默认渐变', ''));
+  (presets || []).forEach(w => presetGrid.appendChild(wetabWpTile(w.name, w.url)));
+  userGrid.innerHTML = '';
+  (uploads || []).forEach(w => userGrid.appendChild(wetabWpTile(w.name, w.url)));
+  if (empty) empty.hidden = !!(uploads && uploads.length);
+}
+
+/** 读取后台图库，区分预置与用户上传 */
+async function loadWetabWallpaperGallery() {
+  try {
+    const items = await API.get(API_BASE + 'gallery.php');
+    const presets = [];
+    const uploads = [];
+    (items || []).forEach(it => {
+      if (!it || !it.url) return;
+      const name = String(it.name || '').replace(/\.(webp|jpg|jpeg|png|gif|bmp|svg)$/i, '');
+      (it.preset ? presets : uploads).push({ name: name, url: it.url });
+    });
+    buildWetabWallpaperGrids(presets, uploads);
+  } catch (e) {
+    buildWetabWallpaperGrids(WETAB_PRESET_FALLBACK, []);
+  }
+  syncWetabWallpaperSelected();
+}
+
+async function saveWetabWallpaper(url) {
+  try {
+    await API.post(API_BASE + 'settings.php?action=save', { wallpaper: url, wallpaper_source: '' });
+    state.settings.wallpaper = url;
+    state.settings.wallpaper_source = '';
+    renderBase();
+    syncWetabTextTone();
+    syncWetabWallpaperSelected();
+    toast(url ? '壁纸已更新' : '已恢复默认渐变', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function initWetabWallpaper() {
+  const btn = document.getElementById('wpWallpaperBtn');
+  const modal = document.getElementById('wetabWallpaper');
+  const presetGrid = document.getElementById('wwPresetGrid');
+  const close = document.getElementById('wwClose');
+  const upBtn = document.getElementById('wwUploadBtn');
+  const resetBtn = document.getElementById('wwResetBtn');
+  const file = document.getElementById('wwFile');
+  if (!btn || !modal || !presetGrid) return;
+
+  buildWetabWallpaperGrids(WETAB_PRESET_FALLBACK, []);
+  syncWetabWallpaperSelected();
+
+  if (btn.dataset.bound !== '1') {
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      modal.hidden = false;
+      loadWetabWallpaperGallery();
+    });
+  }
+  if (close) close.addEventListener('click', () => { modal.hidden = true; });
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.hidden = true; });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !modal.hidden) modal.hidden = true;
+  });
+
+  if (upBtn && file && !upBtn.dataset.bound) {
+    upBtn.dataset.bound = '1';
+    upBtn.addEventListener('click', () => file.click());
+    file.addEventListener('change', async () => {
+      const f = file.files && file.files[0];
+      file.value = '';
+      if (!f) return;
+      if (f.size > 10 * 1024 * 1024) { toast('图片过大（最大 10MB）', 'error'); return; }
+      upBtn.disabled = true;
+      try {
+        const form = new FormData();
+        form.append('file', f);
+        form.append('type', 'wallpaper');
+        const res = await API.postForm(API_BASE + 'upload.php', form);
+        await saveWetabWallpaper(res.url);
+        loadWetabWallpaperGallery();
+      } catch (e) {
+        toast(e.message, 'error');
+      } finally {
+        upBtn.disabled = false;
+      }
+    });
+  }
+  if (resetBtn && !resetBtn.dataset.bound) {
+    resetBtn.dataset.bound = '1';
+    resetBtn.addEventListener('click', () => saveWetabWallpaper(''));
+  }
+}
+
+/* ---------- WeTab 卡片文字颜色：按壁纸亮度自动取深/浅色 ---------- */
+const wetabToneCache = new Map();
+
+function sampleWallpaperLuminance(url) {
+  if (wetabToneCache.has(url)) return Promise.resolve(wetabToneCache.get(url));
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 48;
+        canvas.height = 30;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const iw = img.naturalWidth || 1;
+        const ih = img.naturalHeight || 1;
+        // 取画面中间 70% 区域（卡片、时钟所在位置）取样
+        const sw = iw * 0.7;
+        const sh = ih * 0.7;
+        ctx.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, 0, 0, 48, 30);
+        const data = ctx.getImageData(0, 0, 48, 30).data;
+        // 取中位数而非平均值：避免壁纸里局部高光（如亮眼睛）把整体判成亮底
+        const lums = [];
+        for (let i = 0; i < data.length; i += 4) {
+          lums.push((0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]) / 255);
+        }
+        lums.sort((a, b) => a - b);
+        const lum = lums.length ? lums[Math.floor(lums.length / 2)] : 0;
+        wetabToneCache.set(url, lum);
+        resolve(lum);
+      } catch (e) {
+        resolve(null); // 跨域图片无法取样（canvas 被污染）
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+function syncWetabTextTone() {
+  const root = document.documentElement;
+  if (root.dataset.style !== 'wetab') {
+    root.style.removeProperty('--wetab-auto-text');
+    root.style.removeProperty('--wetab-auto-shadow');
+    return;
+  }
+  const applyTone = (lum) => {
+    if (root.dataset.style !== 'wetab') return;
+    const mask = parseFloat(state.settings && state.settings.mask_opacity);
+    const eff = lum * (1 - (isNaN(mask) ? 0.35 : Math.min(Math.max(mask, 0), 1)));
+    const dark = eff >= 0.62; // 底色足够亮才用深色文字，其余一律浅色，避免深底上看不见
+    root.style.setProperty('--wetab-auto-text', dark ? '#14161f' : '#ffffff');
+    root.style.setProperty('--wetab-auto-shadow', dark ? '0 1px 10px rgba(255,255,255,0.55)' : '0 2px 6px rgba(0,0,0,0.55), 0 0 18px rgba(0,0,0,0.35)');
+  };
+
+  const bg = document.getElementById('bgLayer');
+  const bgImage = bg ? bg.style.backgroundImage : '';
+  const m = bgImage && bgImage.match(/url\(["']?([^"')]+)["']?\)/);
+  if (!m) {
+    // 未设置壁纸时 wetab 使用深色渐变底，直接采用浅色文字
+    applyTone(0);
+    return;
+  }
+  const url = m[1];
+  sampleWallpaperLuminance(url).then((lum) => {
+    // 取样失败（跨域图片污染 canvas）时按照片壁纸的常见情况采用浅色文字
+    applyTone(lum == null ? 0 : lum);
+  });
 }
 
 /* ---------- 实时页面内搜索：两级分组 + 卡片级别 ---------- */
@@ -1837,6 +2518,15 @@ function showCardContextMenu(x, y, item, groupId) {
     }},
   ];
 
+  // wetab 主题 + 管理员：可把任意卡片固定为 Dock 常用项（仅本地生效）
+  if (canPinWetabDock()) {
+    const pinned = wetabDockIds().indexOf(Number(item.id)) >= 0;
+    items.splice(2, 0, { separator: true }, {
+      label: pinned ? '📌 从 Dock 移除' : '📌 固定到 Dock',
+      action: () => toggleWetabDockItem(item),
+    });
+  }
+
   items.forEach(it => {
     if (it.separator) {
       const sep = document.createElement('div');
@@ -1900,6 +2590,12 @@ function updateThemeBtn() {
 function bindGlobal() {
   // 左侧悬浮目录条（分组/平台共用）把手与滚动高亮，仅绑定一次
   bindNavChrome();
+
+  // WeTab：左侧分组导航把手 / 空白处滚轮切分组（仅绑定一次）
+  initWetabRail();
+
+  // WeTab：左下角界面设置（图标间距 / Dock 标题）
+  initWetabPrefs();
 
   // 右键卡片操作菜单（仅 admin/editor 生效）
   document.addEventListener('contextmenu', e => {
@@ -2218,6 +2914,9 @@ function switchView(v) {
   const isNav = v === 'nav';
   document.getElementById('groupsWrap').hidden = !isNav;
   document.getElementById('newsView').hidden = isNav;
+  // WeTab Dock 只属于导航视图；回到导航视图时由 renderGroupsNavbar 重新填充
+  const wetabDock = document.getElementById('wetabDock');
+  if (wetabDock) wetabDock.hidden = true;
   // 按钮高亮状态
   const btn = document.getElementById('hotNewsBtn');
   if (btn) btn.classList.toggle('active', !isNav);
@@ -2248,6 +2947,7 @@ function switchView(v) {
     if (!newsState.loaded) loadNews();
     window.scrollTo({ top: 0 });
   }
+  syncWetabRailHandle(); // 新闻/导航视图切换后同步 wetab 导航把手
 }
 
 /** 新闻视图下：把 navbarTabs 区域替换为一个"返回导航页"按钮 */
@@ -2259,7 +2959,7 @@ function renderNavbarBackBtn() {
   const btn = document.createElement('button');
   btn.className = 'ntab-btn active';
   btn.type = 'button';
-  btn.innerHTML = '← 返回导航页';
+  btn.innerHTML = '<span class="ntab-ic">←</span><span class="ntab-lb">返回导航页</span>';
   btn.onclick = () => switchView('nav');
   tabs.appendChild(btn);
   const mobile = document.getElementById('navbarMobile');

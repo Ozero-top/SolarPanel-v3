@@ -4,7 +4,7 @@
 
 <h1 align=center>SolarPanel V3 - 轻量自托管导航页面板</h1>
 
-[![Version](https://img.shields.io/badge/Version-v3.5.0-5B8DEF?logo=semanticrelease)](#)
+[![Version](https://img.shields.io/badge/Version-v3.6.0-5B8DEF?logo=semanticrelease)](#)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev)
 [![Architecture](https://img.shields.io/badge/Architecture-chi%2Bsqlite-50C878)](https://github.com/go-chi/chi)
 [![Multi-Arch](https://img.shields.io/badge/Arch-amd64__arm64__armv7-7A51F5)](https://hub.docker.com/r/ovitor/solarpanel-v3)
@@ -22,7 +22,7 @@
 - **零依赖单二进制** — Go + 纯 Go SQLite（`modernc.org/sqlite`），无 CGO、无外部数据库；三架构镜像约 14MB
 - **空库启动** — 首次启动只建表、写默认设置与管理账号，不注入演示内容；「恢复初始状态」同样只清数据
 - **两级分组导航** — 父分组折叠、子分组缩进；搜索按「卡片 → 子分组 → 父分组」三级命中
-- **十套主题** — 液态玻璃（默认）/ 柔和浮雕 / 工程蓝图 / 清透极简 / 柔和工具 / 动态极光 / IRIS 深空 / 铅笔手绘 / 复古怀旧 / 企业简洁；明暗模式、卡片样式与圆角留白独立配置
+- **十一套主题** — 液态玻璃（默认）/ Tab标签页 / 柔和浮雕 / 工程蓝图 / 清透极简 / 柔和工具 / 动态极光 / IRIS 深空 / 铅笔手绘 / 复古怀旧 / 企业简洁 / 新野兽派；明暗模式、卡片样式与圆角留白独立配置
 - **热点新闻聚合** — 24 个内置源 + 自定义 RSS，支持勾选、排序与独立入口
 - **NAS 运行状态面板** — 主机名 / 内网 IP / CPU / 内存 / 存储池 / 网络 / 温度 / 容器；四种放置方式 + 近 10 分钟曲线 + 详情弹窗
 - **天气与壁纸** — 顶部时钟与天气；每日壁纸多源合并、失败重试、图库管理与上传
@@ -217,7 +217,7 @@ SolarPanel/
 
 ## 🎨 主题定制
 
-主题唯一事实源为 `frontend/themes.json`，当前十套：`liquid-glass`（默认）、`soft`、`blueprint`、`soft-utility`、`aurora`、`iris`、`sketch-style`、`retro-vintage`、`corporate-clean`、`neo-brutalist`。
+主题唯一事实源为 `frontend/themes.json`，当前十一套：`liquid-glass`（默认）、`wetab`（Tab标签页）、`soft`、`blueprint`、`soft-utility`、`aurora`、`iris`、`sketch-style`、`retro-vintage`、`corporate-clean`、`neo-brutalist`。
 
 ```json
 {

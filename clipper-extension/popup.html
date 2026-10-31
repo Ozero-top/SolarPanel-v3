@@ -7,11 +7,19 @@
 </head>
 <body>
 <div class="head">
-  <span class="brand">SolarPanel</span>
+  <span class="brand">
+    <span class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+        <rect x="3" y="6" width="18" height="12" rx="2.4"/>
+        <path d="M9 6v12M15 6v12M3 12h18"/>
+      </svg>
+    </span>
+    SolarPanel
+  </span>
   <div class="head-nav">
-    <a id="openHome" class="link" href="#" target="_blank" rel="noopener">打开主页</a>
-    <a id="openClips" class="link" href="#" target="_blank" rel="noopener">剪藏库</a>
-    <a id="openOptions" class="link" href="options.html" target="_blank">设置</a>
+    <a id="openHome" class="nav-link" href="#" target="_blank" rel="noopener">主页</a>
+    <a id="openClips" class="nav-link" href="#" target="_blank" rel="noopener">剪藏库</a>
+    <a id="openOptions" class="nav-link" href="options.html" target="_blank">设置</a>
   </div>
 </div>
 
@@ -29,10 +37,10 @@
   <div id="tabSave" class="tab-pane">
     <div id="statusBar" class="status"></div>
 
-    <div id="formFields">
+    <div id="formFields" class="panel">
       <label class="field">
         <span>标题</span>
-        <input id="fTitle" type="text" maxlength="200">
+        <input id="fTitle" type="text" maxlength="200" placeholder="页面标题">
       </label>
       <div class="url" id="fUrl"></div>
       <div class="field-row">
@@ -49,29 +57,30 @@
           </select>
         </label>
       </div>
-      <div class="field-row">
-        <label class="field">
-          <span>备注（可选）</span>
-          <textarea id="fNote" rows="2" maxlength="500"></textarea>
-        </label>
-        <label class="field">
-          <span>标签（可选）</span>
-          <input id="fTags" type="text" maxlength="200" placeholder="技术, 设计">
-        </label>
-      </div>
+      <label class="field">
+        <span>标签（可选）</span>
+        <input id="fTags" type="text" maxlength="200" placeholder="技术, 设计">
+      </label>
+      <label class="field">
+        <span>备注（可选）</span>
+        <textarea id="fNote" rows="2" maxlength="500" placeholder="记录为什么保存它"></textarea>
+      </label>
       <label class="check">
         <input id="fSnapshot" type="checkbox"> 同时保存正文快照
       </label>
     </div>
 
     <div id="dupBox" class="alert hidden">
-      该链接已存在。
-      <button id="updateShotBtn" type="button">更新已有卡片截图</button>
-      <button id="forceBtn" type="button">仍要另存</button>
+      <span class="alert-text">该链接已存在。</span>
+      <span class="alert-actions">
+        <button id="updateShotBtn" type="button">更新已有卡片截图</button>
+        <button id="forceBtn" type="button">仍要另存</button>
+      </span>
     </div>
 
-    <button id="saveBtn" class="btn" type="button">保存到 SolarPanel</button>
-    <div id="doneBox" class="hidden">
+    <button id="saveBtn" class="btn save-btn" type="button">保存到 SolarPanel</button>
+
+    <div id="doneBox" class="panel done hidden">
       <div class="actions">
         <a id="openRead" class="btn" href="#" target="_blank" rel="noopener">在剪藏库查看</a>
         <a id="openPage" class="btn ghost" href="#" target="_blank">打开原文</a>
@@ -82,9 +91,9 @@
         <button id="refetchBtn" class="btn ghost" type="button">重新抓取正文</button>
         <button id="delSnapBtn" class="btn ghost" type="button">删除快照</button>
       </div>
-      <div class="actions">
+      <div class="actions auto">
         <button id="retryShotBtn" class="btn ghost hidden" type="button">重试截图</button>
-        <button id="undoBtn" class="btn ghost" type="button">撤销</button>
+        <button id="undoBtn" class="btn ghost danger" type="button">撤销</button>
       </div>
     </div>
   </div>
@@ -101,7 +110,7 @@
   </div>
 
   <div class="foot">
-    <span title="可在 chrome://extensions/shortcuts 查看或修改">Alt+Shift+S 快速保存</span>
+    <span class="kbd-tip" title="可在 chrome://extensions/shortcuts 查看或修改">快捷键 <kbd>Alt+Shift+S</kbd></span>
     <span id="ver"></span>
   </div>
   <details class="shortcut-tip">

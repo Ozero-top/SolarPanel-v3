@@ -16,8 +16,8 @@
   <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
   <title>SolarPanel</title>
   <link rel="stylesheet" href="assets/css/common.css?v=94307f77">
-  <link rel="stylesheet" href="assets/css/index.css?v=03d011f7">
-  <link rel="stylesheet" href="assets/css/themes.css?v=10bab6a8">
+  <link rel="stylesheet" href="assets/css/index.css?v=137f763b">
+  <link rel="stylesheet" href="assets/css/themes.css?v=811acf3e">
 </head>
 <body>
   <div class="bg-layer" id="bgLayer"></div>
@@ -94,8 +94,62 @@
 
     <!-- 导航栏模式：PC 端搜索栏下横向分组标签栏（card_style=nav 时显示） -->
     <nav class="navbar-tabs" id="navbarTabs" hidden aria-label="分组标签"></nav>
+    <!-- WeTab 风格：左侧分组导航收起后的浮动把手（点击/滚轮浮出导航） -->
+    <button class="wetab-rail-handle" id="wetabRailHandle" type="button" hidden aria-label="展开分组导航" title="展开分组导航">≡</button>
     <!-- 移动端：分组图标横向滑动选择（≤640px 显示，替代原下拉框） -->
     <nav class="navbar-mobile" id="navbarMobile" hidden aria-label="选择分组"></nav>
+    <!-- WeTab 风格：底部 Dock（当前分组卡片的快捷启动图标，仅 wetab 主题渲染） -->
+    <nav class="wetab-dock" id="wetabDock" hidden aria-label="快速启动"></nav>
+    <!-- WeTab 风格：左下角界面设置入口（图标间距 / Dock 标题显示，仅本地生效） -->
+    <button class="wetab-prefs-btn" id="wetabPrefsBtn" type="button" hidden aria-label="界面设置" title="界面设置">⚙</button>
+    <div class="wetab-prefs" id="wetabPrefs" hidden>
+      <div class="wp-title">界面设置</div>
+      <label class="wp-row"><span>图标上下间距</span><input type="range" id="wpRowGap" min="1" max="40" step="1"><b id="wpRowGapVal">12</b></label>
+      <label class="wp-row"><span>图标左右间距</span><input type="range" id="wpColGap" min="1" max="40" step="1"><b id="wpColGapVal">12</b></label>
+      <label class="wp-row"><span>图标大小</span><input type="range" id="wpIconSize" min="32" max="72" step="2"><b id="wpIconSizeVal">54</b></label>
+      <label class="wp-row"><span>内容宽度</span><input type="range" id="wpContentWidth" min="800" max="2600" step="10"><b id="wpContentWidthVal">1200</b></label>
+      <label class="wp-row wp-check"><span>Dock 显示标题</span><input type="checkbox" id="wpDockTitle" checked></label>
+      <label class="wp-row wp-select"><span>Dock 显示</span><select id="wpDockMode"><option value="show">显示</option><option value="hide">隐藏</option><option value="auto">自动隐藏</option></select></label>
+      <label class="wp-row"><span>Dock 背景</span><input type="range" id="wpDockBg" min="0" max="100" step="1"><b id="wpDockBgVal">100</b></label>
+      <button class="wp-wallpaper" id="wpWallpaperBtn" type="button" hidden>🖼 更换壁纸</button>
+      <button class="wp-wallpaper" id="faqBtn" type="button" hidden>❓ 常见问题</button>
+      <a class="wp-wallpaper" id="wpAdminBtn" href="frontend/admin.html" hidden>🛠 打开后台管理</a>
+    </div>
+
+    <!-- WeTab 风格：常见问题悬浮窗（再次点击按钮或关闭即返回导航页） -->
+    <div class="wetab-faq" id="wetabFaq" hidden>
+      <div class="wfq-panel" role="dialog" aria-label="常见问题">
+        <div class="wfq-head"><h3>常见问题</h3><button type="button" class="wfq-close" id="wetabFaqClose" aria-label="关闭">×</button></div>
+        <div class="wfq-body">
+          <details open><summary>如何添加或编辑卡片？</summary><p>以管理员身份登录后进入「管理面板 → 分组与卡片」，可新增分组、添加卡片并设置图标与链接。</p></details>
+          <details><summary>如何切换主题或卡片样式？</summary><p>在「管理面板 → 站点设置 → 外观」中切换主题风格；卡片样式选择「导航栏·应用」即可只显示图标与标题。</p></details>
+          <details><summary>底部 Dock 的图标怎么更换？</summary><p>管理员在任意卡片上右键，选择「固定到 Dock」；再次右键可选择「从 Dock 移除」。此项只保存在当前浏览器。</p></details>
+          <details><summary>左侧分组导航怎么打开？</summary><p>点击左侧中间的 ≡ 把手浮出分组导航；在页面空白处滚动滚轮也能切换上/下一个分组，点击空白处自动收起。</p></details>
+          <details><summary>如何更换壁纸？</summary><p>管理员点击左下角 ⚙「界面设置」，选择「更换壁纸」，可挑选预置壁纸或上传本地图片，保存后全站生效。</p></details>
+          <details><summary>图标大小和间距怎么调整？</summary><p>左下角 ⚙ 面板中的滑杆可实时调整图标大小、上下/左右间距与内容宽度，配置保存在当前浏览器。</p></details>
+        </div>
+      </div>
+    </div>
+
+    <!-- WeTab 风格：更换壁纸弹窗（入口仅管理员可见） -->
+    <div class="wetab-wp" id="wetabWallpaper" hidden>
+      <div class="ww-panel" role="dialog" aria-label="更换壁纸">
+        <div class="ww-head"><h3>更换壁纸</h3><button type="button" class="ww-close" id="wwClose" aria-label="关闭">×</button></div>
+        <p class="ww-tip">选择预置壁纸，或上传本地图片；保存后全站生效（仅管理员）。</p>
+        <div class="ww-body">
+          <div class="ww-sec-title">预置壁纸</div>
+          <div class="ww-grid" id="wwPresetGrid"></div>
+          <div class="ww-sec-title">已上传壁纸</div>
+          <div class="ww-grid" id="wwUserGrid"></div>
+          <div class="ww-empty" id="wwUserEmpty" hidden>暂无上传壁纸，点击下方「上传壁纸」添加。</div>
+        </div>
+        <div class="ww-foot">
+          <button type="button" class="ww-btn" id="wwUploadBtn">上传壁纸</button>
+          <button type="button" class="ww-btn" id="wwResetBtn">恢复默认渐变</button>
+          <input type="file" id="wwFile" accept="image/*" hidden>
+        </div>
+      </div>
+    </div>
 
     <!-- 分组与卡片（全部由后端数据渲染） -->
     <main id="groupsWrap"></main>
@@ -209,7 +263,7 @@
   </button>
 
   <script src="assets/vendor/sortable.min.js?v=18a2566c"></script>
-  <script src="assets/js/api.js?v=46f3e6de"></script>
-  <script src="assets/js/index.js?v=36eb246c"></script>
+  <script src="assets/js/api.js?v=eb8254cc"></script>
+  <script src="assets/js/index.js?v=898a7e7b"></script>
 </body>
 </html>

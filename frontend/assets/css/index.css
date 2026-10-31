@@ -957,6 +957,42 @@ html:not(.sp-topbar-ready) .topbar {
   grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
 }
 
+/* ============================================================
+   导航栏·应用（card_style=navapp）：所有主题统一去掉卡片与分组背景，
+   只保留图标与标题（body 标记由 index.js renderGroups 注入）
+   ============================================================ */
+body.sp-card-app .group,
+body.sp-card-app .group-parent,
+body.sp-card-app .group-child,
+body.sp-card-app .group-head,
+body.sp-card-app .group-parent-head,
+body.sp-card-app .cards.style-app {
+  background: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* 卡片本体：透明、无边框、无投影，仅图标 + 标题 */
+body.sp-card-app .cards.style-app .card:not(.search-hit) {
+  background: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* 各主题的玻璃高光/装饰角标层 */
+body.sp-card-app .cards.style-app .card::before,
+body.sp-card-app .cards.style-app .card::after,
+body.sp-card-app .cards.style-app .card .card-bg {
+  display: none !important;
+}
+/* Hover 只做轻微上浮，不再出现背景块 */
+body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
+  background: none !important;
+  box-shadow: none !important;
+}
+
 /* ---------- 卡片（柔和小凸起） ---------- */
 .card {
   display: flex;

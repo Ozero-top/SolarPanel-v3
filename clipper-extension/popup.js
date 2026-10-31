@@ -11,6 +11,7 @@ const state = {
   item: null,
   dupItem: null,
   savedText: '',
+  unsupported: false,
 };
 
 document.addEventListener('DOMContentLoaded', init);
@@ -64,8 +65,8 @@ async function init() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   state.tab = (tabs && tabs[0]) || {};
   state.url = state.tab.url || '';
-  $('fUrl').textContent = state.url;
-  $('fUrl').title = state.url;
+  $('fUrl').textContent = state.url || '无法读取当前页地址';
+  $('fUrl').title = state.url || '无法读取当前页地址（受限页面）';
   $('fTitle').value = state.tab.title || '';
   $('fSnapshot').checked = cfg.snapshot === undefined ? true : !!cfg.snapshot;
   $('fShotMode').value = cfg.shotMode === 'viewport' || cfg.shotMode === 'none' ? cfg.shotMode : 'full';
@@ -83,6 +84,7 @@ async function init() {
   });
 
   if (!/^https?:\/\//i.test(state.url)) {
+    state.unsupported = true;
     setStatus('当前页面不支持保存（仅支持 http / https 页面）', 'err');
     $('saveBtn').disabled = true;
   }
@@ -168,7 +170,8 @@ async function checkConnection() {
     if (!me.clip_enabled) {
       setStatus('站点已关闭剪藏功能，请联系管理员', 'err');
       $('saveBtn').disabled = true;
-    } else if (me.name || me.username) {
+    } else if (!state.unsupported && (me.name || me.username)) {
+      // 受限页面时保留「不支持保存」提示，避免被连接成功状态覆盖
       setStatus('已连接：' + (me.name || me.username));
     }
   } catch (e) {
@@ -240,7 +243,7 @@ async function save(force) {
       state.dupItem = res.item;
       $('updateShotBtn').classList.toggle('hidden', $('fShotMode').value === 'none');
       $('dupBox').classList.remove('hidden');
-      setStatus('该链接已存在，可更新已有卡片截图或仍要另存');
+      setStatus('');
       return;
     }
     state.item = res.item;
