@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.ico?v=1b5d8c6c" type="image/x-icon">
   <link rel="stylesheet" href="assets/css/common.css?v=94307f77">
   <link rel="stylesheet" href="assets/css/auth-admin.css?v=0912cc91">
-  <link rel="stylesheet" href="assets/css/themes.css?v=4fed8708">
+  <link rel="stylesheet" href="assets/css/themes.css?v=72857062">
 </head>
 <body>
   <div class="style-fx" aria-hidden="true"></div>
@@ -289,6 +289,16 @@
               <label>卡片背景透明度：<span class="range-val" id="v_card_opacity">100</span>%</label>
               <input type="range" class="range" id="s_card_opacity" min="40" max="100" step="5" value="100">
               <div class="form-hint">仅调整卡片底色透明度，文字与图标不受影响；40% 最透，100% 为主题默认底色。</div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-item">
+              <label>默认显示分组</label>
+              <select class="select" id="s_default_group">
+                <option value="">自动（第一个有内容的分组）</option>
+              </select>
+              <div class="form-hint">打开主页时默认定位到该分组；可选一级或二级分组，选「自动」则显示第一个有内容的分组。</div>
             </div>
           </div>
 
@@ -1364,7 +1374,7 @@
   </div>
 
   <script src="assets/js/qrcode.min.js"></script>
-  <script src="assets/js/api.js?v=de9ad1ac"></script>
-  <script src="assets/js/admin.js?v=5b3faaa6"></script>
+  <script src="assets/js/api.js?v=e48e9d0b"></script>
+  <script src="assets/js/admin.js?v=83fefd71"></script>
 </body>
 </html>

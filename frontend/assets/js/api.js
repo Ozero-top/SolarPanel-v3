@@ -3,8 +3,15 @@
  */
 
 /* ================= 应用版本与更新日志（每次更新只需改这里） ================= */
-const APP_VERSION = 'v3.6.1';
+const APP_VERSION = 'v3.6.2';
 const APP_CHANGELOG = [
+  { ver: 'v3.6.2', date: '2026-10-31', items: [
+    '🎯 后台新增「默认显示分组」：可指定前端首屏展示的一级或二级分组，未设置时保持自动',
+    '🔤 时钟 / 天气与整页字体各新增 6 款免费字体（各 18 款）：Oxanium、Chakra Petch、Share Tech Mono、Teko、Exo 2、Syncopate；柳建毛笔草书、霞鹜文楷、Inter、Lora、Nunito、Fira Code',
+    '💾 Tab标签页的界面设置与 Dock 固定卡片保存到后端，换设备打开保持一致',
+    '↔️ 内容宽度与后台「内容区域最大宽度」同一个设置，滑杆拖动即同步到后台',
+    '🖱️ Dock 图标支持拖动排序，顺序随设置同步；设置面板标签不再换行',
+  ]},
   { ver: 'v3.6.1', date: '2026-10-31', items: [
     '🌗 Tab标签页新增明暗模式（浅色 / 深色 / 跟随系统，默认浅色），只切换界面明暗，不影响文字随壁纸自动取色',
     '🖥️ Tab标签页默认隐藏顶栏（品牌与按钮），PC 端与移动端一致',
@@ -426,7 +433,7 @@ function buildBgCss(color, alphaPercent) {
 /** 可选风格主题（与 themes.css 的 html[data-style] 对应） */
 const SP_STYLES = ['liquid-glass', 'wetab', 'soft', 'aurora', 'blueprint', 'corporate-clean', 'iris', 'neo-brutalist', 'retro-vintage', 'sketch-style', 'soft-utility'];
 
-/** 时钟/天气可选字体：12 款免费开源（OFL）设计字体，中文自动回退系统黑体 */
+/** 时钟/天气可选字体：18 款免费开源（OFL）设计字体，中文自动回退系统黑体 */
 const SP_CLOCK_FONTS = [
   { id: 'orbitron',     name: 'Orbitron · 科技未来',        family: 'Orbitron',         google: 'Orbitron:wght@500;700;900' },
   { id: 'rajdhani',     name: 'Rajdhani · 数码棱角',        family: 'Rajdhani',         google: 'Rajdhani:wght@500;600;700' },
@@ -440,6 +447,12 @@ const SP_CLOCK_FONTS = [
   { id: 'spacegrotesk', name: 'Space Grotesk · 现代几何',   family: 'Space Grotesk',    google: 'Space+Grotesk:wght@500;600;700' },
   { id: 'jetbrains',    name: 'JetBrains Mono · 等宽极客',  family: 'JetBrains Mono',   google: 'JetBrains+Mono:wght@500;700' },
   { id: 'rubik',        name: 'Rubik · 友好圆角',           family: 'Rubik',            google: 'Rubik:wght@500;600;700' },
+  { id: 'oxanium',      name: 'Oxanium · 电竞科技',         family: 'Oxanium',          google: 'Oxanium:wght@500;600;700' },
+  { id: 'chakrapetch',  name: 'Chakra Petch · 机甲硬朗',    family: 'Chakra Petch',     google: 'Chakra+Petch:wght@500;600;700' },
+  { id: 'sharetechmono', name: 'Share Tech Mono · 终端等宽', family: 'Share Tech Mono',  google: 'Share+Tech+Mono' },
+  { id: 'teko',         name: 'Teko · 紧凑数字',            family: 'Teko',             google: 'Teko:wght@500;600;700' },
+  { id: 'exo2',         name: 'Exo 2 · 未来宽体',           family: 'Exo 2',            google: 'Exo+2:wght@500;600;700' },
+  { id: 'syncopate',    name: 'Syncopate · 宽字距',         family: 'Syncopate',        google: 'Syncopate:wght@400;700' },
 ];
 
 const SP_CJK_FALLBACK = "'PingFang SC','Microsoft YaHei','HarmonyOS Sans SC','MiSans','Noto Sans CJK SC','Source Han Sans SC',sans-serif";
@@ -474,7 +487,7 @@ function spApplyClockFont(id) {
   document.documentElement.style.setProperty('--clock-font', stack);
 }
 
-/** 整页可选字体：12 款免费开源（OFL）设计字体（含 8 款中文字体） */
+/** 整页可选字体：18 款免费开源（OFL）设计字体（含 10 款中文字体） */
 const SP_PAGE_FONTS = [
   { id: 'notosans',     name: 'Noto Sans SC · 思源黑体',      family: 'Noto Sans SC',         google: 'Noto+Sans+SC:wght@400;500;700' },
   { id: 'notoserif',    name: 'Noto Serif SC · 思源宋体',     family: 'Noto Serif SC',        google: 'Noto+Serif+SC:wght@400;600;700' },
@@ -488,6 +501,12 @@ const SP_PAGE_FONTS = [
   { id: 'montserrat',   name: 'Montserrat · 几何经典（西文）', family: 'Montserrat',           google: 'Montserrat:wght@400;500;700' },
   { id: 'orbitron',     name: 'Orbitron · 科技未来（西文）',  family: 'Orbitron',             google: 'Orbitron:wght@400;500;700' },
   { id: 'jetbrains',    name: 'JetBrains Mono · 等宽极客',    family: 'JetBrains Mono',       google: 'JetBrains+Mono:wght@400;500;700' },
+  { id: 'liujianmaocao', name: '柳建毛笔草书 · 狂草',         family: 'Liu Jian Mao Cao',     google: 'Liu+Jian+Mao+Cao' },
+  { id: 'lxgwwenkai',   name: '霞鹜文楷 · 手写楷体（繁体）',  family: 'LXGW WenKai TC',       google: 'LXGW+WenKai+TC' },
+  { id: 'inter',        name: 'Inter · 现代界面（西文）',     family: 'Inter',                google: 'Inter:wght@400;500;600;700' },
+  { id: 'lora',         name: 'Lora · 优雅衬线（西文）',      family: 'Lora',                 google: 'Lora:wght@400;500;600' },
+  { id: 'nunito',       name: 'Nunito · 柔和圆润（西文）',    family: 'Nunito',               google: 'Nunito:wght@400;500;600;700' },
+  { id: 'firacode',     name: 'Fira Code · 编程等宽（西文）', family: 'Fira Code',            google: 'Fira+Code:wght@400;500;600' },
 ];
 
 /** 取整页字体族栈（空 = 跟随系统） */

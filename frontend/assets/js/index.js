@@ -267,6 +267,8 @@ async function boot() {
     }
   });
 
+  applyDefaultGroup();
+
   renderBase();
   startClock();
   renderSearch();
@@ -276,6 +278,34 @@ async function boot() {
   initNASPanel();
   initUpdateNotice();
   scheduleIconPrefetch();
+}
+
+/* ---------- 后台「默认显示分组」：打开主页时定位到指定分组 ---------- */
+function applyDefaultGroup() {
+  const id = parseInt(state.settings.default_group, 10);
+  if (!id || isNaN(id)) return;
+  // 选中的可能是一级分组，也可能是某个二级分组（此时定位到其所属一级）
+  let top = state.topGroups.find(g => g.id === id);
+  let childId = 0;
+  if (!top) {
+    state.topGroups.forEach(tg => {
+      const kid = (state.childrenMap[tg.id] || []).find(k => k.id === id);
+      if (!top && kid) { top = tg; childId = kid.id; }
+    });
+  }
+  if (!top) return;
+  state.activeTopId = top.id;
+  const idx = state.topGroups.findIndex(g => g.id === top.id);
+  if (idx >= 0) state.navActiveGroupIdx = idx;
+  state.wetabSectionIdx = 0;
+  if (childId) {
+    state.activeChildId = childId;
+    // 等分组渲染完成后再滚动到该二级分组
+    setTimeout(() => {
+      const el = document.getElementById('group-' + childId);
+      if (el) el.scrollIntoView({ block: 'start' });
+    }, 80);
+  }
 }
 
 /* ---------- 基础元素渲染（标题/logo/公告/页脚/壁纸/内容区） ---------- */
@@ -1442,10 +1472,18 @@ function renderNavbarCardsOnly() {
   syncCardSortable(); // 导航栏模式重绘后同样重建拖拽实例
 }
 
-/* ---------- WeTab Dock：管理员自定义常用卡片（纯前端 localStorage，无后端） ---------- */
+/* ---------- WeTab Dock：管理员自定义常用卡片（随站点设置保存，跨设备一致） ---------- */
 const WETAB_DOCK_KEY = 'sp_wetab_dock';
 
 function wetabDockIds() {
+  // 后台保存的 Dock 优先（管理员改好后，换一台电脑也按同样顺序显示）
+  const srv = state.settings && state.settings.wetab_dock;
+  if (srv) {
+    try {
+      const a = JSON.parse(srv);
+      if (Array.isArray(a)) return a.map(Number).filter(n => n > 0).slice(0, 16);
+    } catch (e) { /* 服务端配置损坏时回退本地 */ }
+  }
   try {
     const raw = JSON.parse(localStorage.getItem(WETAB_DOCK_KEY) || '[]');
     return Array.isArray(raw) ? raw.map(Number).filter(n => n > 0) : [];
@@ -1454,6 +1492,10 @@ function wetabDockIds() {
 
 function setWetabDockIds(ids) {
   try { localStorage.setItem(WETAB_DOCK_KEY, JSON.stringify(ids)); } catch (e) { /* ignore */ }
+  if (state.settings) state.settings.wetab_dock = JSON.stringify(ids);
+  if (state.user && state.user.role === 'admin') {
+    API.post(API_BASE + 'settings.php?action=save', { wetab_dock: JSON.stringify(ids) }).catch(() => { /* 离线时保留本地 */ });
+  }
   renderWetabDock();
 }
 
@@ -1544,6 +1586,37 @@ function renderWetabDock() {
   dock.innerHTML = '';
   dock.appendChild(frag);
   dock.hidden = false;
+  syncWetabDockSortable(dock);
+}
+
+/** 管理员拖动 Dock 图标调整顺序：复用 SortableJS（与卡片排序同一手感，鼠标 / 触摸都支持） */
+let wetabDockSortable = null;
+
+function syncWetabDockSortable(dock) {
+  const enabled = canPinWetabDock() && wetabDockIds().length > 0;
+  dock.classList.toggle('sortable', enabled);
+  if (typeof Sortable === 'undefined') return;
+  if (!wetabDockSortable) {
+    wetabDockSortable = Sortable.create(dock, {
+      animation: 150,
+      forceFallback: true,
+      fallbackOnBody: true,
+      fallbackTolerance: 4,
+      delay: 100,
+      delayOnTouchOnly: true,
+      ghostClass: 'dock-ghost',
+      chosenClass: 'dock-chosen',
+      dragClass: 'dock-drag',
+      onEnd: () => {
+        // 延后一拍：等 Sortable 清理拖影后再重排 DOM 并写回设置
+        setTimeout(() => {
+          const ids = Array.from(dock.querySelectorAll('.dock-card')).map(c => Number(c.dataset.id)).filter(n => n > 0);
+          if (ids.length) setWetabDockIds(ids);
+        }, 0);
+      },
+    });
+  }
+  wetabDockSortable.option('disabled', !enabled);
 }
 
 /* ---------- WeTab 左侧分组导航：默认收起，鼠标悬停把手 / 滚轮时浮出 ---------- */
@@ -1710,29 +1783,47 @@ function initWetabRail() {
 
 /* ---------- WeTab 界面设置：图标间距 / Dock 标题（localStorage，本地生效） ---------- */
 const WETAB_PREFS_KEY = 'sp_wetab_prefs';
-const WETAB_PREFS_DEFAULT = { rowGap: 12, colGap: 12, iconSize: 54, contentWidth: null, dockTitle: true, dockMode: 'show', dockBg: 100, themeMode: 'light' };
+const WETAB_PREFS_DEFAULT = { rowGap: 12, colGap: 12, iconSize: 54, dockTitle: true, dockMode: 'show', dockBg: 100, themeMode: 'light' };
 const WETAB_DOCK_MODES = ['show', 'hide', 'auto'];
 const WETAB_THEME_MODES = ['light', 'dark', 'system'];
 
 function wetabPrefs() {
   const p = Object.assign({}, WETAB_PREFS_DEFAULT);
-  try {
-    const raw = JSON.parse(localStorage.getItem(WETAB_PREFS_KEY) || '{}');
-    if (raw) {
-      if (Number.isFinite(Number(raw.rowGap))) p.rowGap = Math.min(40, Math.max(1, Number(raw.rowGap)));
-      if (Number.isFinite(Number(raw.colGap))) p.colGap = Math.min(40, Math.max(1, Number(raw.colGap)));
-      if (Number.isFinite(Number(raw.iconSize))) p.iconSize = Math.min(72, Math.max(32, Number(raw.iconSize)));
-      if (Number.isFinite(Number(raw.contentWidth))) p.contentWidth = Math.min(2600, Math.max(800, Number(raw.contentWidth)));
-      if (typeof raw.dockTitle === 'boolean') p.dockTitle = raw.dockTitle;
-      if (WETAB_DOCK_MODES.indexOf(raw.dockMode) >= 0) p.dockMode = raw.dockMode;
-      if (Number.isFinite(Number(raw.dockBg))) p.dockBg = Math.min(100, Math.max(0, Number(raw.dockBg)));
-      if (WETAB_THEME_MODES.indexOf(raw.themeMode) >= 0) p.themeMode = raw.themeMode;
-    }
-  } catch (e) { /* 损坏的本地配置按默认值处理 */ }
+  const apply = (raw) => {
+    if (!raw) return;
+    if (Number.isFinite(Number(raw.rowGap))) p.rowGap = Math.min(40, Math.max(1, Number(raw.rowGap)));
+    if (Number.isFinite(Number(raw.colGap))) p.colGap = Math.min(40, Math.max(1, Number(raw.colGap)));
+    if (Number.isFinite(Number(raw.iconSize))) p.iconSize = Math.min(72, Math.max(32, Number(raw.iconSize)));
+    if (typeof raw.dockTitle === 'boolean') p.dockTitle = raw.dockTitle;
+    if (WETAB_DOCK_MODES.indexOf(raw.dockMode) >= 0) p.dockMode = raw.dockMode;
+    if (Number.isFinite(Number(raw.dockBg))) p.dockBg = Math.min(100, Math.max(0, Number(raw.dockBg)));
+    if (WETAB_THEME_MODES.indexOf(raw.themeMode) >= 0) p.themeMode = raw.themeMode;
+  };
+  try { apply(JSON.parse(localStorage.getItem(WETAB_PREFS_KEY) || '{}')); } catch (e) { /* 损坏的本地配置忽略 */ }
+  // 后台保存的配置优先：管理员调好后，换台电脑也按同样设置显示
+  try { if (state.settings && state.settings.wetab_prefs) apply(JSON.parse(state.settings.wetab_prefs)); } catch (e) { /* 服务端配置损坏时回退本地 */ }
   return p;
 }
 
 let wetabDockModeCur = 'show';
+
+let wetabWidthSaveTimer = null;
+
+/** 内容宽度：直接修改后台「内容区域最大宽度」设置，保证后台与前端一致 */
+function setWetabContentWidth(v) {
+  const n = Math.min(2600, Math.max(800, Number(v) || 800));
+  document.documentElement.style.setProperty('--content-max', n + 'px');
+  const valEl = document.getElementById('wpContentWidthVal');
+  if (valEl) valEl.textContent = n;
+  if (!state.settings) return;
+  state.settings.content_maxwidth = String(n);
+  if (state.user && state.user.role === 'admin') {
+    clearTimeout(wetabWidthSaveTimer);
+    wetabWidthSaveTimer = setTimeout(() => {
+      API.post(API_BASE + 'settings.php?action=save', { content_maxwidth: String(n) }).catch(() => { });
+    }, 500);
+  }
+}
 
 function applyWetabPrefs(p) {
   const root = document.documentElement;
@@ -1740,9 +1831,6 @@ function applyWetabPrefs(p) {
   root.style.setProperty('--wetab-col-gap', p.colGap + 'px');
   root.style.setProperty('--wetab-icon-size', p.iconSize + 'px');
   root.style.setProperty('--wetab-dock-alpha', String(p.dockBg));
-  // 内容宽度：滑杆值优先；未设置时沿用后台「内容区域最大宽度」
-  if (p.contentWidth != null && Number.isFinite(Number(p.contentWidth))) root.style.setProperty('--wetab-content-width', p.contentWidth + 'px');
-  else root.style.removeProperty('--wetab-content-width');
   document.body.classList.toggle('wetab-dock-hide-title', !p.dockTitle);
   document.body.classList.toggle('wetab-dock-hidden', p.dockMode === 'hide');
   document.body.classList.toggle('wetab-dock-glass-off', Number(p.dockBg) === 0);
@@ -1770,9 +1858,8 @@ function syncWetabPrefsInputs(p) {
   setVal('wpRowGap', p.rowGap);
   setVal('wpColGap', p.colGap);
   setVal('wpIconSize', p.iconSize);
-  const cw = p.contentWidth != null && Number.isFinite(Number(p.contentWidth))
-    ? Number(p.contentWidth)
-    : (parseInt(state.settings && state.settings.content_maxwidth, 10) || 1200);
+  // 内容宽度与后台「内容区域最大宽度」同一个设置，不再本地覆盖
+  const cw = (parseInt(state.settings && state.settings.content_maxwidth, 10) || 1200);
   setVal('wpContentWidth', cw);
   setVal('wpDockMode', p.dockMode);
   setVal('wpDockBg', p.dockBg);
@@ -1786,9 +1873,19 @@ function syncWetabPrefsInputs(p) {
   bind('wpDockBgVal', p.dockBg);
 }
 
+let wetabPrefsSaveTimer = null;
+
 function setWetabPrefs(patch) {
   const p = Object.assign(wetabPrefs(), patch);
   try { localStorage.setItem(WETAB_PREFS_KEY, JSON.stringify(p)); } catch (e) { /* 忽略 */ }
+  if (state.settings) state.settings.wetab_prefs = JSON.stringify(p);
+  // 管理员调整后写入站点设置（防抖合并滑杆连续拖动），其他设备打开即同步
+  if (state.user && state.user.role === 'admin') {
+    clearTimeout(wetabPrefsSaveTimer);
+    wetabPrefsSaveTimer = setTimeout(() => {
+      API.post(API_BASE + 'settings.php?action=save', { wetab_prefs: JSON.stringify(p) }).catch(() => { /* 离线时保留本地 */ });
+    }, 500);
+  }
   applyWetabPrefs(p);
   syncWetabPrefsInputs(p);
 }
@@ -1866,7 +1963,7 @@ function initWetabPrefs() {
   if (row) row.addEventListener('input', () => setWetabPrefs({ rowGap: Number(row.value) }));
   if (col) col.addEventListener('input', () => setWetabPrefs({ colGap: Number(col.value) }));
   if (size) size.addEventListener('input', () => setWetabPrefs({ iconSize: Number(size.value) }));
-  if (width) width.addEventListener('input', () => setWetabPrefs({ contentWidth: Number(width.value) }));
+  if (width) width.addEventListener('input', () => setWetabContentWidth(width.value));
   if (dock) dock.addEventListener('change', () => setWetabPrefs({ dockTitle: dock.checked }));
   if (mode) mode.addEventListener('change', () => setWetabPrefs({ dockMode: mode.value }));
   const themeMode = document.getElementById('wpThemeMode');

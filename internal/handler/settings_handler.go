@@ -19,6 +19,8 @@ var allowedSettingKeys = map[string]struct{}{
 	"wallpaper_blur": {}, "announcement": {}, "announcement_show": {},
 	"footer": {}, "clock_show": {}, "clock_font": {}, "page_font": {}, "default_theme": {}, "theme_style": {},
 	"card_style": {}, "card_opacity": {}, "default_lan_mode": {}, "lan_hostnames": {},
+	"default_group": {},
+	"wetab_prefs": {}, "wetab_dock": {},
 	"search_engines": {}, "search_default": {}, "site_url": {},
 	"content_maxwidth": {}, "content_pad_lr": {}, "content_pad_top": {},
 	"content_pad_bottom": {}, "weather_show": {}, "weather_city": {},
@@ -58,6 +60,8 @@ var settingValueWhitelist = map[string]map[string]bool{
 		"orbitron": true, "rajdhani": true, "audiowide": true, "michroma": true,
 		"bebas": true, "poppins": true, "montserrat": true, "playfair": true,
 		"righteous": true, "spacegrotesk": true, "jetbrains": true, "rubik": true,
+		"oxanium": true, "chakrapetch": true, "sharetechmono": true,
+		"teko": true, "exo2": true, "syncopate": true,
 	},
 	// 整页字体（与 frontend/assets/js/api.js SP_PAGE_FONTS 保持一致；空 = 跟随系统）
 	"page_font": {
@@ -65,6 +69,8 @@ var settingValueWhitelist = map[string]map[string]bool{
 		"notosans": true, "notoserif": true, "zcoolxiaowei": true, "zcoolqingke": true,
 		"zcoolkuaile": true, "mashanzheng": true, "longcang": true, "zhimangxing": true,
 		"poppins": true, "montserrat": true, "orbitron": true, "jetbrains": true,
+		"liujianmaocao": true, "lxgwwenkai": true,
+		"inter": true, "lora": true, "nunito": true, "firacode": true,
 	},
 }
 

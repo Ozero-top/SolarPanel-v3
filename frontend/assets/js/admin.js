@@ -269,6 +269,7 @@ async function loadGroups() {
   renderGroupFilter();
   renderGroupsTable();
   renderGroupOptions();
+  renderDefaultGroupOptions();
 }
 
 /** 卡片筛选：一级分组 / 二级分组 / 关键字（国人习惯：先选大类，再看小类） */
@@ -341,6 +342,29 @@ function renderGroupFilter() {
       renderItemsTable();
     };
   }
+}
+
+/** 后台「默认显示分组」下拉：一级分组 + 其下二级分组，保留当前选中值 */
+function renderDefaultGroupOptions(selected) {
+  const sel = document.getElementById('s_default_group');
+  if (!sel) return;
+  if (selected != null) sel.dataset.value = String(selected);
+  if (!sel.dataset.bound) {
+    sel.dataset.bound = '1';
+    sel.addEventListener('change', () => { sel.dataset.value = sel.value; });
+  }
+  const groups = state.groups || [];
+  const parents = groups.filter(g => Number(g.parent_id || 0) === 0);
+  let html = '<option value="">自动（第一个有内容的分组）</option>';
+  parents.forEach(g => {
+    html += '<option value="' + g.id + '">' + esc(g.title) + '</option>';
+    groups.filter(c => Number(c.parent_id || 0) === g.id).forEach(c => {
+      html += '<option value="' + c.id + '">　└─ ' + esc(g.title) + ' › ' + esc(c.title) + '</option>';
+    });
+  });
+  sel.innerHTML = html;
+  const v = String(sel.dataset.value || '');
+  sel.value = [...sel.options].some(o => o.value === v) ? v : '';
 }
 
 function renderGroupOptions() {
@@ -1520,6 +1544,7 @@ function fillSettingsForm(s) {
   document.getElementById('s_default_theme_note').textContent =
     s.default_theme === 'system' ? '跟随系统：访客未手动切换主题时，随其系统深浅自动变化' : '';
   document.getElementById('s_card_style').value = ['nav', 'navapp'].includes(s.card_style) ? s.card_style : 'nav';
+  renderDefaultGroupOptions(s.default_group || '');
   const cv = parseInt(s.card_opacity, 10);
   const cardOpacity = isNaN(cv) ? 100 : Math.min(Math.max(cv, 40), 100);
   document.getElementById('s_card_opacity').value = cardOpacity;
@@ -2127,7 +2152,7 @@ function refreshEngineDefaults() {
    分区顺序与站点设置的二级导航一一对应：站点信息 → 外观与卡片 → 导航与搜索 → 访问控制 → 热点新闻 → NAS 监控 */
 const SETTING_SECTIONS = {
   basic:  { label: '站点信息', keys: ['site_title', 'site_url', 'footer', 'site_logo', 'announcement_show', 'announcement', 'icp_show', 'icp_number', 'icp_link', 'police_show', 'police_number', 'police_link', 'default_lan_mode', 'lan_hostnames'] },
-  theme:  { label: '外观与卡片', keys: ['default_theme', 'theme_style', 'card_style', 'card_opacity', 'content_maxwidth', 'content_pad_lr', 'content_pad_top', 'content_pad_bottom', 'page_font', 'clock_font', 'clock_show', 'weather_show', 'weather_city', 'wallpaper', 'mask_opacity', 'wallpaper_blur', 'wallpaper_source'] },
+  theme:  { label: '外观与卡片', keys: ['default_theme', 'theme_style', 'card_style', 'card_opacity', 'default_group', 'content_maxwidth', 'content_pad_lr', 'content_pad_top', 'content_pad_bottom', 'page_font', 'clock_font', 'clock_show', 'weather_show', 'weather_city', 'wallpaper', 'mask_opacity', 'wallpaper_blur', 'wallpaper_source'] },
   search: { label: '导航与搜索', keys: ['search_bar_enabled', 'topbar_desktop_enabled', 'topbar_mobile_enabled', 'search_engines', 'search_default', 'search_width'] },
   access: { label: '访问控制', keys: ['guest_access_enabled', 'guest_password_hash'] },
   news:   { label: '热点新闻', keys: ['news_show', 'news_auto_refresh', 'news_sources', 'news_order'] },
