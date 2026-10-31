@@ -17,7 +17,7 @@
   <title>SolarPanel</title>
   <link rel="stylesheet" href="assets/css/common.css?v=94307f77">
   <link rel="stylesheet" href="assets/css/index.css?v=137f763b">
-  <link rel="stylesheet" href="assets/css/themes.css?v=72857062">
+  <link rel="stylesheet" href="assets/css/themes.css?v=8cac2ef5">
 </head>
 <body>
   <div class="bg-layer" id="bgLayer"></div>
@@ -112,6 +112,8 @@
       <label class="wp-row wp-check"><span>Dock 显示标题</span><input type="checkbox" id="wpDockTitle" checked></label>
       <label class="wp-row wp-select"><span>Dock 显示</span><select id="wpDockMode"><option value="show">显示</option><option value="hide">隐藏</option><option value="auto">自动隐藏</option></select></label>
       <label class="wp-row"><span>Dock 背景</span><input type="range" id="wpDockBg" min="0" max="100" step="1"><b id="wpDockBgVal">100</b></label>
+      <label class="wp-row"><span>壁纸遮罩透明度</span><input type="range" id="wpMaskOpacity" min="0" max="1" step="0.05"><b id="wpMaskOpacityVal">0.35</b></label>
+      <label class="wp-row"><span>壁纸模糊</span><input type="range" id="wpWallpaperBlur" min="0" max="30" step="1"><b id="wpWallpaperBlurVal">6 px</b></label>
       <button class="wp-wallpaper" id="wpWallpaperBtn" type="button" hidden>🖼 更换壁纸</button>
       <button class="wp-wallpaper" id="faqBtn" type="button" hidden>❓ 常见问题</button>
       <a class="wp-wallpaper" id="wpAdminBtn" href="frontend/admin.html" hidden>🛠 打开后台管理</a>
@@ -264,7 +266,7 @@
   </button>
 
   <script src="assets/vendor/sortable.min.js?v=18a2566c"></script>
-  <script src="assets/js/api.js?v=e48e9d0b"></script>
-  <script src="assets/js/index.js?v=43b66e10"></script>
+  <script src="assets/js/api.js?v=231e0028"></script>
+  <script src="assets/js/index.js?v=4deefc7e"></script>
 </body>
 </html>

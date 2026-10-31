@@ -309,6 +309,27 @@ function applyDefaultGroup() {
 }
 
 /* ---------- 基础元素渲染（标题/logo/公告/页脚/壁纸/内容区） ---------- */
+/** 壁纸遮罩与模糊：以后台设置为唯一事实源，wetab 面板滑杆直接写入同一设置 */
+function applyWallpaperFx(s) {
+  s = s || state.settings || {};
+  const bg = document.getElementById('bgLayer');
+  const mask = document.getElementById('bgMask');
+  if (!bg || !mask) return;
+  const opacity = parseFloat(s.mask_opacity);
+  mask.style.background =
+    'rgba(0,0,0,' + (isNaN(opacity) ? 0.35 : Math.min(Math.max(opacity, 0), 1)) + ')';
+  // 壁纸模糊（0~30px，默认 6），同步放大避免模糊后边缘露白
+  const bRaw = parseInt(s.wallpaper_blur, 10);
+  const blur = isNaN(bRaw) ? 6 : Math.min(Math.max(bRaw, 0), 30);
+  if (blur > 0) {
+    bg.style.filter = 'blur(' + blur + 'px)';
+    bg.style.transform = 'scale(1.1)';
+  } else {
+    bg.style.filter = '';
+    bg.style.transform = '';
+  }
+}
+
 function renderBase() {
   const s = state.settings;
 
@@ -328,19 +349,7 @@ function renderBase() {
   const hasWp = !!(s.wallpaper || s.wallpaper_source);
   document.body.classList.toggle('has-wallpaper', hasWp);
   if (hasWp) {
-    const opacity = parseFloat(s.mask_opacity);
-    mask.style.background =
-      'rgba(0,0,0,' + (isNaN(opacity) ? 0.35 : Math.min(Math.max(opacity, 0), 1)) + ')';
-    // 壁纸模糊（0~30px，默认 6），同步放大避免模糊后边缘露白
-    const bRaw = parseInt(s.wallpaper_blur, 10);
-    const blur = isNaN(bRaw) ? 6 : Math.min(Math.max(bRaw, 0), 30);
-    if (blur > 0) {
-      bg.style.filter = 'blur(' + blur + 'px)';
-      bg.style.transform = 'scale(1.1)';
-    } else {
-      bg.style.filter = '';
-      bg.style.transform = '';
-    }
+    applyWallpaperFx(s);
   } else {
     bg.style.backgroundImage = '';
     mask.style.background = 'transparent';
@@ -1825,6 +1834,41 @@ function setWetabContentWidth(v) {
   }
 }
 
+let wetabWallFxSaveTimer = null;
+let wetabWallFxPending = {};
+
+/** 壁纸遮罩透明度 / 模糊：直接写入后台设置，与后台「外观」中的滑杆共用同一份数据 */
+function setWetabWallpaperFx(patch) {
+  state.settings = Object.assign(state.settings || {}, patch);
+  applyWallpaperFx(state.settings);
+  syncWetabWallpaperFxInputs();
+  if (state.user && state.user.role === 'admin') {
+    wetabWallFxPending = Object.assign(wetabWallFxPending, patch);
+    clearTimeout(wetabWallFxSaveTimer);
+    wetabWallFxSaveTimer = setTimeout(() => {
+      const body = wetabWallFxPending;
+      wetabWallFxPending = {};
+      API.post(API_BASE + 'settings.php?action=save', body).catch(() => { /* 离线时保留本地显示 */ });
+    }, 500);
+  }
+}
+
+function syncWetabWallpaperFxInputs() {
+  const s = state.settings || {};
+  const op = parseFloat(s.mask_opacity);
+  const opVal = isNaN(op) ? 0.35 : Math.min(Math.max(op, 0), 1);
+  const bRaw = parseInt(s.wallpaper_blur, 10);
+  const blur = isNaN(bRaw) ? 6 : Math.min(Math.max(bRaw, 0), 30);
+  const opEl = document.getElementById('wpMaskOpacity');
+  if (opEl) opEl.value = opVal;
+  const blurEl = document.getElementById('wpWallpaperBlur');
+  if (blurEl) blurEl.value = blur;
+  const opValEl = document.getElementById('wpMaskOpacityVal');
+  if (opValEl) opValEl.textContent = String(Math.round(opVal * 100) / 100);
+  const blurValEl = document.getElementById('wpWallpaperBlurVal');
+  if (blurValEl) blurValEl.textContent = blur + ' px';
+}
+
 function applyWetabPrefs(p) {
   const root = document.documentElement;
   root.style.setProperty('--wetab-row-gap', p.rowGap + 'px');
@@ -1871,6 +1915,7 @@ function syncWetabPrefsInputs(p) {
   bind('wpIconSizeVal', p.iconSize);
   bind('wpContentWidthVal', cw);
   bind('wpDockBgVal', p.dockBg);
+  syncWetabWallpaperFxInputs();
 }
 
 let wetabPrefsSaveTimer = null;
@@ -1970,6 +2015,10 @@ function initWetabPrefs() {
   if (themeMode) themeMode.addEventListener('change', () => setWetabPrefs({ themeMode: themeMode.value }));
   const dockBg = document.getElementById('wpDockBg');
   if (dockBg) dockBg.addEventListener('input', () => setWetabPrefs({ dockBg: Number(dockBg.value) }));
+  const maskOp = document.getElementById('wpMaskOpacity');
+  if (maskOp) maskOp.addEventListener('input', () => setWetabWallpaperFx({ mask_opacity: String(Number(maskOp.value)) }));
+  const wpBlur = document.getElementById('wpWallpaperBlur');
+  if (wpBlur) wpBlur.addEventListener('input', () => setWetabWallpaperFx({ wallpaper_blur: String(Number(wpBlur.value)) }));
 
   // Dock 自动隐藏：鼠标移到页面下方时浮出，移开后收起
   document.addEventListener('mousemove', (e) => {
