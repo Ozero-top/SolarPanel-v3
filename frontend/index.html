@@ -244,6 +244,20 @@
     </div>
   </div>
 
+  <!-- Tab标签页：一级分组下二级分组过多提示（首次提示，关闭后不再出现） -->
+  <div class="modal" id="wetabChildWarnModal">
+    <div class="modal-box glass-strong" style="max-width:430px">
+      <div class="modal-head">
+        <h3>⚠️ 不建议使用当前主题</h3>
+        <button class="modal-close" data-close type="button" aria-label="关闭">✕</button>
+      </div>
+      <p style="margin:0;color:var(--text-muted);font-size:13.5px;line-height:1.7">当前检测到您的父分组下子分组超过两组，避免滚动切换造成体验感不好。不建议使用此主题！</p>
+      <div class="modal-foot">
+        <button class="btn btn-sm btn-primary" data-close type="button">我知道了</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 更新日志弹窗 -->
   <div class="modal" id="changelogModal">
     <div class="modal-box glass-strong changelog-box">
@@ -272,6 +286,6 @@
 
   <script src="assets/vendor/sortable.min.js?v=18a2566c"></script>
   <script src="assets/js/api.js?v=d3a5c2f0"></script>
-  <script src="assets/js/index.js?v=1cae4e04"></script>
+  <script src="assets/js/index.js?v=4359162b"></script>
 </body>
 </html>

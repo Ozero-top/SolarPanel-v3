@@ -278,6 +278,33 @@ async function boot() {
   initNASPanel();
   initUpdateNotice();
   scheduleIconPrefetch();
+  maybeWarnWetabChildGroups();
+}
+
+/* ---------- Tab标签页（wetab）：一级分组下二级分组过多时的主题提示 ----------
+   该主题以滚轮逐级切换分组，一级分组挂多个二级分组时体验较差。
+   首次进入 wetab 且检测到该情况时提示一次；关闭（含 5 秒自动关闭）后永久不再提示。 */
+const WETAB_CHILD_WARN_KEY = 'sp_wetab_childwarn_off';
+
+function maybeWarnWetabChildGroups() {
+  try {
+    if (localStorage.getItem(WETAB_CHILD_WARN_KEY) === '1') return;
+  } catch (_) { return; }
+  if (document.documentElement.dataset.style !== 'wetab') return;
+  if (!state.topGroups.some(g => (state.childrenMap[g.id] || []).length > 2)) return;
+
+  const modal = document.getElementById('wetabChildWarnModal');
+  if (!modal) return;
+  let timer = 0;
+  const close = () => {
+    clearTimeout(timer);
+    modal.classList.remove('show');
+    try { localStorage.setItem(WETAB_CHILD_WARN_KEY, '1'); } catch (_) { /* 隐私模式写不了时忽略 */ }
+  };
+  modal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', close));
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.classList.add('show');
+  timer = setTimeout(close, 5000);
 }
 
 /* ---------- 后台「默认显示分组」：打开主页时定位到指定分组 ---------- */
