@@ -559,6 +559,25 @@ async function renderWeather(city, attempt) {
 }
 
 /* ---------- 时钟 ---------- */
+/* 时钟数字定宽：按当前字体实测 0–9 的最大字形宽度，写入 --clock-num-w。
+   设计字体大多不支持 tabular-nums，仅靠 CSS 无法让 1 / 8 这类宽窄不同的数字等宽；
+   探针沿用时钟的字体/字号/字重/字距，取最大值作为所有数字的宽度，既不压字也不跳动。 */
+function syncClockDigitWidth() {
+  const timeEl = document.getElementById('clockTime');
+  if (!timeEl) return;
+  const probe = document.createElement('span');
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.cssText = 'position:absolute;left:0;top:0;visibility:hidden;display:inline-block;white-space:pre;';
+  timeEl.appendChild(probe);
+  let max = 0;
+  for (let d = 0; d <= 9; d++) {
+    probe.textContent = String(d);
+    max = Math.max(max, probe.getBoundingClientRect().width);
+  }
+  probe.remove();
+  if (max > 0) timeEl.style.setProperty('--clock-num-w', Math.ceil(max) + 'px');
+}
+
 function startClock() {
   const timeEl = document.getElementById('clockTime');
   const timeCur = timeEl && (timeEl.querySelector('.clock-cur') || timeEl);
@@ -567,11 +586,34 @@ function startClock() {
   const pad = n => String(n).padStart(2, '0');
   const tick = () => {
     const d = new Date();
-    timeCur.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    const text = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    // 逐字符拆成定宽片段：任何字体（含不支持 tabular-nums 的设计字体）下数字都等宽，
+    // 秒数变化不会让 1 / 8 这类宽窄不同的字形左右跳动
+    timeCur.textContent = '';
+    for (const ch of text) {
+      const el = document.createElement('span');
+      el.className = ch === ':' ? 'clock-sep' : 'clock-num';
+      el.textContent = ch;
+      timeCur.appendChild(el);
+    }
     dateEl.textContent = d.getFullYear() + ' 年 ' + (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日 · 星期' + week[d.getDay()];
   };
   tick();
   setInterval(tick, 1000);
+  syncClockDigitWidth();
+  // 自定义字体（Orbitron 等）异步载入完成后字形宽度会变，每批字体载入完成都重测；
+  // 窗口跨断点改变时钟字号时也要重测
+  if (document.fonts) {
+    document.fonts.addEventListener('loadingdone', syncClockDigitWidth);
+    if (document.fonts.ready) {
+      document.fonts.ready.then(syncClockDigitWidth).catch(() => {});
+    }
+  }
+  let resizeRaf = 0;
+  window.addEventListener('resize', () => {
+    cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(syncClockDigitWidth);
+  });
 }
 
 /* ---------- 搜索 ---------- */
@@ -894,18 +936,25 @@ function renderSearch() {
 
 /* ---------- 分组与卡片 ---------- */
 
-/** 渲染单个分组到容器（nav 模式只渲染选中分组时复用） */
-function renderGroupCard(container, g, styleApp, idx, skipIntro, isChild) {
+/** 渲染单个分组到容器（nav 模式只渲染选中分组时复用）
+ *  @param {number|undefined} staggerBase 切组时卡片错峰入场的基础延迟（ms，0 = 立即开始）；
+ *         不传则走整块 swap-in（搜索/排序等重绘，避免每次按键都逐卡动画） */
+function renderGroupCard(container, g, styleApp, idx, skipIntro, isChild, staggerBase) {
   const section = document.createElement('section');
   section.className = 'group glass' + (isChild ? ' group-child' : '') + (state.sortingGroupId === g.id ? ' sorting' : '') + (state.searchKeyword ? ' search-active' : '');
   section.id = 'group-' + g.id;
-  // 入场编排：首屏「组淡入 → 卡片错峰浮现」，切组/重绘只做整块轻微滑入，避免整屏卡片反复弹入
+  // 入场编排：首屏「组淡入 → 卡片错峰浮现」，切组时「卡片逐个错峰浮现」，
+  // 搜索/排序等重绘只做整块轻微滑入，避免整屏卡片反复弹入
   if (!skipIntro && !state.groupIntroDone) {
     section.classList.add('group-in');
     const gDelay = Math.min((idx || 0) * 40, 120);
     section.style.animationDelay = gDelay + 'ms';
     // 卡片在组入场后再起，按组序号错开；与 .scale-in 的 nth-child 延迟叠加
     section.style.setProperty('--sk-base', (gDelay + 80) + 'ms');
+  } else if (staggerBase !== undefined) {
+    // 切组：卡片自上而下逐个浮现，分组本身不做整块滑入，避免两层动效叠加
+    section.classList.add('cards-stagger');
+    section.style.setProperty('--sk-base', Math.max(0, staggerBase) + 'ms');
   } else {
     section.classList.add('swap-in');
     section.style.animationDelay = Math.min((idx || 0) * 24, 96) + 'ms';
@@ -1529,18 +1578,18 @@ function renderNavbarCardsOnly() {
   const styleApp = isAppCardStyle();
   const kids = (state.childrenMap || {})[tg.id] || [];
   const visibleKids = kids.filter(k => (k.items || []).length > 0 || k.is_visible !== 0);
-  // 首屏才有编排入场；切标签时只做整块滑入
+  // 首屏走「组淡入 + 卡片错峰」编排；切标签时按分组顺序给卡片逐卡错峰入场
   const firstPaint = !state.groupIntroDone;
 
   // 顶级分组有自身 items → 先渲染顶级 section
   if ((tg.items || []).length > 0) {
-    renderGroupCard(wrap, tg, styleApp, state.navActiveGroupIdx, !firstPaint, false);
+    renderGroupCard(wrap, tg, styleApp, state.navActiveGroupIdx, !firstPaint, false, firstPaint ? undefined : 0);
   }
   // 再渲染所有可见子分组（如果顶级本身无 items，这里就是全部内容）
   // 导航栏模式下子分组与顶级分组是同一层的兄弟节点，统一按普通分组渲染，
   // 复用一级分组的盒模型（内边距/边框/网格间距一致），卡片尺寸与列位置才能完全对齐
   visibleKids.forEach((k, i) => {
-    renderGroupCard(wrap, k, styleApp, i, !firstPaint, false);
+    renderGroupCard(wrap, k, styleApp, i, !firstPaint, false, firstPaint ? undefined : Math.min((i + 1) * 40, 120));
   });
   state.groupIntroDone = true;
   state.cardsIntroDone = true;
@@ -2623,7 +2672,7 @@ function showWhenDecoded(img, icon, iconDoneRef) {
 function buildCard(item, styleApp) {
   const a = document.createElement('a');
   const isHidden = item.is_hidden === 1;
-  // 首屏才逐卡错峰入场；后续重绘（切组/搜索/排序）只由外层 section 整体滑入
+  // 首屏才挂 .scale-in 逐卡错峰；切组时由外层 section 的 .cards-stagger 统一驱动，搜索/排序等重绘只走 section 整块 swap-in
   a.className = 'card' + (state.cardsIntroDone ? '' : ' scale-in') + (styleApp ? ' app-card' : '') + (isHidden ? ' card-hidden' : '');
   a.href = '#';
   a.dataset.id = item.id; // 排序模式拖拽落位后按 data-id 收集顺序
@@ -3002,9 +3051,55 @@ function bindGlobal() {
 
   // 关闭 iframe 弹层
   const modal = document.getElementById('iframeModal');
-  // 右下角常驻「返回顶部」
-  const backTop = document.getElementById('backTop');
-  if (backTop) backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  // 右下角快捷菜单：单个悬浮按钮 + 弹出列表，菜单项复用顶栏按钮
+  const floatTools = document.getElementById('floatTools');
+  const floatToolsMenu = document.getElementById('floatToolsMenu');
+  if (floatTools && floatToolsMenu) {
+    const closeFloatTools = () => { floatToolsMenu.hidden = true; floatTools.classList.remove('active'); };
+    const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+    const syncFloatTools = () => {
+      const pairs = { toolUpdate: 'updateBtn', toolTheme: 'themeBtn', toolLan: 'lanBtn' };
+      for (const tid in pairs) {
+        const item = document.getElementById(tid), src = document.getElementById(pairs[tid]);
+        if (!item || !src) continue;
+        item.hidden = src.hidden;
+        // 圆形按钮只放图标，标题留给 data-tip（悬停浮出）；从顶栏按钮文案里拆出「图标 + 文字」
+        const txt = (src.textContent || '').trim();
+        const m = txt.match(/^([^\w\u4e00-\u9fa5]+)\s*(.*)$/);
+        const icon = item.querySelector('.tool-ic');
+        const label = m ? (m[2].trim() || txt) : txt;
+        if (m && icon) icon.textContent = m[1].trim();
+        if (label) { item.dataset.tip = label; item.setAttribute('aria-label', label); }
+      }
+      const install = document.getElementById('toolInstall');
+      if (install) install.hidden = isStandalone();
+    };
+    const actions = {
+      toolTop: () => window.scrollTo({ top: 0, behavior: 'smooth' }),
+      toolInstall: () => promptInstall(),
+      toolUpdate: () => document.getElementById('updateBtn')?.click(),
+      toolShortcuts: () => document.getElementById('shortcutsBtn')?.click(),
+      toolTheme: () => document.getElementById('themeBtn')?.click(),
+      toolLan: () => document.getElementById('lanBtn')?.click(),
+    };
+    for (const tid in actions) {
+      const item = document.getElementById(tid);
+      if (item) item.onclick = () => { actions[tid](); closeFloatTools(); };
+    }
+    floatTools.addEventListener('click', e => {
+      e.stopPropagation();
+      const open = floatToolsMenu.hidden;
+      if (open) syncFloatTools();
+      floatToolsMenu.hidden = !open;
+      floatTools.classList.toggle('active', open);
+    });
+    document.addEventListener('click', e => {
+      if (!floatToolsMenu.hidden && !floatToolsMenu.contains(e.target)) closeFloatTools();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !floatToolsMenu.hidden) closeFloatTools();
+    });
+  }
   document.getElementById('iframeClose').onclick = () => {
     modal.classList.remove('show');
     document.getElementById('iframeWin').src = 'about:blank';
@@ -3737,23 +3832,39 @@ function bindShortcuts() {
 }
 
 /* ============ 顶栏 PWA 安装按钮（Chrome/Edge 触发 beforeinstallprompt 时显示） ============ */
+let deferredInstallPrompt = null;
+
+// 统一安装入口：有安装事件就直接弹系统提示，否则给出浏览器内的安装路径
+async function promptInstall() {
+  if (deferredInstallPrompt) {
+    const evt = deferredInstallPrompt;
+    deferredInstallPrompt = null;
+    evt.prompt();
+    const res = await evt.userChoice.catch(() => null);
+    const topBtn = document.getElementById('pwaInstallBtn');
+    if (topBtn) topBtn.hidden = true;
+    const item = document.getElementById('toolInstall');
+    if (item) item.hidden = true;
+    return res;
+  }
+  toast('请用 Chrome / Edge 打开，点地址栏右侧的「安装」图标，或在浏览器菜单中选择「安装应用」', 'info');
+  return null;
+}
+
 function bindPWAInstall() {
   const btn = document.getElementById('pwaInstallBtn');
-  if (!btn) return;
-  let deferred = null;
   window.addEventListener('beforeinstallprompt', e => {
     e.preventDefault();
-    deferred = e;
-    btn.hidden = false;
+    deferredInstallPrompt = e;
+    if (btn) btn.hidden = false;
   });
-  btn.addEventListener('click', async () => {
-    if (!deferred) return;
-    deferred.prompt();
-    await deferred.userChoice;
-    deferred = null;
-    btn.hidden = true;
+  if (btn) btn.addEventListener('click', () => { promptInstall(); });
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    if (btn) btn.hidden = true;
+    const item = document.getElementById('toolInstall');
+    if (item) item.hidden = true;
   });
-  window.addEventListener('appinstalled', () => { deferred = null; btn.hidden = true; });
 }
 
 /* ============ P2: 每日壁纸（Bing） ============ */
@@ -3840,6 +3951,9 @@ async function reloadPublic() {
     const data = await API.get(API_BASE + 'public.php?_t=' + Date.now());
     state.settings = data.settings || {};
     state.groups = data.groups || [];
+    // 后台改了明暗模式/风格主题后，已打开的主页立即套用（否则要手动刷新才生效）
+    state.theme = applyTheme(state.settings);
+    updateThemeBtn();
     // 重建父子树
     state.topGroups = [];
     state.childrenMap = {};

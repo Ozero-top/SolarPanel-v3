@@ -90,7 +90,17 @@ function init() {
 
   $('cl-list').addEventListener('click', onListClick);
 
+  $('cl-export').addEventListener('click', exportClips);
+  $('cl-dupes').addEventListener('click', openDupModal);
+  $('dup-close').addEventListener('click', closeDupModal);
+  document.querySelector('[data-dup-close]').addEventListener('click', closeDupModal);
+  $('dup-list').addEventListener('click', onDupClick);
+
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('dup-modal').classList.contains('hidden')) {
+      closeDupModal();
+      return;
+    }
     if (e.key === '/' && !isTyping(e.target)) {
       e.preventDefault();
       $('cl-q').focus();
@@ -167,12 +177,8 @@ function reload() {
   load(true);
 }
 
-async function load(reset) {
-  if (state.loading) return;
-  state.loading = true;
-  setStatus(reset ? '加载中…' : '', '');
-  $('cl-more').classList.add('hidden');
-
+/** 当前筛选条件（导出与列表共用） */
+function filterParams() {
   const params = new URLSearchParams();
   if (state.q) params.set('q', state.q);
   if (state.kind) params.set('kind', state.kind);
@@ -180,6 +186,16 @@ async function load(reset) {
   if (state.readState === 'starred') params.set('state', 'starred');
   if (state.group > 0) params.set('group', String(state.group));
   if (state.tag) params.set('tag', state.tag);
+  return params;
+}
+
+async function load(reset) {
+  if (state.loading) return;
+  state.loading = true;
+  setStatus(reset ? '加载中…' : '', '');
+  $('cl-more').classList.add('hidden');
+
+  const params = filterParams();
   params.set('sort', state.sort);
   params.set('limit', String(state.limit));
   params.set('offset', String(reset ? 0 : state.offset));
@@ -455,6 +471,167 @@ async function onListClick(e) {
       toast('删除失败：' + (err.message || '未知错误'));
     }
   }
+}
+
+/** 按当前筛选条件导出 Markdown ZIP（fetch + Blob，避免下载导航被误判为中断） */
+async function exportClips() {
+  toast('正在导出当前筛选结果…');
+  try {
+    const res = await fetch('/api/v1/clips/export?' + filterParams().toString(), { credentials: 'same-origin' });
+    if (!res.ok) {
+      let msg = '导出失败（HTTP ' + res.status + '）';
+      try {
+        const j = await res.json();
+        if (j && j.msg) msg = j.msg;
+      } catch (_) { /* 非 JSON 响应 */ }
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename="([^"]+)"/);
+    const name = m ? m[1] : 'solarpanel-clips.zip';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+      a.remove();
+    }, 1000);
+    toast('导出完成');
+  } catch (e) {
+    toast('导出失败：' + (e.message || '未知错误'));
+  }
+}
+
+let dupChanged = false;
+
+function openDupModal() {
+  dupChanged = false;
+  $('dup-modal').classList.remove('hidden');
+  $('dup-summary').textContent = '';
+  scanDuplicates();
+}
+
+function closeDupModal() {
+  $('dup-modal').classList.add('hidden');
+  if (dupChanged) {
+    dupChanged = false;
+    reload();
+  }
+}
+
+async function scanDuplicates() {
+  const list = $('dup-list');
+  list.textContent = '';
+  setDupStatus('扫描中…', '');
+  try {
+    const data = await API.get('/api/v1/clips/duplicates');
+    const groups = Array.isArray(data.groups) ? data.groups : [];
+    const extra = data.total_duplicates || 0;
+    $('dup-summary').textContent = groups.length ? ('发现 ' + groups.length + ' 组重复，共 ' + extra + ' 条多余记录') : '';
+    if (!groups.length) {
+      setDupStatus('', '');
+      list.innerHTML = '<div class="cl-dup-empty">未发现重复链接。<br>同一规范化 URL 的多条剪藏会显示在这里。</div>';
+      return;
+    }
+    setDupStatus('每组默认保留最新一条，其余可手动删除。', '');
+    renderDupGroups(groups);
+  } catch (e) {
+    setDupStatus(e.message || '扫描失败', 'error');
+  }
+}
+
+function setDupStatus(text, cls) {
+  const el = $('dup-status');
+  el.textContent = text || '';
+  el.className = 'cl-status cl-modal-status' + (cls ? ' ' + cls : '');
+}
+
+function renderDupGroups(groups) {
+  const list = $('dup-list');
+  list.innerHTML = groups.map((g) => {
+    const items = (g.items || []).map((it, idx) => {
+      const title = it.title || it.url || '未命名剪藏';
+      const meta = [
+        (it.created_at || '').slice(0, 10) || '未知日期',
+        it.group || '未分组',
+        it.read_at ? '已读' : '未读',
+        idx === 0 ? '最新' : '',
+      ].filter(Boolean).join(' · ');
+      return `<div class="cl-dup-item" data-id="${it.id}">
+        <div class="cl-dup-main">
+          <a class="cl-dup-title" href="/read/${it.id}">${esc(title)}</a>
+          <span class="cl-dup-meta">${esc(meta)}</span>
+        </div>
+        <div class="cl-dup-acts">
+          <a class="cl-link" href="${esc(it.url || '#')}" target="_blank" rel="noopener noreferrer">原文</a>
+          <button class="cl-btn cl-tool-btn danger" type="button" data-dup-del>删除</button>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="cl-dup-group" data-key="${esc(g.key || '')}">
+      <div class="cl-dup-head">
+        <span class="cl-dup-count">${g.count || (g.items || []).length} 条</span>
+        <a class="cl-dup-host" href="${esc(g.url || '#')}" target="_blank" rel="noopener noreferrer">${esc(hostOf(g.url) || '重复链接')}</a>
+        <button class="cl-btn cl-tool-btn" type="button" data-dup-keep>保留最新</button>
+      </div>
+      <div class="cl-dup-items">${items}</div>
+    </div>`;
+  }).join('');
+}
+
+async function onDupClick(e) {
+  const keep = e.target.closest('[data-dup-keep]');
+  if (keep) {
+    await keepNewest(keep.closest('.cl-dup-group'), keep);
+    return;
+  }
+  const del = e.target.closest('[data-dup-del]');
+  if (!del) return;
+  const row = del.closest('.cl-dup-item');
+  const id = parseInt(row && row.dataset.id, 10);
+  if (!id || !confirm('删除这条重复剪藏？对应的正文快照与截图也会一并删除。')) return;
+  del.disabled = true;
+  try {
+    await deleteClip(id);
+    dupChanged = true;
+    toast('已删除重复剪藏');
+    await scanDuplicates();
+  } catch (err) {
+    del.disabled = false;
+    toast('删除失败：' + (err.message || '未知错误'));
+  }
+}
+
+async function keepNewest(groupEl, btn) {
+  if (!groupEl) return;
+  const rows = [...groupEl.querySelectorAll('.cl-dup-item')];
+  if (rows.length < 2) return;
+  const ids = rows.slice(1).map((r) => parseInt(r.dataset.id, 10)).filter(Boolean);
+  if (!ids.length) return;
+  if (!confirm('保留最新一条，删除其余 ' + ids.length + ' 条重复剪藏？')) return;
+  btn.disabled = true;
+  let ok = 0;
+  let failed = 0;
+  for (const id of ids) {
+    try {
+      await deleteClip(id);
+      ok += 1;
+    } catch (_) {
+      failed += 1;
+    }
+  }
+  if (ok > 0) dupChanged = true;
+  toast(failed ? ('已删除 ' + ok + ' 条，' + failed + ' 条失败') : ('已删除 ' + ok + ' 条重复'));
+  await scanDuplicates();
+}
+
+function deleteClip(id) {
+  return API.request('/api/v1/clips', { method: 'DELETE', data: { id: id } });
 }
 
 /** 打开阅读页时标记已读；keepalive 保证跳转后请求仍能发出 */

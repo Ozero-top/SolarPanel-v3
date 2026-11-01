@@ -20,6 +20,7 @@ async function getConfig() {
     token: String(cfg.token || '').trim(),
     defaultGroup: parseInt(cfg.defaultGroup || '0', 10) || 0,
     defaultGroupName: cfg.defaultGroupName || '稍后读',
+    snapshot: cfg.snapshot === undefined ? true : !!cfg.snapshot,
   };
 }
 
@@ -184,7 +185,14 @@ async function quickSave(tab, extra) {
   let title = (extra && extra.title) || (tab && tab.title) || '';
   if (!title && tabId) title = await pageTitle(tabId);
   try {
-    const res = await saveClip({ url, title, note: (extra && extra.note) || '', selection: (extra && extra.selection) || '', source: 'quick' });
+    const res = await saveClip({
+      url,
+      title,
+      note: (extra && extra.note) || '',
+      selection: (extra && extra.selection) || '',
+      capture: (await getConfig()).snapshot ? 'snapshot' : 'card',
+      source: 'quick',
+    });
     if (res && res.queued) {
       badge('…', '#b45309');
       await toast(tabId, '网络不可用，已存入离线队列，恢复后自动补发', true);

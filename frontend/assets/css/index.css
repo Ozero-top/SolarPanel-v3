@@ -475,20 +475,23 @@ html:not(.sp-topbar-ready) .topbar {
   font-weight: 800;
   letter-spacing: 4px;
   font-variant-numeric: tabular-nums;
-  /* 用最宽的数字样本占位，锁定时钟宽度，避免秒数变化把右侧天气推来推去 */
-  display: inline-grid;
-  justify-items: center;
+  /* 每个数字定宽（见下方 --clock-num-w），整串宽度恒定，秒数变化不会把右侧天气推来推去 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1.1;
   color: var(--text);
   text-shadow: 0 1px 0 var(--sh-light), 0 12px 28px var(--sh-dark);
 }
-.clock-time > span {
-  grid-area: 1 / 1;
+/* 时钟数字等宽：每个数字固定占同样的横向宽度，不同字体（含不支持 tabular-nums 的设计字体）
+   下都不会因字形宽窄导致跳动；宽度由 JS 按当前字体实测后写入 --clock-num-w，避免定宽过窄压字 */
+.clock-num,
+.clock-sep {
+  display: inline-block;
+  text-align: center;
 }
-.clock-ghost {
-  visibility: hidden;
-  pointer-events: none;
-}
+.clock-num { width: var(--clock-num-w, 0.62em); }
+.clock-sep { width: auto; }
 .clock-date {
   font-size: 16px;
   color: var(--text-muted);
@@ -828,12 +831,12 @@ html:not(.sp-topbar-ready) .topbar {
 .gn-toggle:hover::before { border-left-color: var(--accent); }
 .gn-toggle:not(.gn-collapsed)::before { transform: rotate(180deg); }
 .gn-toggle[hidden] { display: none; }
-/* ---------- 返回顶部（右下角常驻） ---------- */
-.back-top {
+/* ---------- 右下角快捷菜单（单个悬浮按钮） ---------- */
+.float-tools {
   position: fixed;
   right: 22px;
   bottom: 22px;
-  z-index: 90; /* 与搜索托盘同级：盖过卡片与目录条，低于 iframe 弹窗与 toast */
+  z-index: 91;
   width: 46px;
   height: 46px;
   display: flex;
@@ -848,15 +851,101 @@ html:not(.sp-topbar-ready) .topbar {
   box-shadow: 3px 3px 8px var(--sh-dark), -1px -1px 4px var(--sh-light);
   transition: color var(--tr) var(--ease), background var(--tr) var(--ease), transform var(--tr) var(--ease), box-shadow var(--tr) var(--ease);
 }
-.back-top:hover {
+.float-tools:hover,
+.float-tools.active {
   color: var(--accent);
   background: var(--hover-bg);
   transform: translateY(-2px);
   box-shadow: 4px 4px 10px var(--sh-dark), -1px -1px 5px var(--sh-light);
 }
-.back-top:active { transform: translateY(0); box-shadow: inset 2px 2px 5px var(--sh-dark), inset -1px -1px 3px var(--sh-light); }
+.float-tools:active { transform: translateY(0); box-shadow: inset 2px 2px 5px var(--sh-dark), inset -1px -1px 3px var(--sh-light); }
 @media (max-width: 640px) {
-  .back-top { right: 14px; bottom: 14px; width: 40px; height: 40px; }
+  .float-tools { right: 14px; bottom: 14px; width: 40px; height: 40px; }
+}
+/* ---------- 快捷菜单弹出层：一列圆形图标按钮，悬停显示功能标题 ---------- */
+.tool-menu {
+  position: fixed;
+  right: 24px;
+  bottom: 78px;
+  z-index: 92;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.tool-menu[hidden] { display: none; }
+.tool-item {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--edge);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  box-shadow: var(--raised-sm, 0 2px 6px -2px rgba(0, 0, 0, 0.18));
+  transition: transform var(--tr) var(--ease), box-shadow var(--tr) var(--ease),
+              color var(--tr) var(--ease), background var(--tr) var(--ease);
+  animation: toolItemIn 200ms var(--ease) backwards;
+}
+.tool-item:nth-child(2) { animation-delay: 30ms; }
+.tool-item:nth-child(3) { animation-delay: 60ms; }
+.tool-item:nth-child(4) { animation-delay: 90ms; }
+.tool-item:nth-child(5) { animation-delay: 120ms; }
+.tool-item:nth-child(6) { animation-delay: 150ms; }
+.tool-item:hover {
+  color: var(--accent);
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+  box-shadow: var(--raised, 0 8px 24px -10px rgba(0, 0, 0, 0.26));
+}
+.tool-item:active { transform: scale(0.94); }
+.tool-item[hidden] { display: none; }
+.tool-ic { font-size: 17px; line-height: 1; }
+/* 悬停/键盘聚焦时在按钮左侧浮出功能标题（触屏无悬停，不显示） */
+@media (hover: hover) and (pointer: fine) {
+  .tool-item::after {
+    content: attr(data-tip);
+    position: absolute;
+    right: calc(100% + 10px);
+    top: 50%;
+    transform: translate(6px, -50%);
+    padding: 5px 9px;
+    border-radius: 8px;
+    background: rgba(18, 24, 40, 0.92);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    box-shadow: 0 6px 16px -8px rgba(0, 0, 0, 0.5);
+    transition: opacity 140ms var(--ease), transform 140ms var(--ease);
+  }
+  .tool-item:hover::after,
+  .tool-item:focus-visible::after { opacity: 1; transform: translate(0, -50%); }
+}
+@keyframes toolItemIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.9); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (max-width: 640px) {
+  .float-tools { right: 14px; bottom: 14px; width: 40px; height: 40px; }
+  .tool-menu { right: 18px; bottom: 62px; gap: 8px; }
+  .tool-item { width: 38px; height: 38px; }
+  .tool-ic { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tool-item { animation: none; }
 }
 .gn-item {
   display: flex;
@@ -1286,6 +1375,34 @@ body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
   animation: swap-in var(--sp-dur-md) var(--sp-ease-out) both;
 }
 
+/* 切组入场：切换标签/分组时分组本身不再整块滑入，卡片自上而下逐个错峰浮现。
+   所有主题共用同一套节奏，避免部分主题有入场动效、部分主题直接闪现。
+   --sk-base 由 JS 按分组顺序写入，与下方 nth-child 的逐卡延迟叠加。 */
+@keyframes cardRise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.group.cards-stagger .card {
+  animation: cardRise 280ms var(--sp-ease-out) backwards;
+  animation-delay: calc(var(--sk-base, 0ms) + var(--sk-delay, 0ms));
+}
+.cards > .card:nth-child(1) { --sk-delay: 0ms; }
+.cards > .card:nth-child(2) { --sk-delay: 16ms; }
+.cards > .card:nth-child(3) { --sk-delay: 32ms; }
+.cards > .card:nth-child(4) { --sk-delay: 48ms; }
+.cards > .card:nth-child(5) { --sk-delay: 64ms; }
+.cards > .card:nth-child(6) { --sk-delay: 80ms; }
+.cards > .card:nth-child(7) { --sk-delay: 96ms; }
+.cards > .card:nth-child(8) { --sk-delay: 112ms; }
+.cards > .card:nth-child(9) { --sk-delay: 128ms; }
+.cards > .card:nth-child(n+10) { --sk-delay: 128ms; }
+
 @media (prefers-reduced-motion: reduce) {
   .scale-in {
     animation: none;
@@ -1293,6 +1410,9 @@ body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
     transform: none;
   }
   .group.swap-in {
+    animation: none;
+  }
+  .group.cards-stagger .card {
     animation: none;
   }
   .card-bg::before {

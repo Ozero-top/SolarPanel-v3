@@ -1840,3 +1840,181 @@ tr.drag-over-bottom td {
     height: 62px;
   }
 }
+
+/* ================= 旧后台移动端适配（仅 body.admin-classic 生效） ================= */
+/* 平板 / 窄桌面：操作列不再被压窄，6 个按钮单行排列 */
+@media (min-width: 641px) and (max-width: 1100px) {
+  body.admin-classic #tab-items .table td:nth-child(7),
+  body.admin-classic #tab-groups .table td:nth-child(6) {
+    width: 1%;
+    white-space: nowrap;
+  }
+  body.admin-classic #tab-items .table .actions,
+  body.admin-classic #tab-groups .table .actions {
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+  }
+  body.admin-classic #tab-items .table .actions .btn,
+  body.admin-classic #tab-groups .table .actions .btn {
+    flex: 0 0 auto;
+    height: 30px;
+    padding: 0 9px;
+    font-size: 12px;
+  }
+  body.admin-classic #tab-items .table td:nth-child(3) { min-width: 120px; }
+  body.admin-classic #tab-groups .table td:nth-child(2) { white-space: nowrap; }
+  body.admin-classic #tab-groups .table td:nth-child(3) { min-width: 132px; }
+}
+
+@media (max-width: 640px) {
+  /* 审计日志：单元格不折字，超出部分在面板内横向滑动 */
+  body.admin-classic .admin-panel > .table.audit-table { min-width: 720px; }
+  body.admin-classic .admin-panel > .table.audit-table td,
+  body.admin-classic .admin-panel > .table.audit-table td span { white-space: nowrap; }
+
+  /* 分页：页码一行横滑，避免折成多行占掉半屏 */
+  body.admin-classic .pager { margin-top: 10px; }
+  body.admin-classic .pager-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  body.admin-classic .pager-nav::-webkit-scrollbar { display: none; }
+  body.admin-classic .pager-nav > * { flex: 0 0 auto; }
+  body.admin-classic .pager .pager-btn { height: 34px; }
+
+  /* ===== 卡片管理：表格 → 逐条卡片 ===== */
+  body.admin-classic #tab-items > .table { min-width: 0; }
+  body.admin-classic #tab-items .table thead { display: none; }
+  body.admin-classic #tab-items .table,
+  body.admin-classic #tab-items .table tbody { display: block; width: 100%; }
+  body.admin-classic #tab-items .table tr {
+    display: grid;
+    grid-template-columns: 26px 38px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "chk ico title title"
+      "url url url url"
+      "grp grp open open"
+      "act act act act";
+    align-items: center;
+    column-gap: 9px;
+    row-gap: 7px;
+    padding: 10px 2px 12px;
+    border-bottom: 1px solid var(--edge-weak);
+  }
+  body.admin-classic #tab-items .table td {
+    display: block;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    white-space: normal;
+  }
+  body.admin-classic #tab-items .table td[colspan] { grid-column: 1 / -1; text-align: center; }
+  body.admin-classic #tab-items .table td:nth-child(1) { grid-area: chk; }
+  body.admin-classic #tab-items .table td:nth-child(2) { grid-area: ico; }
+  body.admin-classic #tab-items .table td:nth-child(3) { grid-area: title; min-width: 0; font-weight: 600; }
+  body.admin-classic #tab-items .table td:nth-child(3) > div {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  body.admin-classic #tab-items .table td:nth-child(4) {
+    grid-area: url;
+    max-width: none !important;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  body.admin-classic #tab-items .table td:nth-child(5) { grid-area: grp; }
+  body.admin-classic #tab-items .table td:nth-child(6) {
+    grid-area: open;
+    text-align: right;
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  body.admin-classic #tab-items .table td:nth-child(7) { grid-area: act; }
+  body.admin-classic #tab-items .table .actions { flex-wrap: wrap; gap: 6px; }
+  body.admin-classic #tab-items .table .actions .btn {
+    flex: 1 1 72px;
+    height: 34px;
+    padding: 0 8px;
+    font-size: 12.5px;
+  }
+  body.admin-classic #tab-items .table .item-check,
+  body.admin-classic #tab-items .table #itemsCheckAll { width: 18px; height: 18px; }
+
+  /* ===== 分组管理：表格 → 逐条卡片（拖拽把手保留） ===== */
+  body.admin-classic #tab-groups > .table { min-width: 0; }
+  body.admin-classic #tab-groups .table thead { display: none; }
+  body.admin-classic #tab-groups .table,
+  body.admin-classic #tab-groups .table tbody { display: block; width: 100%; }
+  body.admin-classic #tab-groups .table tr {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "drag name name"
+      "desc desc desc"
+      "count count vis"
+      "act act act";
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 6px;
+    padding: 10px 2px 12px;
+    border-bottom: 1px solid var(--edge-weak);
+  }
+  body.admin-classic #tab-groups .table tr.row-collapsed { display: none; }
+  body.admin-classic #tab-groups .table td {
+    display: block;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    white-space: normal;
+  }
+  body.admin-classic #tab-groups .table td[colspan] { grid-column: 1 / -1; text-align: center; }
+  body.admin-classic #tab-groups .table td:nth-child(1) { grid-area: drag; }
+  body.admin-classic #tab-groups .table td:nth-child(2) { grid-area: name; overflow: hidden; }
+  body.admin-classic #tab-groups .table td:nth-child(3) {
+    grid-area: desc;
+    font-size: 12px;
+    line-height: 1.5;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  body.admin-classic #tab-groups .table td:nth-child(4) {
+    grid-area: count;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+  body.admin-classic #tab-groups .table td:nth-child(4)::before { content: '卡片 '; }
+  body.admin-classic #tab-groups .table td:nth-child(5) {
+    grid-area: vis;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  body.admin-classic #tab-groups .table td:nth-child(6) { grid-area: act; }
+  body.admin-classic #tab-groups .table .actions { flex-wrap: wrap; gap: 6px; }
+  body.admin-classic #tab-groups .table .actions .btn {
+    flex: 1 1 64px;
+    height: 34px;
+    padding: 0 8px;
+    font-size: 12.5px;
+  }
+  body.admin-classic #tab-groups .table .g-table-name { max-width: 100%; }
+  body.admin-classic #tab-groups .table .drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 34px;
+    padding: 0;
+  }
+  body.admin-classic #groupsTbody tr.row-child .g-table-name { padding-left: 16px; }
+  body.admin-classic #groupsTbody tr.row-child .g-table-name::before { left: 4px; }
+}

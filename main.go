@@ -341,6 +341,8 @@ func main() {
 		v1.Delete("/clips", clipHandler.Delete)
 		v1.Patch("/clips/{id}", clipHandler.Update)
 		v1.Get("/clips/search", clipHandler.Search)
+		v1.Get("/clips/export", clipHandler.Export)
+		v1.Get("/clips/duplicates", clipHandler.Duplicates)
 		v1.Get("/clips/{id}", clipHandler.Detail)
 		v1.Post("/clips/{id}/refetch", clipHandler.Refetch)
 		v1.Post("/clips/{id}/screenshot", clipHandler.Screenshot)

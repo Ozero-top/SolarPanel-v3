@@ -172,6 +172,7 @@ async function applyThemeFromBackend() {
     fillSettingsForm(s);
     applyUpdateSettings(s);
     applyBackupSettings(s);
+    applyAuditSettings(s);
   } catch (e) {
     toast('设置读取失败：' + e.message, 'error');
   }
@@ -1744,7 +1745,7 @@ function fillSettingsForm(s) {
   document.getElementById('s_news_show').value = s.news_show === '0' ? '0' : '1';
   document.getElementById('s_news_auto_refresh').value = s.news_auto_refresh === '1' ? '1' : '0';
   loadNewsSourceRows(s.news_sources || '', s.news_order || '');
-  document.getElementById('s_default_theme').value = ['light', 'dark', 'system'].includes(s.default_theme) ? s.default_theme : 'light';
+  document.getElementById('s_default_theme').value = ['light', 'dark', 'system'].includes(s.default_theme) ? s.default_theme : 'system';
   document.getElementById('s_theme_style').value = SP_STYLES.includes(s.theme_style) ? s.theme_style : 'liquid-glass';
   document.getElementById('s_default_theme_note').textContent =
     s.default_theme === 'system' ? '跟随系统：访客未手动切换主题时，随其系统深浅自动变化' : '';
@@ -2802,6 +2803,12 @@ function bindBackup() {
   if (state.role === 'admin') loadBackupList();
 }
 
+/** 回填审计日志保存时长（值来自 settings.php?action=list） */
+function applyAuditSettings(s) {
+  const sel = document.getElementById('auditRetentionSel');
+  if (sel) sel.value = s.audit_retention_days || '7';
+}
+
 /** 回填自动备份开关与间隔（值来自 settings.php?action=list） */
 function applyBackupSettings(s) {
   const toggle = document.getElementById('autoBackupToggle');
@@ -3154,6 +3161,16 @@ function bindAudit() {
       state.auditPage = 1;
       loadAudit();
     } catch (e) { toast(e.message, 'error'); }
+  });
+  // 保存时长：7/15/30/60/90 天，后端每小时按此清理最旧日志
+  document.getElementById('auditRetentionSel')?.addEventListener('change', async e => {
+    const days = e.target.value;
+    try {
+      await API.post(API_BASE + 'settings.php?action=save', { audit_retention_days: days });
+      toast('审计日志保存时长已设为 ' + days + ' 天', 'success');
+      state.auditPage = 1;
+      loadAudit();
+    } catch (err) { toast(err.message, 'error'); }
   });
   // tab 切换到 audit 时自动加载
   document.querySelectorAll('.admin-tabs .tab').forEach(t => {

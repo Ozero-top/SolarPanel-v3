@@ -49,6 +49,18 @@ function normalize(url) {
   return String(url || '').trim().replace(/\/+$/, '');
 }
 
+/** HTTP 服务器需要可选的 host 权限；HTTPS 走服务端 CORS 即可 */
+async function ensureHostAccess(serverUrl) {
+  if (!/^http:\/\//i.test(serverUrl)) return true;
+  try {
+    const origin = new URL(serverUrl).origin + '/*';
+    if (await chrome.permissions.contains({ origins: [origin] })) return true;
+    return await chrome.permissions.request({ origins: [origin] });
+  } catch (_) {
+    return false;
+  }
+}
+
 /** 读取当前快捷键绑定：Chrome 不提供写入 API，只能在浏览器快捷键页手动修改 */
 async function loadShortcut() {
   const el = $('shortcutKey');
@@ -118,13 +130,16 @@ async function save() {
   const sel = $('defaultGroup');
   const defaultGroup = parseInt(sel.value || '0', 10) || 0;
   const defaultGroupName = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
+  const hostOk = await ensureHostAccess(serverUrl);
+  // 合并写入，保留弹窗中记住的 snapshot / shotMode 等偏好
+  const existing = (await chrome.storage.local.get('spClipConfig')).spClipConfig || {};
   await chrome.storage.local.set({
-    spClipConfig: { serverUrl, token, defaultGroup, defaultGroupName },
+    spClipConfig: Object.assign({}, existing, { serverUrl, token, defaultGroup, defaultGroupName }),
   });
   state.serverUrl = serverUrl;
   state.token = token;
   state.defaultGroup = defaultGroup;
-  setStatus('已保存', 'ok');
+  setStatus(hostOk ? '已保存' : '已保存，但未授予该服务器访问权限；HTTP 地址可能无法直接保存', hostOk ? 'ok' : 'err');
 }
 
 async function test() {
@@ -134,6 +149,7 @@ async function test() {
     setStatus('请先填写服务器地址与 Token', 'err');
     return;
   }
+  const hostOk = await ensureHostAccess(serverUrl);
   setStatus('正在连接…');
   try {
     const res = await fetch(serverUrl + '/api/v1/me', { headers: { Authorization: 'Bearer ' + token } });
@@ -159,6 +175,9 @@ async function test() {
     setStatus('连接成功：' + (me.name || me.username) + '（' + me.role + '）', 'ok');
     loadGroups();
   } catch (e) {
-    setStatus('连接失败：' + e.message, 'err');
+    const hint = !hostOk && /^http:\/\//i.test(serverUrl)
+      ? '（请在弹出的权限提示中允许访问该服务器，或改用 HTTPS）'
+      : '';
+    setStatus('连接失败：' + e.message + hint, 'err');
   }
 }

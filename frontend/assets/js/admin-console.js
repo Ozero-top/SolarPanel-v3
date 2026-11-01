@@ -550,12 +550,27 @@
     });
   }
 
+  /* ================= 表格滚动容器 ================= */
+  // 窄屏时只让表格自身横向滚动（配合 console.css 的 .table-scroll），工具栏/分页保持原位
+  function initTables() {
+    var tables = document.querySelectorAll('table.table');
+    for (var i = 0; i < tables.length; i++) {
+      var t = tables[i];
+      if (t.parentNode && t.parentNode.classList && t.parentNode.classList.contains('table-scroll')) continue;
+      var wrap = document.createElement('div');
+      wrap.className = 'table-scroll';
+      t.parentNode.insertBefore(wrap, t);
+      wrap.appendChild(t);
+    }
+  }
+
   /* ================= 启动 ================= */
   function boot() {
     initSkin();
     initShell();
     initChrome();
     initDashboardActions();
+    initTables();
     hookLoaders();
 
     try {

@@ -212,7 +212,20 @@ async function loadGroups() {
   }
 }
 
+/** HTTP 服务器需要可选的 host 权限，首次保存/截图时在用户手势内申请 */
+async function ensureServerAccess() {
+  if (!state.cfg || !/^http:\/\//i.test(state.cfg.serverUrl)) return true;
+  try {
+    const origin = new URL(state.cfg.serverUrl).origin + '/*';
+    if (await chrome.permissions.contains({ origins: [origin] })) return true;
+    return await chrome.permissions.request({ origins: [origin] });
+  } catch (_) {
+    return false;
+  }
+}
+
 async function save(force) {
+  await ensureServerAccess();
   const btn = $('saveBtn');
   btn.disabled = true;
   setStatus('正在保存…');
@@ -224,7 +237,7 @@ async function save(force) {
         title: $('fTitle').value.trim(),
         note: $('fNote').value.trim(),
         group_id: parseInt($('fGroup').value || '0', 10),
-        capture: $('fSnapshot').checked ? 'snapshot' : '',
+        capture: $('fSnapshot').checked ? 'snapshot' : 'card',
         tags: parseTags($('fTags').value),
         force: force,
         clientId: state.clientId,
@@ -270,6 +283,7 @@ async function save(force) {
 
 /** 截图并回填状态；失败时显示「重试截图」按钮 */
 async function runShot(savedText) {
+  await ensureServerAccess();
   const mode = $('fShotMode').value;
   try {
     const shot = await chrome.runtime.sendMessage({
@@ -282,6 +296,10 @@ async function runShot(savedText) {
     if (shot && shot.ok) {
       setStatus(savedText + (shot.mode === 'viewport' ? '（截图仅可视区）' : '（含整页截图）'), 'ok');
       $('retryShotBtn').classList.add('hidden');
+      if (state.item) {
+        state.item.has_snapshot = true; // 仅有截图时也允许删除快照
+        $('delSnapBtn').disabled = false;
+      }
     } else {
       setStatus(savedText + '，截取失败：' + ((shot && shot.error) || '未知原因'), 'ok');
       $('retryShotBtn').classList.remove('hidden');
@@ -363,7 +381,7 @@ async function refreshSavedState(id) {
   state.item = Object.assign({}, state.item, d.item, {
     starred: !!d.starred,
     read_at: d.read_at || '',
-    has_snapshot: !!d.has_snapshot,
+    has_snapshot: !!(d.has_snapshot || (d.content && d.content.screenshot_path)),
   });
   setStar(state.item.starred);
   setRead(state.item.read_at);

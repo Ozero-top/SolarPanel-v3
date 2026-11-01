@@ -646,7 +646,7 @@ function applyTheme(settings) {
   const saved = localStorage.getItem('sp_theme');
   const mode = saved === 'light' || saved === 'dark' || saved === 'system'
     ? saved
-    : (settings && ['light', 'dark', 'system'].includes(settings.default_theme) ? settings.default_theme : 'light');
+    : (settings && ['light', 'dark', 'system'].includes(settings.default_theme) ? settings.default_theme : 'system');
   setThemeMode(mode);
   spIrisField();
   spCardPointerGlow();

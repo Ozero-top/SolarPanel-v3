@@ -37,6 +37,7 @@ var allowedSettingKeys = map[string]struct{}{
 	"clip_enabled": {}, "clip_default_group": {}, "clip_default_capture": {},
 	"clip_ai_enabled": {}, "clip_ai_provider": {}, "clip_ai_base_url": {},
 	"clip_ai_api_key": {}, "clip_ai_model": {}, "clip_image_domains": {},
+	"audit_retention_days": {},
 }
 
 // settingValueWhitelist 特定键的取值白名单（与 frontend/themes.json / card_style 可选项保持同步）
@@ -52,6 +53,7 @@ var settingValueWhitelist = map[string]map[string]bool{
 	"nas_layout":           {"right": true, "left": true, "both": true, "banner": true},
 	"auto_backup_enabled":  {"0": true, "1": true},
 	"auto_backup_interval": {"1": true, "3": true, "5": true, "7": true, "9": true},
+	"audit_retention_days": {"7": true, "15": true, "30": true, "60": true, "90": true},
 	"clip_enabled":         {"0": true, "1": true},
 	"clip_default_capture": {"card": true, "snapshot": true},
 	"clip_ai_enabled":      {"0": true, "1": true},
@@ -141,6 +143,7 @@ func (h *SettingsHandler) Save(w http.ResponseWriter, r *http.Request) {
 	}
 
 	saved := 0
+	retentionChanged := false
 	for k, v := range body {
 		if _, ok := allowedSettingKeys[k]; !ok {
 			continue
@@ -236,6 +239,14 @@ func (h *SettingsHandler) Save(w http.ResponseWriter, r *http.Request) {
 		} else {
 			saved++
 		}
+		if k == "audit_retention_days" {
+			retentionChanged = true
+		}
+	}
+
+	// 保存时长调整后立即按新规则清理一次，无需等待每小时任务
+	if retentionChanged {
+		go auth.AuditCleanup()
 	}
 
 	if saved > 0 {

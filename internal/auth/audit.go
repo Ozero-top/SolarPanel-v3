@@ -4,10 +4,23 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"solarpanel/internal/db"
 )
+
+// auditRetentionDays 读取审计日志保存天数，允许 7/15/30/60/90，默认 7 天
+func auditRetentionDays() int {
+	raw := db.GetSetting("audit_retention_days")
+	if n, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil {
+		switch n {
+		case 7, 15, 30, 60, 90:
+			return n
+		}
+	}
+	return 7
+}
 
 // AuditLog 写一条审计日志（失败静默）；IP 归属地异步补齐，不阻塞请求
 func AuditLog(w http.ResponseWriter, r *http.Request, action, target, result, actor, actorRole, detail string) {
@@ -79,17 +92,18 @@ func ClientIP(r *http.Request) string {
 	return host
 }
 
-// AuditCleanup 清理 30 天前的审计日志（每小时调用一次）
+// AuditCleanup 按设置的保存天数清理最旧的审计日志（每小时调用一次）
 func AuditCleanup() {
 	if db.DB == nil {
 		return
 	}
-	res, err := db.DB.Exec(`DELETE FROM audit_logs WHERE created_at < datetime('now','localtime','-30 days')`)
+	days := auditRetentionDays()
+	res, err := db.DB.Exec(`DELETE FROM audit_logs WHERE created_at < datetime('now','localtime','-`+strconv.Itoa(days)+` days')`)
 	if err != nil {
 		log.Printf("[audit] cleanup failed: %v", err)
 		return
 	}
 	if n, _ := res.RowsAffected(); n > 0 {
-		log.Printf("[audit] cleaned %d logs older than 30 days", n)
+		log.Printf("[audit] cleaned %d logs older than %d days", n, days)
 	}
 }

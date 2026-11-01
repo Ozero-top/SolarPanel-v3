@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#f5f6f7">
 <title>剪藏库 · SolarPanel</title>
 <script>(function(){try{var d=document.documentElement;var s=localStorage.getItem('sp_theme');var t;if(s==='light'||s==='dark'){t=s}else{t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}d.dataset.theme=t;d.dataset.mode=s||'system';var st=localStorage.getItem('sp_style');if(st)d.dataset.style=st;}catch(e){}})();</script>
-<link rel="stylesheet" href="/assets/css/themes.css?v=22eaa165">
-<link rel="stylesheet" href="/assets/css/clips.css?v=62fa8c0a">
+<link rel="stylesheet" href="/assets/css/themes.css?v=d8731efa">
+<link rel="stylesheet" href="/assets/css/clips.css?v=82f5a82d">
 </head>
 <body>
 <div class="style-fx" aria-hidden="true"></div>
@@ -66,6 +66,8 @@
           <option value="title">标题排序</option>
           <option value="oldest">最早收藏</option>
         </select>
+        <button id="cl-export" class="cl-btn cl-tool-btn" type="button" title="按当前筛选导出 Markdown ZIP">导出</button>
+        <button id="cl-dupes" class="cl-btn cl-tool-btn" type="button" title="扫描重复链接">查重</button>
         <div class="cl-view" id="cl-view">
           <button data-view="grid" class="active" type="button" title="网格视图">▦</button>
           <button data-view="list" type="button" title="列表视图">☰</button>
@@ -87,7 +89,20 @@
   </div>
 </main>
 
-<script src="/assets/js/api.js?v=d3a5c2f0"></script>
-<script src="/assets/js/clips.js?v=f3d91b8c"></script>
+<div id="dup-modal" class="cl-modal hidden" role="dialog" aria-modal="true" aria-labelledby="dup-title">
+  <div class="cl-modal-mask" data-dup-close></div>
+  <div class="cl-modal-panel">
+    <div class="cl-modal-head">
+      <span class="cl-modal-title" id="dup-title">重复检测</span>
+      <span class="cl-modal-sub" id="dup-summary"></span>
+      <button class="cl-modal-close" id="dup-close" type="button" aria-label="关闭">×</button>
+    </div>
+    <div id="dup-status" class="cl-status cl-modal-status"></div>
+    <div id="dup-list" class="cl-dup-list"></div>
+  </div>
+</div>
+
+<script src="/assets/js/api.js?v=00f28474"></script>
+<script src="/assets/js/clips.js?v=29a467e3"></script>
 </body>
 </html>
