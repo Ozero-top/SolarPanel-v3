@@ -7,8 +7,8 @@
   <title>管理后台 - SolarPanel</title>
   <link rel="icon" href="favicon.ico?v=1b5d8c6c" type="image/x-icon">
   <link rel="stylesheet" href="assets/css/common.css?v=94307f77">
-  <link rel="stylesheet" href="assets/css/auth-admin.css?v=53f17a8b">
-  <link rel="stylesheet" href="assets/css/themes.css?v=8cac2ef5">
+  <link rel="stylesheet" href="assets/css/auth-admin.css?v=b3eb7eb7">
+  <link rel="stylesheet" href="assets/css/themes.css?v=22eaa165">
 </head>
 <body>
   <div class="style-fx" aria-hidden="true"></div>
@@ -48,9 +48,16 @@
         </div>
       </div>
       <div class="form-hint" id="itemsFilterInfo" style="margin:4px 0 10px"></div>
+      <div class="bulk-bar" id="itemsBulkBar" hidden>
+        <span id="itemsBulkCount">已选 0 张</span>
+        <button class="btn btn-sm" id="bulkMoveBtn" type="button">移动分组</button>
+        <button class="btn btn-sm btn-danger" id="bulkDelBtn" type="button">批量删除</button>
+        <button class="btn btn-sm" id="bulkClearBtn" type="button">取消选择</button>
+      </div>
       <table class="table">
         <thead>
           <tr>
+            <th style="width:36px"><input type="checkbox" id="itemsCheckAll" title="全选当前页"></th>
             <th style="width:56px">图标</th>
             <th>标题</th>
             <th>地址</th>
@@ -1137,6 +1144,25 @@
     </div>
   </div>
 
+  <!-- ============ 移动卡片弹窗（单卡 / 批量共用） ============ -->
+  <div class="modal" id="moveModal">
+    <div class="modal-box glass-strong" style="max-width:420px">
+      <div class="modal-head">
+        <h3>移动到分组</h3>
+        <button class="btn btn-sm" data-close="moveModal">✕</button>
+      </div>
+      <div class="form-item">
+        <label>目标分组</label>
+        <select class="select" id="m_group"></select>
+      </div>
+      <div class="form-hint" id="moveHint" style="margin-top:8px"></div>
+      <div class="modal-foot">
+        <button class="btn" type="button" data-close="moveModal">取消</button>
+        <button class="btn btn-primary" type="button" id="moveConfirmBtn">确定移动</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ 卡片编辑弹窗 ============ -->
   <div class="modal" id="itemModal">
     <div class="modal-box glass-strong">
@@ -1405,8 +1431,8 @@
   </div>
 
   <script src="assets/js/qrcode.min.js"></script>
-  <script src="assets/js/api.js?v=936bb53d"></script>
-  <script src="assets/js/admin.js?v=bc7c5761"></script>
+  <script src="assets/js/api.js?v=d3a5c2f0"></script>
+  <script src="assets/js/admin.js?v=0baad4da"></script>
   <script src="assets/js/admin-ui.js?v=0218fafc"></script>
 </body>
 </html>

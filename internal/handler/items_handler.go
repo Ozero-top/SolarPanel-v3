@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -614,6 +615,10 @@ func (h *ItemsHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
 		h.Edit(w, r)
 	case "delete":
 		h.Delete(w, r)
+	case "batch_move":
+		h.BatchMove(w, r)
+	case "batch_delete":
+		h.BatchDelete(w, r)
 	case "sort":
 		h.Sort(w, r)
 	case "sort_batch":
@@ -631,12 +636,15 @@ func (h *ItemsHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
 
 func scanItem(row *sql.Row) (*ItemRow, error) {
 	var it ItemRow
+	// 旧库（V2 导入）created_at 为 NULL，直接扫进 string 会报错，这里做空值兜底
+	var createdAt sql.NullString
 	err := row.Scan(&it.ID, &it.GroupID, &it.Title, &it.URL, &it.LanURL, &it.Description,
 		&it.IconType, &it.IconValue, &it.IconBG, &it.OpenMethod, &it.Sort, &it.IsHidden,
-		&it.UserID, &it.CreatedAt)
+		&it.UserID, &createdAt)
 	if err != nil {
 		return &it, err
 	}
+	it.CreatedAt = createdAt.String
 	it.Tags = loadItemTags(it.ID)
 	return &it, nil
 }
@@ -866,9 +874,14 @@ func (h *ItemsHandler) List(w http.ResponseWriter, r *http.Request) {
 	var items []ItemRow
 	for rows.Next() {
 		var it ItemRow
-		rows.Scan(&it.ID, &it.GroupID, &it.Title, &it.URL, &it.LanURL, &it.Description,
+		var createdAt sql.NullString
+		if err := rows.Scan(&it.ID, &it.GroupID, &it.Title, &it.URL, &it.LanURL, &it.Description,
 			&it.IconType, &it.IconValue, &it.IconBG, &it.OpenMethod, &it.Sort, &it.IsHidden,
-			&it.UserID, &it.CreatedAt)
+			&it.UserID, &createdAt); err != nil {
+			log.Printf("[items] 跳过无法解析的卡片行: %v", err)
+			continue
+		}
+		it.CreatedAt = createdAt.String
 		items = append(items, it)
 	}
 	if items == nil {
@@ -1021,6 +1034,83 @@ func (h *ItemsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	deleteItemTags(int(body.ID))
 	db.DB.Exec("DELETE FROM items WHERE id=?", body.ID)
 	OK(w, nil)
+}
+
+// BatchMove 批量移动卡片到指定分组（ids 传 1 条即单张移动）
+func (h *ItemsHandler) BatchMove(w http.ResponseWriter, r *http.Request) {
+	sess := auth.GetSessionFromRequest(r)
+	if sess == nil || (sess.Role != "admin" && sess.Role != "editor") {
+		Err(w, http.StatusForbidden, 1, "无操作权限")
+		return
+	}
+	var body struct {
+		IDs     []uint `json:"ids"`
+		GroupID uint   `json:"group_id"`
+	}
+	if err := BindJSON(r, &body); err != nil || len(body.IDs) == 0 || body.GroupID == 0 {
+		Fail(w, "参数错误")
+		return
+	}
+	var groupExists int
+	if err := db.DB.QueryRow("SELECT COUNT(*) FROM item_groups WHERE id=?", body.GroupID).Scan(&groupExists); err != nil || groupExists == 0 {
+		Fail(w, "分组不存在")
+		return
+	}
+
+	var nextSort int
+	db.DB.QueryRow("SELECT COALESCE(MAX(sort), -1) + 1 FROM items WHERE group_id = ?", body.GroupID).Scan(&nextSort)
+
+	// 已在目标分组内的卡片保持原位，只把其余卡片按选中顺序追加到目标分组末尾
+	moved := 0
+	for _, id := range body.IDs {
+		if id == 0 {
+			continue
+		}
+		var curGroupID uint
+		if err := db.DB.QueryRow("SELECT group_id FROM items WHERE id=?", id).Scan(&curGroupID); err != nil {
+			continue
+		}
+		if curGroupID == body.GroupID {
+			continue
+		}
+		if _, err := db.DB.Exec("UPDATE items SET group_id=?, sort=? WHERE id=?", body.GroupID, nextSort+moved, id); err != nil {
+			continue
+		}
+		moved++
+	}
+	OK(w, map[string]int{"moved": moved})
+}
+
+// BatchDelete 批量删除卡片，快照/标签/全文索引随卡片一起清理
+func (h *ItemsHandler) BatchDelete(w http.ResponseWriter, r *http.Request) {
+	sess := auth.GetSessionFromRequest(r)
+	if sess == nil || (sess.Role != "admin" && sess.Role != "editor") {
+		Err(w, http.StatusForbidden, 1, "无操作权限")
+		return
+	}
+	var body struct {
+		IDs []uint `json:"ids"`
+	}
+	if err := BindJSON(r, &body); err != nil || len(body.IDs) == 0 {
+		Fail(w, "参数错误")
+		return
+	}
+	deleted := 0
+	for _, id := range body.IDs {
+		if id == 0 {
+			continue
+		}
+		dropClipSnapshotWithFiles(h.cfg, int(id))
+		deleteItemTags(int(id))
+		res, err := db.DB.Exec("DELETE FROM items WHERE id=?", id)
+		if err != nil {
+			continue
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			deleted++
+		}
+	}
+	OK(w, map[string]int{"deleted": deleted})
 }
 
 func (h *ItemsHandler) Sort(w http.ResponseWriter, r *http.Request) {

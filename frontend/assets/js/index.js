@@ -309,6 +309,9 @@ function applyDefaultGroup() {
 }
 
 /* ---------- 基础元素渲染（标题/logo/公告/页脚/壁纸/内容区） ---------- */
+/** 壁纸当前缩放倍率（由 applyWallpaperFx 写入，视差用它在可视区内安全平移） */
+let spBgScale = 1;
+
 /** 壁纸遮罩与模糊：以后台设置为唯一事实源，wetab 面板滑杆直接写入同一设置 */
 function applyWallpaperFx(s) {
   s = s || state.settings || {};
@@ -321,13 +324,41 @@ function applyWallpaperFx(s) {
   // 壁纸模糊（0~30px，默认 6），同步放大避免模糊后边缘露白
   const bRaw = parseInt(s.wallpaper_blur, 10);
   const blur = isNaN(bRaw) ? 6 : Math.min(Math.max(bRaw, 0), 30);
-  if (blur > 0) {
-    bg.style.filter = 'blur(' + blur + 'px)';
-    bg.style.transform = 'scale(1.1)';
-  } else {
-    bg.style.filter = '';
-    bg.style.transform = '';
-  }
+  // 背景变换：wetab 叠加滚动视差（--wetab-par 由滚动监听写入），模糊时放大 1.1 防露边
+  const parallax = document.documentElement.dataset.style === 'wetab';
+  const scale = blur > 0 ? 1.1 : (parallax ? 1.06 : 1);
+  spBgScale = scale;
+  bg.style.filter = blur > 0 ? 'blur(' + blur + 'px)' : '';
+  bg.style.transform = (parallax || scale > 1)
+    ? 'translate3d(0, var(--wetab-par, 0px), 0) scale(' + scale + ')'
+    : '';
+}
+
+/** Wetab 壁纸视差：滚动时背景缓慢位移，制造纵深（仅 wetab + 有壁纸时生效） */
+function initWetabParallax() {
+  if (window.__spWetabParallax) return;
+  window.__spWetabParallax = true;
+  const root = document.documentElement;
+  let ticking = false;
+  const apply = () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      ticking = false;
+      const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (root.dataset.style !== 'wetab' || reduced || !document.body.classList.contains('has-wallpaper')) {
+        root.style.setProperty('--wetab-par', '0px');
+        return;
+      }
+      // 位移取滚动量的 12%，但不得超过放大后上下各留出的余量，
+      // 否则背景层下移会在顶部露出 html 背景（表现为一条纯色白条）
+      const slack = Math.max(0, ((spBgScale - 1) * window.innerHeight) / 2 - 2);
+      const par = Math.min(window.scrollY * 0.12, 120, slack);
+      root.style.setProperty('--wetab-par', par.toFixed(1) + 'px');
+    });
+  };
+  window.addEventListener('scroll', apply, { passive: true });
+  apply();
 }
 
 function renderBase() {
@@ -369,6 +400,7 @@ function renderBase() {
   } else {
     syncWetabTextTone(); // 无壁纸（渐变背景）时恢复主题默认文字颜色
   }
+  initWetabParallax();
 
   // 内容区域尺寸（最大宽度 / 左右边距 / 顶部边距 / 底部边距）
   const num = (v, d) => {
@@ -840,10 +872,16 @@ function renderGroupCard(container, g, styleApp, idx, skipIntro, isChild) {
   const section = document.createElement('section');
   section.className = 'group glass' + (isChild ? ' group-child' : '') + (state.sortingGroupId === g.id ? ' sorting' : '') + (state.searchKeyword ? ' search-active' : '');
   section.id = 'group-' + g.id;
-  // 首屏入场动画（nav 模式跳过，因为每次切换分组都重绘，不能闪）
+  // 入场编排：首屏「组淡入 → 卡片错峰浮现」，切组/重绘只做整块轻微滑入，避免整屏卡片反复弹入
   if (!skipIntro && !state.groupIntroDone) {
     section.classList.add('group-in');
-    section.style.animationDelay = Math.min((idx || 0) * 120, 960) + 'ms';
+    const gDelay = Math.min((idx || 0) * 40, 120);
+    section.style.animationDelay = gDelay + 'ms';
+    // 卡片在组入场后再起，按组序号错开；与 .scale-in 的 nth-child 延迟叠加
+    section.style.setProperty('--sk-base', (gDelay + 80) + 'ms');
+  } else {
+    section.classList.add('swap-in');
+    section.style.animationDelay = Math.min((idx || 0) * 24, 96) + 'ms';
   }
 
   const head = document.createElement('div');
@@ -1464,16 +1502,18 @@ function renderNavbarCardsOnly() {
   const styleApp = isAppCardStyle();
   const kids = (state.childrenMap || {})[tg.id] || [];
   const visibleKids = kids.filter(k => (k.items || []).length > 0 || k.is_visible !== 0);
+  // 首屏才有编排入场；切标签时只做整块滑入
+  const firstPaint = !state.groupIntroDone;
 
   // 顶级分组有自身 items → 先渲染顶级 section
   if ((tg.items || []).length > 0) {
-    renderGroupCard(wrap, tg, styleApp, state.navActiveGroupIdx, true, false);
+    renderGroupCard(wrap, tg, styleApp, state.navActiveGroupIdx, !firstPaint, false);
   }
   // 再渲染所有可见子分组（如果顶级本身无 items，这里就是全部内容）
   // 导航栏模式下子分组与顶级分组是同一层的兄弟节点，统一按普通分组渲染，
   // 复用一级分组的盒模型（内边距/边框/网格间距一致），卡片尺寸与列位置才能完全对齐
   visibleKids.forEach((k, i) => {
-    renderGroupCard(wrap, k, styleApp, i, true, false);
+    renderGroupCard(wrap, k, styleApp, i, !firstPaint, false);
   });
   state.groupIntroDone = true;
   state.cardsIntroDone = true;
@@ -1686,20 +1726,35 @@ function wetabGroupSections(tg) {
   return out;
 }
 
-/** 滚动定位到指定分组 section（block:start） */
-function wetabScrollToGroup(g, smooth) {
-  if (!g) return;
-  const el = document.getElementById('group-' + g.id);
-  if (!el) return;
-  el.scrollIntoView({ behavior: smooth === false ? 'auto' : 'smooth', block: 'start' });
+/** 吸顶主视觉高度：wetab 下时钟 / 天气 / 搜索常驻顶部，滚动定位要避开它；其他主题返回 0 */
+function wetabHeroOffset() {
+  const wrap = document.getElementById('heroWrap');
+  if (!wrap) return 0;
+  if (getComputedStyle(wrap).position !== 'sticky') return 0;
+  return Math.round(wrap.getBoundingClientRect().height);
 }
+
+/** 滚动定位到指定分组 section；返回是否发生了实际位移（贴不了顶 / 已到底时返回 false） */
+function wetabScrollToGroup(g, smooth) {
+  if (!g) return false;
+  const el = document.getElementById('group-' + g.id);
+  if (!el) return false;
+  const maxTop = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  const top = Math.min(el.getBoundingClientRect().top + window.scrollY - wetabHeroOffset(), maxTop);
+  const target = Math.max(0, top);
+  if (Math.abs(target - window.scrollY) < 4) return false;
+  window.scrollTo({ top: target, behavior: smooth === false ? 'auto' : 'smooth' });
+  return true;
+}
+
+let wetabNavAt = 0; // 程序化滚动的时间戳：期间忽略手动滚动反算，避免索引被中间帧覆盖
 
 /** 滚轮切换：先在当前顶级分组内逐个二级分组滚动，走到首/尾后才切换到上/下一个顶级分组 */
 function wetabStepGroup(dir) {
   const vt = state._navbarVisibleTop || [];
   const tg = vt[state.navActiveGroupIdx];
   const secs = wetabGroupSections(tg);
-  if (!tg || (vt.length < 2 && secs.length < 2)) return;
+  if (!tg || (vt.length < 2 && secs.length < 2)) return false;
 
   let si = Number(state.wetabSectionIdx) || 0;
   if (si >= secs.length) si = Math.max(0, secs.length - 1);
@@ -1708,13 +1763,15 @@ function wetabStepGroup(dir) {
   const nextSec = si + dir;
   if (secs.length > 1 && nextSec >= 0 && nextSec < secs.length) {
     state.wetabSectionIdx = nextSec;
-    wetabScrollToGroup(secs[nextSec], true);
-    return;
+    wetabNavAt = Date.now();
+    // 该段贴不了顶（剩余内容不足一屏）时画面不会变化，继续前进，避免“滚了没反应”
+    if (wetabScrollToGroup(secs[nextSec], true)) return true;
+    return wetabStepGroup(dir);
   }
 
   const next = (state.navActiveGroupIdx + dir + vt.length) % vt.length;
   const g = vt[next];
-  if (!g) return;
+  if (!g) return false;
   state.navActiveGroupIdx = next;
   state.activeTopId = g.id;
   state.searchKeyword = '';
@@ -1726,7 +1783,9 @@ function wetabStepGroup(dir) {
   renderTabsOnly();
   renderNavbarCardsOnly();
   renderGroupNav();
+  wetabNavAt = Date.now();
   wetabScrollToGroup(nextSecs[state.wetabSectionIdx], false);
+  return true;
 }
 
 function initWetabRail() {
@@ -1774,25 +1833,84 @@ function initWetabRail() {
   });
 
   // 页面任意位置滚轮：浮出导航栏并切换分组
-  let lock = 0;
+  // 归一化成像素后累加：标准鼠标一格 ≈ 100~120px 走一档，触控板的小增量先累计再走，
+  // 一次快速滚动按强度跨多档，冷却降到 200ms 以内，避免“滚了没反应”
+  let wheelAcc = 0;
+  let wheelLock = 0;
+  let wheelAccTimer = null;
+  let wheelFlushTimer = null;
+  const WHEEL_COOLDOWN = 180;
+  // 消费累计量并走档；冷却未到就排一个补跑定时器，保证快速连滚的强度不会被丢掉
+  const flushWheel = () => {
+    if (wheelFlushTimer) { clearTimeout(wheelFlushTimer); wheelFlushTimer = null; }
+    const now = Date.now();
+    if (now - wheelLock < WHEEL_COOLDOWN) {
+      wheelFlushTimer = setTimeout(flushWheel, WHEEL_COOLDOWN - (now - wheelLock) + 10);
+      return;
+    }
+    const step = wetabWheelStepPx;
+    const steps = Math.floor(Math.abs(wheelAcc) / step);
+    if (steps < 1) return;
+    wheelLock = now;
+    const dir = wheelAcc > 0 ? 1 : -1;
+    wheelAcc -= steps * step * dir;
+    // 单次最多跨 3 档，避免用力一滚直接跳过整个一级分组
+    for (let i = 0; i < Math.min(steps, 3); i++) {
+      if (!wetabStepGroup(dir)) break;
+    }
+  };
   document.addEventListener('wheel', (e) => {
     if (!wetabRailActive() || e.ctrlKey || e.metaKey) return;
     const wrap = document.getElementById('groupsWrap');
     if (!wrap || wrap.hidden) return; // 新闻视图不切换分组
     if (e.target && e.target.closest && e.target.closest('.modal')) return; // 弹窗内部滚动不切组
-    if (Math.abs(e.deltaY) < 6) return;
-    e.preventDefault();
+
+    // deltaMode 归一化：0 = 像素，1 = 行，2 = 页
+    let d = e.deltaY;
+    if (e.deltaMode === 1) d *= 16;
+    else if (e.deltaMode === 2) d *= window.innerHeight;
+
+    e.preventDefault(); // wetab 下页面由滚轮接管，不跟随原生滚动
     wetabRailShow(true);
-    const now = Date.now();
-    if (now - lock < 420) return;
-    lock = now;
-    wetabStepGroup(e.deltaY > 0 ? 1 : -1);
+
+    // 方向反转立即清零累计，避免反向先“抵掉”之前的余量
+    if ((wheelAcc > 0 && d < 0) || (wheelAcc < 0 && d > 0)) wheelAcc = 0;
+    wheelAcc += d;
+    clearTimeout(wheelAccTimer);
+    wheelAccTimer = setTimeout(() => { wheelAcc = 0; }, 260);
+    flushWheel();
   }, { passive: false });
+
+  // 手动拖动滚动条 / 页面自身滚动后反算当前档位，避免索引滞后导致“往回跳”
+  let syncTimer = null;
+  window.addEventListener('scroll', () => {
+    if (!wetabRailActive()) return;
+    if (Date.now() - wetabNavAt < 500) return; // 程序化滚动期间不反算
+    if (syncTimer) return;
+    syncTimer = setTimeout(() => {
+      syncTimer = null;
+      const vt = state._navbarVisibleTop || [];
+      const tg = vt[state.navActiveGroupIdx];
+      const secs = wetabGroupSections(tg);
+      if (secs.length < 2) return;
+      const lim = wetabHeroOffset() + 24;
+      let best = 0;
+      let bestTop = -Infinity;
+      secs.forEach((s, i) => {
+        const el = document.getElementById('group-' + s.id);
+        if (!el) return;
+        const top = el.getBoundingClientRect().top;
+        // 取“已越过吸顶主视觉下沿”的最后一段（容差 24px，允许贴边）
+        if (top <= lim && top > bestTop) { bestTop = top; best = i; }
+      });
+      state.wetabSectionIdx = best;
+    }, 140);
+  }, { passive: true });
 }
 
 /* ---------- WeTab 界面设置：图标间距 / Dock 标题（localStorage，本地生效） ---------- */
 const WETAB_PREFS_KEY = 'sp_wetab_prefs';
-const WETAB_PREFS_DEFAULT = { rowGap: 12, colGap: 12, iconSize: 54, dockTitle: true, dockMode: 'show', dockBg: 100, themeMode: 'light' };
+const WETAB_PREFS_DEFAULT = { rowGap: 12, colGap: 12, iconSize: 54, dockTitle: true, dockMode: 'show', dockBg: 100, themeMode: 'light', wheelSens: 5 };
 const WETAB_DOCK_MODES = ['show', 'hide', 'auto'];
 const WETAB_THEME_MODES = ['light', 'dark', 'system'];
 
@@ -1807,6 +1925,7 @@ function wetabPrefs() {
     if (WETAB_DOCK_MODES.indexOf(raw.dockMode) >= 0) p.dockMode = raw.dockMode;
     if (Number.isFinite(Number(raw.dockBg))) p.dockBg = Math.min(100, Math.max(0, Number(raw.dockBg)));
     if (WETAB_THEME_MODES.indexOf(raw.themeMode) >= 0) p.themeMode = raw.themeMode;
+    if (Number.isFinite(Number(raw.wheelSens))) p.wheelSens = Math.min(10, Math.max(1, Number(raw.wheelSens)));
   };
   try { apply(JSON.parse(localStorage.getItem(WETAB_PREFS_KEY) || '{}')); } catch (e) { /* 损坏的本地配置忽略 */ }
   // 后台保存的配置优先：管理员调好后，换台电脑也按同样设置显示
@@ -1815,6 +1934,8 @@ function wetabPrefs() {
 }
 
 let wetabDockModeCur = 'show';
+/** 滚轮灵敏度换算出的「每档滚动量」（像素）：5 = 默认（标准鼠标一格走一档），数值越大越灵敏 */
+let wetabWheelStepPx = 100;
 
 let wetabWidthSaveTimer = null;
 
@@ -1871,6 +1992,8 @@ function syncWetabWallpaperFxInputs() {
 
 function applyWetabPrefs(p) {
   const root = document.documentElement;
+  const sens = Math.min(10, Math.max(1, Number(p.wheelSens) || 5));
+  wetabWheelStepPx = Math.round(100 * Math.pow(1.5, (5 - sens) / 2.5)); // 1 → 190px，5 → 100px，10 → 44px
   root.style.setProperty('--wetab-row-gap', p.rowGap + 'px');
   root.style.setProperty('--wetab-col-gap', p.colGap + 'px');
   root.style.setProperty('--wetab-icon-size', p.iconSize + 'px');
@@ -1902,6 +2025,7 @@ function syncWetabPrefsInputs(p) {
   setVal('wpRowGap', p.rowGap);
   setVal('wpColGap', p.colGap);
   setVal('wpIconSize', p.iconSize);
+  setVal('wpWheelSens', p.wheelSens);
   // 内容宽度与后台「内容区域最大宽度」同一个设置，不再本地覆盖
   const cw = (parseInt(state.settings && state.settings.content_maxwidth, 10) || 1200);
   setVal('wpContentWidth', cw);
@@ -1913,6 +2037,7 @@ function syncWetabPrefsInputs(p) {
   bind('wpRowGapVal', p.rowGap);
   bind('wpColGapVal', p.colGap);
   bind('wpIconSizeVal', p.iconSize);
+  bind('wpWheelSensVal', p.wheelSens);
   bind('wpContentWidthVal', cw);
   bind('wpDockBgVal', p.dockBg);
   syncWetabWallpaperFxInputs();
@@ -2009,6 +2134,8 @@ function initWetabPrefs() {
   if (col) col.addEventListener('input', () => setWetabPrefs({ colGap: Number(col.value) }));
   if (size) size.addEventListener('input', () => setWetabPrefs({ iconSize: Number(size.value) }));
   if (width) width.addEventListener('input', () => setWetabContentWidth(width.value));
+  const sens = document.getElementById('wpWheelSens');
+  if (sens) sens.addEventListener('input', () => setWetabPrefs({ wheelSens: Number(sens.value) }));
   if (dock) dock.addEventListener('change', () => setWetabPrefs({ dockTitle: dock.checked }));
   if (mode) mode.addEventListener('change', () => setWetabPrefs({ dockMode: mode.value }));
   const themeMode = document.getElementById('wpThemeMode');
@@ -2293,7 +2420,8 @@ function syncWetabTextTone() {
     const eff = lum * (1 - (isNaN(mask) ? 0.35 : Math.min(Math.max(mask, 0), 1)));
     const dark = eff >= 0.62; // 底色足够亮才用深色文字，其余一律浅色，避免深底上看不见
     root.style.setProperty('--wetab-auto-text', dark ? '#14161f' : '#ffffff');
-    root.style.setProperty('--wetab-auto-shadow', dark ? '0 1px 10px rgba(255,255,255,0.55)' : '0 2px 6px rgba(0,0,0,0.55), 0 0 18px rgba(0,0,0,0.35)');
+    // 亮壁纸上的深色文字只留一层贴身柔光：10px 大光晕在多行密集标题上会叠成一块浅白底
+    root.style.setProperty('--wetab-auto-shadow', dark ? '0 1px 4px rgba(255,255,255,0.45)' : '0 2px 6px rgba(0,0,0,0.55), 0 0 18px rgba(0,0,0,0.35)');
   };
 
   const bg = document.getElementById('bgLayer');
@@ -2468,7 +2596,8 @@ function showWhenDecoded(img, icon, iconDoneRef) {
 function buildCard(item, styleApp) {
   const a = document.createElement('a');
   const isHidden = item.is_hidden === 1;
-  a.className = 'card scale-in' + (styleApp ? ' app-card' : '') + (isHidden ? ' card-hidden' : '');
+  // 首屏才逐卡错峰入场；后续重绘（切组/搜索/排序）只由外层 section 整体滑入
+  a.className = 'card' + (state.cardsIntroDone ? '' : ' scale-in') + (styleApp ? ' app-card' : '') + (isHidden ? ' card-hidden' : '');
   a.href = '#';
   a.dataset.id = item.id; // 排序模式拖拽落位后按 data-id 收集顺序
   // 筛选/最近常用依赖的 data-* 属性
@@ -3122,11 +3251,13 @@ function initNewsSwitch() {
 
 function switchView(v) {
   const isNav = v === 'nav';
+  const newsView = document.getElementById('newsView');
+  const wasNav = newsView ? newsView.hidden : true; // 切换前是否已处于导航视图
   document.getElementById('groupsWrap').hidden = !isNav;
-  document.getElementById('newsView').hidden = isNav;
-  // WeTab Dock 只属于导航视图；回到导航视图时由 renderGroupsNavbar 重新填充
+  newsView.hidden = isNav;
+  // WeTab Dock 只属于导航视图；离开导航视图时隐藏，回到导航视图由 renderGroupsNavbar 重新填充
   const wetabDock = document.getElementById('wetabDock');
-  if (wetabDock) wetabDock.hidden = true;
+  if (wetabDock && !isNav) wetabDock.hidden = true;
   // 按钮高亮状态
   const btn = document.getElementById('hotNewsBtn');
   if (btn) btn.classList.toggle('active', !isNav);
@@ -3137,7 +3268,8 @@ function switchView(v) {
     if (tabs) tabs.hidden = !isNav;
     if (mobile) mobile.hidden = !isNav;
     if (isNav) {
-      renderGroupsNavbar();  // 恢复完整分组 tabs
+      // 仅从新闻视图返回时重建分组；首屏本来就是导航视图，重复渲染会打断入场动画
+      if (!wasNav) renderGroupsNavbar();
     } else {
       renderNavbarBackBtn();  // 新闻视图：只显示返回按钮
     }
@@ -3710,26 +3842,41 @@ function openQuickAddCard(groupId, item) {
   // 先 reset——必须在填分组选项之前，否则 form.reset() 会清掉动态设置的 selected
   document.getElementById('qaForm').reset();
 
-  // 分组选项：与后台完全一致——先列全部一级，再列全部二级（└─ 一级 › 二级）
+  // 分组选项：与后台完全一致——一级分组作为分组标题，二级分组以「　└ 」缩进挂在所属一级下方
   const groupSel = document.getElementById('qa_group');
   groupSel.innerHTML = '';
   const groups = state.groups || [];
-  const parentMap = {};
-  groups.forEach(g => { if ((g.parent_id || 0) === 0) parentMap[g.id] = g.title; });
   const tops = groups.filter(g => (g.parent_id || 0) === 0);
-  const children = groups.filter(g => (g.parent_id || 0) !== 0);
-  let matched = false;
-  [...tops, ...children].forEach(g => {
+  const mkOpt = (g, isChild) => {
     const opt = document.createElement('option');
     opt.value = String(g.id);
-    const pid = g.parent_id || 0;
-    opt.textContent = pid === 0 ? g.title : '└─ ' + (parentMap[pid] || '?') + ' › ' + g.title;
-    const matchGid = isEdit ? item.group_id : groupId;
-    if (String(g.id) === String(matchGid)) { opt.selected = true; matched = true; }
-    groupSel.appendChild(opt);
+    opt.textContent = isChild ? '　└ ' + g.title : g.title + '（一级分组）';
+    return opt;
+  };
+  tops.forEach(t => {
+    const kids = groups.filter(g => (g.parent_id || 0) === t.id);
+    if (!kids.length) {
+      groupSel.appendChild(mkOpt(t, false));
+      return;
+    }
+    const og = document.createElement('optgroup');
+    og.label = (t.icon ? t.icon + ' ' : '') + t.title;
+    og.appendChild(mkOpt(t, false));
+    kids.forEach(k => og.appendChild(mkOpt(k, true)));
+    groupSel.appendChild(og);
   });
-  // 兜底：没匹配到当前分组时默认选第一个
-  if (!matched && groups.length) groupSel.value = String(groups[0].id);
+  // 兜底：父级缺失的孤立二级分组也要能选到
+  groups.filter(g => {
+    const pid = g.parent_id || 0;
+    return pid !== 0 && !tops.some(t => t.id === pid);
+  }).forEach(g => groupSel.appendChild(mkOpt(g, true)));
+
+  const matchGid = isEdit ? item.group_id : groupId;
+  if (matchGid && groupSel.querySelector('option[value="' + matchGid + '"]')) {
+    groupSel.value = String(matchGid);
+  } else if (groupSel.options.length) {
+    groupSel.selectedIndex = 0; // 兜底：没匹配到当前分组时默认选第一个
+  }
 
   // 标题 + 按钮文字（与后台编辑弹窗保持一致）
   const h3 = m.querySelector('.modal-head h3');

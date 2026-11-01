@@ -39,6 +39,8 @@ const state = {
   auditTotal: 0,
   wpList: [],       // 壁纸图库列表（内置 + 上传）
   wpTab: 'uploaded', // 图库当前分区：uploaded / preset
+  selectedItems: new Set(), // 卡片管理里勾选的卡片 id（批量移动/批量删除）
+  movingItemIDs: [],        // 「移动分组」弹窗当前要移动的卡片 id
 };
 
 const ITEM_PAGE_SIZE = 10; // 卡片管理每页条数
@@ -367,19 +369,50 @@ function renderDefaultGroupOptions(selected) {
   sel.value = [...sel.options].some(o => o.value === v) ? v : '';
 }
 
+/** 构建「所属分组」下拉节点：一级分组为 optgroup，二级分组紧跟在所属一级之下 */
+function buildGroupOptionNodes() {
+  const groups = state.groups || [];
+  const tops = groups.filter(g => (g.parent_id || 0) === 0);
+  const nodes = [];
+  const mkOpt = (g, isChild) => {
+    const o = document.createElement('option');
+    o.value = String(g.id);
+    o.textContent = isChild ? '　└ ' + g.title : g.title + '（一级分组）';
+    return o;
+  };
+  tops.forEach(t => {
+    const kids = groups.filter(g => (g.parent_id || 0) === t.id);
+    if (!kids.length) {
+      nodes.push(mkOpt(t, false));
+      return;
+    }
+    const og = document.createElement('optgroup');
+    og.label = (t.icon ? t.icon + ' ' : '') + t.title;
+    og.appendChild(mkOpt(t, false));       // 直属该一级分组的卡片
+    kids.forEach(k => og.appendChild(mkOpt(k, true)));
+    nodes.push(og);
+  });
+  // 父级缺失的孤立二级分组兜底（避免数据异常时选项丢失）
+  groups.filter(g => {
+    const pid = g.parent_id || 0;
+    return pid !== 0 && !tops.some(t => t.id === pid);
+  }).forEach(g => nodes.push(mkOpt(g, true)));
+  return nodes;
+}
+
 function renderGroupOptions() {
   const sel = document.getElementById('i_group');
+  if (!sel) return;
   sel.innerHTML = '';
-  // 先缓存父分组名映射（给二级分组加前缀用）
-  const parentMap = {};
-  (state.groups || []).forEach(g => { if ((g.parent_id || 0) === 0) parentMap[g.id] = g.title; });
-  (state.groups || []).forEach(g => {
-    const opt = document.createElement('option');
-    opt.value = String(g.id);
-    const pid = g.parent_id || 0;
-    opt.textContent = pid === 0 ? g.title : `└─ ${parentMap[pid] || '?'} › ${g.title}`;
-    sel.appendChild(opt);
-  });
+  buildGroupOptionNodes().forEach(n => sel.appendChild(n));
+}
+
+/** 填充「移动到分组」下拉（与编辑弹窗共用同一套二级嵌套结构） */
+function renderMoveGroupOptions() {
+  const sel = document.getElementById('m_group');
+  if (!sel) return;
+  sel.innerHTML = '';
+  buildGroupOptionNodes().forEach(n => sel.appendChild(n));
 }
 
 /** 根据当前 parent_id 同步分组弹窗的「级别」和「所属一级」显示 */
@@ -845,6 +878,9 @@ async function loadItems() {
     toast('卡片加载失败：' + e.message, 'error');
     state.items = [];
   }
+  // 清理已被删除的勾选项，避免批量操作引用不存在的卡片
+  const alive = new Set(state.items.map(it => it.id));
+  state.selectedItems.forEach(id => { if (!alive.has(id)) state.selectedItems.delete(id); });
   renderItemsTable();
 }
 
@@ -898,9 +934,10 @@ function renderItemsTable() {
   updateFilterInfo(list.length);
   if (!list.length) {
     const hasFilter = !!(state.currentGroup || state.currentParent || state.itemKeyword);
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">' +
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">' +
       (hasFilter ? '没有匹配的卡片，试试调整筛选或清空搜索' : '暂无卡片，点击右上角「添加卡片」创建') + '</td></tr>';
     renderItemsPager(0);
+    syncBulkBar();
     return;
   }
   const total = list.length;
@@ -914,6 +951,7 @@ function renderItemsTable() {
     const tr = document.createElement('tr');
     if (isHidden) tr.classList.add('row-hidden');
     tr.innerHTML =
+      '<td><input type="checkbox" class="item-check" data-id="' + item.id + '"' + (state.selectedItems.has(item.id) ? ' checked' : '') + '></td>' +
       '<td><span class="icon-preview" style="width:34px;height:34px;font-size:14px;border-radius:8px" data-cell="icon"></span></td>' +
       '<td><div>' + esc(item.title) + (isHidden ? ' <span class="vis-badge" style="background:var(--color-warn)">隐藏</span>' : '') + '</div></td>' +
       '<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)">' + esc(item.url || item.lan_url) + '</td>' +
@@ -923,6 +961,7 @@ function renderItemsTable() {
       '<button class="btn btn-sm" data-act="up">上移</button>' +
       '<button class="btn btn-sm" data-act="down">下移</button>' +
       '<button class="btn btn-sm btn-vis" data-act="toggle_hidden">' + (isHidden ? '显示' : '隐藏') + '</button>' +
+      '<button class="btn btn-sm" data-act="move">移动</button>' +
       '<button class="btn btn-sm" data-act="edit">编辑</button>' +
       '<button class="btn btn-sm btn-danger" data-act="del">删除</button>' +
       '</div></td>';
@@ -932,6 +971,14 @@ function renderItemsTable() {
     tr.querySelectorAll('[data-act]').forEach(btn => {
       btn.onclick = () => itemAction(btn.dataset.act, item);
     });
+    const chk = tr.querySelector('.item-check');
+    if (chk) {
+      chk.onchange = () => {
+        const id = Number(chk.dataset.id);
+        if (chk.checked) state.selectedItems.add(id); else state.selectedItems.delete(id);
+        syncBulkBar();
+      };
+    }
     const tag = tr.querySelector('.item-group-tag');
     if (tag) {
       tag.onclick = () => {
@@ -947,6 +994,23 @@ function renderItemsTable() {
     tbody.appendChild(tr);
   });
   renderItemsPager(total);
+  syncBulkBar();
+}
+
+/** 同步批量操作栏：已选数量 + 全选框状态 */
+function syncBulkBar() {
+  const bar = document.getElementById('itemsBulkBar');
+  const countEl = document.getElementById('itemsBulkCount');
+  const checkAll = document.getElementById('itemsCheckAll');
+  const checks = document.querySelectorAll('#itemsTbody .item-check');
+  let pageChecked = 0;
+  checks.forEach(c => { if (c.checked) pageChecked++; });
+  if (checkAll) {
+    checkAll.checked = checks.length > 0 && pageChecked === checks.length;
+    checkAll.indeterminate = pageChecked > 0 && pageChecked < checks.length;
+  }
+  if (countEl) countEl.textContent = '已选 ' + state.selectedItems.size + ' 张';
+  if (bar) bar.hidden = state.selectedItems.size === 0;
 }
 
 /** 渲染卡片列表分页控件（上一页/页码/下一页 + 总数） */
@@ -1044,8 +1108,12 @@ async function itemAction(act, item) {
     openItemModal(item);
     return;
   }
+  if (act === 'move') {
+    openMoveModal([item.id]);
+    return;
+  }
   if (act === 'up' || act === 'down') {
-    API.post(API_BASE + 'items.php?action=sort', { id: item.id, direction: act === 'up' ? 'up' : 'down' })
+    API.post(API_BASE + 'items.php?action=sort', { id: item.id, dir: act })
       .then(loadItems)
       .catch(e => toast(e.message, 'error'));
     return;
@@ -1064,6 +1132,86 @@ async function itemAction(act, item) {
       .then(() => { toast('已删除', 'success'); loadGroups().then(loadItems); })
       .catch(e => toast(e.message, 'error'));
   }
+}
+
+/** 打开「移动分组」弹窗：ids 传 1 张为单卡移动，多张为批量移动 */
+function openMoveModal(ids) {
+  const modal = document.getElementById('moveModal');
+  if (!modal) return;
+  state.movingItemIDs = (ids || []).slice();
+  renderMoveGroupOptions();
+  const sel = document.getElementById('m_group');
+  const preset = state.currentGroup || state.currentParent || 0;
+  if (sel && preset && [...sel.options].some(o => Number(o.value) === preset)) sel.value = String(preset);
+  const hint = document.getElementById('moveHint');
+  if (hint) {
+    const names = state.movingItemIDs.map(id => {
+      const it = (state.items || []).find(x => x.id === id);
+      return it ? it.title : '#' + id;
+    });
+    hint.textContent = names.length > 1
+      ? '将移动 ' + names.length + ' 张卡片：' + names.join('、')
+      : '将移动卡片：' + (names[0] || '');
+  }
+  modal.classList.add('show');
+}
+
+/** 确认移动：统一走 batch_move，单卡与批量同一套接口 */
+async function confirmMove() {
+  const sel = document.getElementById('m_group');
+  const gid = Number(sel && sel.value);
+  if (!gid) { toast('请选择目标分组', 'error'); return; }
+  if (!state.movingItemIDs.length) { toast('没有要移动的卡片', 'error'); return; }
+  const btn = document.getElementById('moveConfirmBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const res = await API.post(API_BASE + 'items.php?action=batch_move', { ids: state.movingItemIDs, group_id: gid });
+    document.getElementById('moveModal').classList.remove('show');
+    state.selectedItems.clear();
+    toast('已移动 ' + ((res && res.moved) || state.movingItemIDs.length) + ' 张卡片', 'success');
+    await loadGroups();
+    await loadItems();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+/** 批量操作栏：全选当前页 / 移动分组 / 批量删除 / 取消选择 */
+function bindItemsBulk() {
+  const checkAll = document.getElementById('itemsCheckAll');
+  if (checkAll) {
+    checkAll.onchange = () => {
+      const ids = [...document.querySelectorAll('#itemsTbody .item-check')].map(c => Number(c.dataset.id));
+      ids.forEach(id => { if (checkAll.checked) state.selectedItems.add(id); else state.selectedItems.delete(id); });
+      renderItemsTable();
+    };
+  }
+  const clearBtn = document.getElementById('bulkClearBtn');
+  if (clearBtn) clearBtn.onclick = () => { state.selectedItems.clear(); renderItemsTable(); };
+  const moveBtn = document.getElementById('bulkMoveBtn');
+  if (moveBtn) moveBtn.onclick = () => {
+    if (state.selectedItems.size === 0) return;
+    openMoveModal([...state.selectedItems]);
+  };
+  const delBtn = document.getElementById('bulkDelBtn');
+  if (delBtn) delBtn.onclick = async () => {
+    const ids = [...state.selectedItems];
+    if (!ids.length) return;
+    if (!await uiConfirm('确定删除选中的 ' + ids.length + ' 张卡片？', { danger: true })) return;
+    try {
+      const res = await API.post(API_BASE + 'items.php?action=batch_delete', { ids });
+      state.selectedItems.clear();
+      toast('已删除 ' + ((res && res.deleted) || ids.length) + ' 张卡片', 'success');
+      await loadGroups();
+      await loadItems();
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  };
+  const moveOk = document.getElementById('moveConfirmBtn');
+  if (moveOk) moveOk.onclick = confirmMove;
 }
 
 function openItemModal(item) {
@@ -1281,6 +1429,7 @@ function isSiblingContiguous(list) {
 
 function bindItems() {
   document.getElementById('addItemBtn').onclick = () => openItemModal(null);
+  bindItemsBulk();
 
   // ============ 事件绑定 ============
   // 标题 → iconText 自动同步（未手动编辑过时才跟随）

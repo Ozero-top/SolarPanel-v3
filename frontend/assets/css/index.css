@@ -10,6 +10,33 @@
   --group-desc-size: 13px;
   --group-title-weight: 600;
   --group-title-spacing: 0.2px;
+
+  /* 动效令牌：统一时长与缓动，避免各主题/组件各自 240ms 线性过渡造成的生硬感 */
+  --sp-dur-xs: 96ms;
+  --sp-dur-sm: 160ms;
+  --sp-dur-md: 240ms;
+  --sp-dur-lg: 360ms;
+  --sp-dur-xl: 520ms;
+  --sp-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --sp-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --sp-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 风格切换过渡：只给结构性表面做颜色过渡，避免整套配色硬切（260ms 后移除，不影响日常 hover） */
+html.sp-theme-swap .bg-layer,
+html.sp-theme-swap .topbar,
+html.sp-theme-swap .group,
+html.sp-theme-swap .card,
+html.sp-theme-swap .search-box,
+html.sp-theme-swap .icon-btn,
+html.sp-theme-swap .btn,
+html.sp-theme-swap .navbar-tabs,
+html.sp-theme-swap .wetab-dock,
+html.sp-theme-swap .clock-time {
+  transition: background-color var(--sp-dur-md) var(--sp-ease-out),
+              border-color var(--sp-dur-md) var(--sp-ease-out),
+              color var(--sp-dur-md) var(--sp-ease-out),
+              box-shadow var(--sp-dur-md) var(--sp-ease-out) !important;
 }
 
 /* ---------- 隐藏页面右侧纵向滚动条（滚轮/触控板/键盘滚动照常可用） ---------- */
@@ -47,6 +74,11 @@ body::-webkit-scrollbar {
   max-width: var(--content-max, 1200px);
   margin: 0 auto;
   padding: var(--content-pt, 0px) var(--content-px, 20px) var(--content-pb, 40px);
+}
+/* 首屏主视觉包裹层：默认不改变布局（时钟 / 天气 / 搜索照旧分开排布），
+   仅 wetab 主题在 themes.css 中改为整块吸顶 */
+.hero-wrap {
+  display: contents;
 }
 
 /* ---------- 顶栏（胶囊浮岛） ---------- */
@@ -1197,45 +1229,71 @@ body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
   transform: translateY(0) scale(0.98);
   box-shadow: var(--pressed-sm);
 }
+/* 上浮使用带回弹的缓动，按下立即响应（96ms），观感有「起落」而不是匀速平移 */
+.card {
+  transition: box-shadow var(--sp-dur-md) var(--sp-ease-out),
+              transform var(--sp-dur-md) var(--sp-ease-spring);
+}
+.card:active {
+  transition-duration: var(--sp-dur-xs);
+  transition-timing-function: var(--sp-ease-in);
+}
 
-/* 卡片入场：缩放淡入（错峰出现，按 DOM 顺序递增延迟） */
+/* 卡片入场：位移 + 缩放 + 淡入的「浮现」（错峰出现，按 DOM 顺序递增延迟）
+   --sk-base 由分组渲染时写入（分组序号 × 40ms，封顶 120ms），与组入场错开，
+   整体封顶约 0.6s，避免原先组 960ms + 卡片 220ms 的机械长排队 */
 @keyframes scale-in {
   from {
     opacity: 0;
-    transform: scale(0.9);
+    transform: translateY(10px) scale(0.96);
   }
   to {
     opacity: 1;
-    transform: scale(1);
+    transform: translateY(0) scale(1);
   }
 }
 
 .scale-in {
-  --sk-duration: 400ms;
+  --sk-duration: 320ms;
   --sk-delay: 0ms;
-  --sk-ease: cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: transform, opacity;
-  animation: scale-in var(--sk-duration) var(--sk-ease) var(--sk-delay) backwards;
+  --sk-ease: var(--sp-ease-out);
+  animation: scale-in var(--sk-duration) var(--sk-ease) calc(var(--sk-base, 80ms) + var(--sk-delay)) backwards;
 }
 
 .cards > .scale-in:nth-child(1) { --sk-delay: 0ms; }
-.cards > .scale-in:nth-child(2) { --sk-delay: 20ms; }
-.cards > .scale-in:nth-child(3) { --sk-delay: 40ms; }
-.cards > .scale-in:nth-child(4) { --sk-delay: 60ms; }
-.cards > .scale-in:nth-child(5) { --sk-delay: 80ms; }
-.cards > .scale-in:nth-child(6) { --sk-delay: 100ms; }
-.cards > .scale-in:nth-child(7) { --sk-delay: 120ms; }
-.cards > .scale-in:nth-child(8) { --sk-delay: 140ms; }
-.cards > .scale-in:nth-child(9) { --sk-delay: 160ms; }
-.cards > .scale-in:nth-child(10) { --sk-delay: 180ms; }
-.cards > .scale-in:nth-child(11) { --sk-delay: 200ms; }
-.cards > .scale-in:nth-child(n+12) { --sk-delay: 220ms; }
+.cards > .scale-in:nth-child(2) { --sk-delay: 12ms; }
+.cards > .scale-in:nth-child(3) { --sk-delay: 24ms; }
+.cards > .scale-in:nth-child(4) { --sk-delay: 36ms; }
+.cards > .scale-in:nth-child(5) { --sk-delay: 48ms; }
+.cards > .scale-in:nth-child(6) { --sk-delay: 60ms; }
+.cards > .scale-in:nth-child(7) { --sk-delay: 72ms; }
+.cards > .scale-in:nth-child(8) { --sk-delay: 84ms; }
+.cards > .scale-in:nth-child(9) { --sk-delay: 96ms; }
+.cards > .scale-in:nth-child(n+10) { --sk-delay: 96ms; }
+
+/* 切组/搜索等重绘：不再整屏卡片弹入，改为整块轻微滑入（由 JS 给 section 加 class） */
+@keyframes swap-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.994);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.group.swap-in {
+  animation: swap-in var(--sp-dur-md) var(--sp-ease-out) both;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .scale-in {
     animation: none;
     opacity: 1;
     transform: none;
+  }
+  .group.swap-in {
+    animation: none;
   }
   .card-bg::before {
     animation: none !important;
@@ -1468,16 +1526,16 @@ body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
 /* ---------- 分组入场：打开主页后由上而下逐个浮现（仅首屏，JS 控制只播一次） ---------- */
 /* 注：系统「减少动效」偏好开启时动画被禁用属预期兜底行为 */
 .group.group-in {
-  animation: groupIn 520ms cubic-bezier(0.25, 0.6, 0.3, 1) both;
+  animation: groupIn var(--sp-dur-lg) var(--sp-ease-out) both;
 }
 @keyframes groupIn {
   from {
     opacity: 0;
-    transform: translateY(22px);
+    transform: translateY(16px) scale(0.992);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 @media (prefers-reduced-motion: reduce) {

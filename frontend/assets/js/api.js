@@ -3,8 +3,15 @@
  */
 
 /* ================= 应用版本与更新日志（每次更新只需改这里） ================= */
-const APP_VERSION = 'v3.7.2';
+const APP_VERSION = 'v3.7.3';
 const APP_CHANGELOG = [
+  { ver: 'v3.7.3', date: '2026-11-01', items: [
+    '🗂️ 后台卡片支持批量移动分组 / 批量删除；「所属分组」下拉改为一 / 二级分组层级展示',
+    '✨ 液态玻璃与 Tab标签页主题动效重做：分组与卡片入场编排、切换分组过渡、Dock 图标弹性放大、壁纸视差',
+    '🖱️ Tab标签页新增滚轮切换分组：滚一格走一档，一级分组内先遍历二级；时钟 / 日期 / 天气 / 搜索栏吸顶常驻；⚙ 面板新增「滚动灵敏度」，按账号保存、换设备沿用',
+    '🐛 修复 Tab标签页滚动后顶部出现纯色白条、主视觉被滚走，以及壁纸模式多行标题白色光晕叠成浅白底',
+    '🐛 修复旧库 created_at 为空导致分组列表消失；编辑卡片误报「不存在」、卡片上移 / 下移参数错误',
+  ]},
   { ver: 'v3.7.2', date: '2026-11-01', items: [
     '🔔 NAS 监控支持阈值告警：存储池使用率、温度超限、容器停止，推送飞书 / 通用 Webhook，后台可配置阈值与测试',
     '📈 NAS 详情新增近 10 分钟 / 1 小时 / 24 小时历史曲线，每 5 分钟落盘，重启不丢',
@@ -604,13 +611,15 @@ function spIrisField() {
 
 /** 指针跟随型主题（卡片内聚光）：把指针在卡片内的相对位置写入 --px / --py */
 function spCardPointerGlow() {
-  const style = document.documentElement.dataset.style;
-  if ((style !== 'iris' && style !== 'aurora') || window.__spCardPointerGlow) return;
   if (!window.matchMedia || !window.matchMedia('(pointer: fine)').matches) return;
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  // 只绑定一次；风格在运行期切换时按当前 data-style 判断，避免切换后失效
+  if (window.__spCardPointerGlow) return;
   window.__spCardPointerGlow = true;
 
   document.addEventListener('pointermove', (e) => {
+    const style = document.documentElement.dataset.style;
+    if (style !== 'iris' && style !== 'aurora' && style !== 'liquid-glass') return;
     const card = e.target && e.target.closest ? e.target.closest('.card') : null;
     if (!card) return;
     const r = card.getBoundingClientRect();
@@ -624,6 +633,13 @@ function spCardPointerGlow() {
 function applyTheme(settings) {
   const root = document.documentElement;
   const style = settings && SP_STYLES.includes(settings.theme_style) ? settings.theme_style : 'liquid-glass';
+  // 切换风格时给表面元素一段颜色过渡，避免整套配色硬切
+  const prev = root.dataset.style;
+  if (prev && prev !== style) {
+    root.classList.add('sp-theme-swap');
+    clearTimeout(window.__spThemeSwapTimer);
+    window.__spThemeSwapTimer = setTimeout(() => root.classList.remove('sp-theme-swap'), 260);
+  }
   root.dataset.style = style;
   try { localStorage.setItem('sp_style', style); } catch (e) { /* 隐私模式忽略 */ }
 

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"strings"
 
@@ -65,7 +66,10 @@ func (h *GroupsHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
 
 func scanItemGroup(row *sql.Row) (*ItemGroupRow, error) {
 	var g ItemGroupRow
-	err := row.Scan(&g.ID, &g.ParentID, &g.Title, &g.Icon, &g.Description, &g.Sort, &g.IsVisible, &g.UserID, &g.CreatedAt)
+	// 旧库（V2 导入）created_at 为 NULL，直接扫进 string 会报错，这里做空值兜底
+	var createdAt sql.NullString
+	err := row.Scan(&g.ID, &g.ParentID, &g.Title, &g.Icon, &g.Description, &g.Sort, &g.IsVisible, &g.UserID, &createdAt)
+	g.CreatedAt = createdAt.String
 	return &g, err
 }
 
@@ -79,9 +83,12 @@ func (h *GroupsHandler) List(w http.ResponseWriter, r *http.Request) {
 	var groups []ItemGroupRow
 	for rows.Next() {
 		var g ItemGroupRow
-		if err := rows.Scan(&g.ID, &g.ParentID, &g.Title, &g.Icon, &g.Description, &g.Sort, &g.IsVisible, &g.UserID, &g.CreatedAt); err != nil {
+		var createdAt sql.NullString
+		if err := rows.Scan(&g.ID, &g.ParentID, &g.Title, &g.Icon, &g.Description, &g.Sort, &g.IsVisible, &g.UserID, &createdAt); err != nil {
+			log.Printf("[groups] 跳过无法解析的分组行: %v", err)
 			continue
 		}
+		g.CreatedAt = createdAt.String
 		groups = append(groups, g)
 	}
 	rows.Close() // 必须先关，释放读锁后才能再开 QueryRow

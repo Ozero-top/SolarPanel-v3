@@ -177,8 +177,29 @@ func Init(cfg *config.Config) error {
 	// 回填 parent_id 孤儿分组（幂等）
 	backfillParentIDs()
 
+	log.Println("[db] backfillCreatedAt...")
+	// 回填旧库 created_at 空值（幂等）
+	backfillCreatedAt()
+
 	log.Println("[db] ✅ 数据库就绪")
 	return nil
+}
+
+// backfillCreatedAt 旧库（V2 导入）的 items / item_groups.created_at 为 NULL，
+// 直接扫进 string 会导致分组列表整行被跳过（分组“消失”）、编辑卡片报“卡片不存在”，
+// 启动时统一补成当前时间（幂等，只处理 NULL / 空串）。
+func backfillCreatedAt() {
+	now := NowStr()
+	for _, table := range []string{"items", "item_groups"} {
+		res, err := DB.Exec("UPDATE " + table + " SET created_at = ? WHERE created_at IS NULL OR created_at = ''", now)
+		if err != nil {
+			log.Printf("[db] 回填 %s.created_at 失败: %v", table, err)
+			continue
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			log.Printf("[db] 回填 %s.created_at %d 行 ✅", table, n)
+		}
+	}
 }
 
 // NowStr 当前时间（本地时区，SQLite 兼容）
