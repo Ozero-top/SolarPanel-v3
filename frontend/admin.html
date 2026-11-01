@@ -719,6 +719,36 @@
               <div class="form-hint">调低可透出壁纸，调高文字对比更强；建议 80%~100%。</div>
             </div>
           </div>
+          <h4 class="sub-group-title">🔔 告警通知</h4>
+          <div class="form-row">
+            <div class="form-item">
+              <label>告警开关</label>
+              <select class="select" id="s_nas_alert_enable" name="s_nas_alert_enable">
+                <option value="1">开启（异常时推送告警）</option>
+                <option value="0">关闭（不推送任何告警）</option>
+              </select>
+              <div class="form-hint">后端每 60 秒检查一次；磁盘/温度超阈值、容器非正常退出时推送；同一告警 6 小时内不重复推送，恢复后推送一条恢复通知。</div>
+            </div>
+            <div class="form-item">
+              <label>磁盘使用率阈值（%）</label>
+              <input class="input" id="s_nas_alert_disk" name="s_nas_alert_disk" type="number" min="50" max="100" step="1" placeholder="90">
+              <div class="form-hint">任一存储池使用率达到该值即告警，建议 85~95，默认 90。</div>
+            </div>
+            <div class="form-item">
+              <label>温度阈值（°C）</label>
+              <input class="input" id="s_nas_alert_temp" name="s_nas_alert_temp" type="number" min="40" max="110" step="1" placeholder="75">
+              <div class="form-hint">CPU 等温度超过该值即告警，建议 70~85，默认 75。</div>
+            </div>
+          </div>
+          <div class="form-item">
+            <label>Webhook 地址</label>
+            <input class="input" id="s_nas_alert_webhook" name="s_nas_alert_webhook" type="text" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/...">
+            <div class="form-hint">支持飞书群机器人，或可接收通用 JSON Webhook（POST application/json）；留空则不推送。</div>
+          </div>
+          <div class="form-item">
+            <button class="btn" id="nasAlertTest" type="button">发送测试告警</button>
+            <div class="form-hint">立即向已保存的 Webhook 地址发送一条测试消息，请先「保存」本分区再测试。</div>
+          </div>
         </form>
       </div>
 
@@ -1501,7 +1531,7 @@
 
   <script src="assets/js/qrcode.min.js"></script>
   <script src="assets/js/api.js?v=44785436"></script>
-  <script src="assets/js/admin.js?v=83fefd71"></script>
+  <script src="assets/js/admin.js?v=bc7c5761"></script>
   <script src="assets/js/admin-console.js?v=a80f180c"></script>
   <script src="assets/js/admin-ui.js?v=0218fafc"></script>
 </body>

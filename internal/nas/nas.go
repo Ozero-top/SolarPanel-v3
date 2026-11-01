@@ -8,6 +8,7 @@
 package nas
 
 import (
+	"encoding/json"
 	"net"
 	"os"
 	"path/filepath"
@@ -19,22 +20,41 @@ import (
 	"time"
 )
 
+// TempInfo 单个温度传感器（value = -1 表示不可读）
+type TempInfo struct {
+	Name  string  `json:"name"`
+	Value float64 `json:"value"`
+}
+
+// FanInfo 单个风扇转速
+type FanInfo struct {
+	Name string  `json:"name"`
+	RPM  float64 `json:"rpm"`
+}
+
 // HostInfo 宿主机概览
 type HostInfo struct {
-	Hostname  string  `json:"hostname"`
-	OSName    string  `json:"os_name"`
-	OSFamily  string  `json:"os_family"`
-	Kernel    string  `json:"kernel"`
-	Arch      string  `json:"arch"`
-	Uptime    int64   `json:"uptime"`
-	Cores     int     `json:"cores"`
-	Load1     float64 `json:"load1"`
-	CPUPct    float64 `json:"cpu_pct"`
-	TempC     float64 `json:"temp_c"`
-	MemTotal  uint64  `json:"mem_total"`
-	MemUsed   uint64  `json:"mem_used"`
-	SwapTotal uint64  `json:"swap_total"`
-	SwapUsed  uint64  `json:"swap_used"`
+	Hostname  string     `json:"hostname"`
+	OSName    string     `json:"os_name"`
+	OSFamily  string     `json:"os_family"`
+	Kernel    string     `json:"kernel"`
+	Arch      string     `json:"arch"`
+	Uptime    int64      `json:"uptime"`
+	Cores     int        `json:"cores"`
+	Load1     float64    `json:"load1"`
+	Load5     float64    `json:"load5"`
+	Load15    float64    `json:"load15"`
+	CPUPct    float64    `json:"cpu_pct"`
+	CPUCores  []float64  `json:"cpu_cores"`
+	TempC     float64    `json:"temp_c"`
+	TempName  string     `json:"temp_name"`
+	Temps     []TempInfo `json:"temps"`
+	Fans      []FanInfo  `json:"fans"`
+	MemTotal  uint64     `json:"mem_total"`
+	MemUsed   uint64     `json:"mem_used"`
+	MemCache  uint64     `json:"mem_cache"`
+	SwapTotal uint64     `json:"swap_total"`
+	SwapUsed  uint64     `json:"swap_used"`
 	// IP 宿主机内网地址（优先私网地址）
 	IP string `json:"ip"`
 	// Virtualized 表示系统运行在虚拟机中（虚拟化平台通常不暴露 CPU 温度传感器）
@@ -43,10 +63,25 @@ type HostInfo struct {
 
 // DiskInfo 存储池
 type DiskInfo struct {
-	Mount  string `json:"mount"`
-	FSType string `json:"fstype"`
-	Total  uint64 `json:"total"`
-	Used   uint64 `json:"used"`
+	Dev      string  `json:"dev"`
+	Mount    string  `json:"mount"`
+	FSType   string  `json:"fstype"`
+	Total    uint64  `json:"total"`
+	Used     uint64  `json:"used"`
+	ReadBps  float64 `json:"read_bps"`
+	WriteBps float64 `json:"write_bps"`
+	IOPS     float64 `json:"iops"`
+	Await    float64 `json:"await"`
+}
+
+// DiskIOInfo 物理盘 IO 合计；ops / ioMs 仅用于加权计算 await，不参与 JSON
+type DiskIOInfo struct {
+	ReadBps  float64 `json:"read_bps"`
+	WriteBps float64 `json:"write_bps"`
+	IOPS     float64 `json:"iops"`
+	Await    float64 `json:"await"`
+	ops      uint64
+	ioMs     uint64
 }
 
 // NetInfo 网络吞吐
@@ -69,6 +104,9 @@ type ContainerInfo struct {
 	TxBps    float64  `json:"tx_bps"`
 	Uptime   int64    `json:"uptime"`
 	Ports    []string `json:"ports"` // 端口映射，如 10086→10086/tcp
+	// RestartCount 容器重启次数；Health 健康检查状态（无健康检查时为空）
+	RestartCount int    `json:"restart_count"`
+	Health       string `json:"health"`
 }
 
 // History 近 10 分钟采样历史；后端持续采样，刷新页面不会丢失曲线
@@ -86,9 +124,13 @@ type Snapshot struct {
 	Disks       []DiskInfo      `json:"disks"`
 	Net         NetInfo         `json:"net"`
 	Containers  []ContainerInfo `json:"containers"`
+	DiskIO      DiskIOInfo      `json:"disk_io"`
 	History     History         `json:"history"`
+	HistoryHour History         `json:"history_hour"`
+	HistoryDay  History         `json:"history_day"`
 	DockerOK    bool            `json:"docker_ok"`
 	HostRoot    string          `json:"host_root"`
+	GuestMasked bool            `json:"guest_masked"`
 	CollectedAt int64           `json:"collected_at"`
 }
 
@@ -103,48 +145,90 @@ type netSample struct {
 }
 
 type ctSample struct {
-	rx, tx uint64
-	at     time.Time
+	rx, tx           uint64
+	cpuTotal, sysCPU uint64
+	at               time.Time
 }
 
-// Collector 带缓存的采集器（前端轮询间隔通常 2~10s，缓存 2s 避免重复采集）
+// diskstatSample /proc/diskstats 累计值快照（不含分区与 dm/md/loop/ram）
+type diskstatSample struct {
+	reads, writes               uint64
+	sectorsRead, sectorsWritten uint64
+	msRead, msWrite             uint64
+	at                          time.Time
+}
+
+// histTier 一档历史环形缓冲
+type histTier struct {
+	step, max   int
+	rx, tx, cpu []float64
+}
+
+func (t *histTier) push(cpu, rx, tx float64) {
+	t.cpu = appendRing(t.cpu, cpu, t.max)
+	t.rx = appendRing(t.rx, rx, t.max)
+	t.tx = appendRing(t.tx, tx, t.max)
+}
+
+func (t *histTier) snapshot() History {
+	return History{
+		Interval: t.step,
+		Span:     t.step * t.max,
+		Rx:       append([]float64{}, t.rx...),
+		Tx:       append([]float64{}, t.tx...),
+		CPU:      append([]float64{}, t.cpu...),
+	}
+}
+
+// Collector 带缓存的采集器（前端轮询间隔通常 2~10s，缓存 2~3s 避免重复采集）
 type Collector struct {
 	hostRoot     string
 	dockerSocket string
+	stateDir     string
 
 	mu     sync.Mutex
 	snap   *Snapshot
 	snapAt time.Time
 
-	// sampleMu 保护 cpuPrev / netPrev：主采集与后台历史采样会并发读取 /proc
-	sampleMu sync.Mutex
-	cpuPrev  cpuSample
-	netPrev  netSample
-	ctPrev   map[string]ctSample
+	// sampleMu 保护 cpuPrev / cpuCorePrev / netPrev：主采集与后台历史采样会并发读取 /proc
+	sampleMu    sync.Mutex
+	cpuPrev     cpuSample
+	cpuCorePrev []cpuSample
+	netPrev     netSample
+
+	// ctMu 保护 ctPrev：容器 stats 由多个 goroutine 并发写入
+	ctMu   sync.Mutex
+	ctPrev map[string]ctSample
+
+	// diskPrev 只在 Collect（受 mu 串行）中读写
+	diskPrev map[string]diskstatSample
 
 	histMu   sync.Mutex
-	histRx   []float64
-	histTx   []float64
-	histCPU  []float64
-	histMax  int
-	histStep int
+	hist10   histTier // 5s × 120 = 10 分钟（面板 history 语义不变）
+	hist60   histTier // 30s × 120 = 1 小时
+	hist24   histTier // 600s × 144 = 24 小时
+	histTick int
 }
 
-func NewCollector(hostRoot, dockerSocket string) *Collector {
+func NewCollector(hostRoot, dockerSocket, stateDir string) *Collector {
 	c := &Collector{
 		hostRoot:     hostRoot,
 		dockerSocket: dockerSocket,
+		stateDir:     stateDir,
 		ctPrev:       make(map[string]ctSample),
-		histMax:      120, // 5s × 120 = 10 分钟
-		histStep:     5,
+		diskPrev:     make(map[string]diskstatSample),
+		hist10:       histTier{step: 5, max: 120},
+		hist60:       histTier{step: 30, max: 120},
+		hist24:       histTier{step: 600, max: 144},
 	}
+	c.loadHistory()
 	go c.historyLoop()
 	return c
 }
 
 // historyLoop 后台轻量采样（只读 /proc，不触发 Docker 查询），保证曲线在刷新页面后依然完整
 func (c *Collector) historyLoop() {
-	t := time.NewTicker(time.Duration(c.histStep) * time.Second)
+	t := time.NewTicker(time.Duration(c.hist10.step) * time.Second)
 	defer t.Stop()
 	for range t.C {
 		c.sampleHistory()
@@ -156,10 +240,20 @@ func (c *Collector) sampleHistory() {
 	net := c.collectNet()
 
 	c.histMu.Lock()
-	defer c.histMu.Unlock()
-	c.histCPU = appendRing(c.histCPU, cpu, c.histMax)
-	c.histRx = appendRing(c.histRx, net.RxBps, c.histMax)
-	c.histTx = appendRing(c.histTx, net.TxBps, c.histMax)
+	c.hist10.push(cpu, net.RxBps, net.TxBps)
+	c.histTick++
+	if c.histTick%6 == 0 {
+		c.hist60.push(cpu, net.RxBps, net.TxBps)
+	}
+	if c.histTick%120 == 0 {
+		c.hist24.push(cpu, net.RxBps, net.TxBps)
+	}
+	save := c.histTick%60 == 0 // 60 × 5s = 5 分钟落盘一次
+	c.histMu.Unlock()
+
+	if save {
+		c.saveHistory()
+	}
 }
 
 func appendRing(arr []float64, v float64, max int) []float64 {
@@ -173,31 +267,109 @@ func appendRing(arr []float64, v float64, max int) []float64 {
 func (c *Collector) historySnapshot() History {
 	c.histMu.Lock()
 	defer c.histMu.Unlock()
-	return History{
-		Interval: c.histStep,
-		Span:     c.histStep * c.histMax,
-		Rx:       append([]float64{}, c.histRx...),
-		Tx:       append([]float64{}, c.histTx...),
-		CPU:      append([]float64{}, c.histCPU...),
-	}
+	return c.hist10.snapshot()
 }
 
-// Collect 返回快照；cacheTTL 内的重复调用直接返回缓存
-func (c *Collector) Collect(diskPaths []string) Snapshot {
+func (c *Collector) historyHourSnapshot() History {
+	c.histMu.Lock()
+	defer c.histMu.Unlock()
+	return c.hist60.snapshot()
+}
+
+func (c *Collector) historyDaySnapshot() History {
+	c.histMu.Lock()
+	defer c.histMu.Unlock()
+	return c.hist24.snapshot()
+}
+
+// historyFile 三档历史的落盘格式
+type historyFile struct {
+	Minute History `json:"minute"`
+	Hour   History `json:"hour"`
+	Day    History `json:"day"`
+}
+
+func (c *Collector) historyPath() string {
+	if c.stateDir == "" {
+		return ""
+	}
+	return filepath.Join(c.stateDir, "nas_history.json")
+}
+
+// loadHistory 启动时读回落盘历史；缺失或损坏直接忽略
+func (c *Collector) loadHistory() {
+	p := c.historyPath()
+	if p == "" {
+		return
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return
+	}
+	var f historyFile
+	if err := json.Unmarshal(b, &f); err != nil {
+		return
+	}
+	c.histMu.Lock()
+	defer c.histMu.Unlock()
+	c.hist10.rx, c.hist10.tx, c.hist10.cpu = trimRing(f.Minute.Rx, c.hist10.max), trimRing(f.Minute.Tx, c.hist10.max), trimRing(f.Minute.CPU, c.hist10.max)
+	c.hist60.rx, c.hist60.tx, c.hist60.cpu = trimRing(f.Hour.Rx, c.hist60.max), trimRing(f.Hour.Tx, c.hist60.max), trimRing(f.Hour.CPU, c.hist60.max)
+	c.hist24.rx, c.hist24.tx, c.hist24.cpu = trimRing(f.Day.Rx, c.hist24.max), trimRing(f.Day.Tx, c.hist24.max), trimRing(f.Day.CPU, c.hist24.max)
+}
+
+func trimRing(arr []float64, max int) []float64 {
+	if len(arr) > max {
+		arr = arr[len(arr)-max:]
+	}
+	return append([]float64{}, arr...)
+}
+
+// saveHistory 每 5 分钟落盘一次三档历史，先写临时文件再 rename，避免半截文件
+func (c *Collector) saveHistory() {
+	p := c.historyPath()
+	if p == "" {
+		return
+	}
+	c.histMu.Lock()
+	f := historyFile{Minute: c.hist10.snapshot(), Hour: c.hist60.snapshot(), Day: c.hist24.snapshot()}
+	c.histMu.Unlock()
+
+	b, err := json.Marshal(f)
+	if err != nil {
+		return
+	}
+	tmp := p + ".tmp"
+	if err := os.WriteFile(tmp, b, 0644); err != nil {
+		return
+	}
+	os.Rename(tmp, p)
+}
+
+// Collect 返回快照；ttl 内的重复调用直接返回缓存（ttl 由调用方按刷新间隔传入）
+func (c *Collector) Collect(diskPaths []string, ttl time.Duration) Snapshot {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.snap != nil && time.Since(c.snapAt) < 3*time.Second {
+	if ttl <= 0 {
+		ttl = 3 * time.Second
+	}
+	if c.snap != nil && time.Since(c.snapAt) < ttl {
 		cp := *c.snap
 		cp.History = c.historySnapshot()
+		cp.HistoryHour = c.historyHourSnapshot()
+		cp.HistoryDay = c.historyDaySnapshot()
 		return cp
 	}
 
+	disks, diskIO := c.collectDisks(diskPaths)
 	s := Snapshot{
 		Host:        c.collectHost(),
-		Disks:       c.collectDisks(diskPaths),
+		Disks:       disks,
 		Net:         c.collectNet(),
+		DiskIO:      diskIO,
 		History:     c.historySnapshot(),
+		HistoryHour: c.historyHourSnapshot(),
+		HistoryDay:  c.historyDaySnapshot(),
 		DockerOK:    dockerAvailable(c.dockerSocket),
 		HostRoot:    c.hostRoot,
 		CollectedAt: time.Now().Unix(),
@@ -243,7 +415,10 @@ func readLines(path string) []string {
 /* ================= 宿主机 ================= */
 
 func (c *Collector) collectHost() HostInfo {
-	h := HostInfo{Arch: runtime.GOARCH, TempC: -1}
+	h := HostInfo{
+		Arch: runtime.GOARCH, TempC: -1,
+		CPUCores: []float64{}, Temps: []TempInfo{}, Fans: []FanInfo{},
+	}
 
 	// 宿主 UTS namespace 的主机名在 /proc/1/sys/kernel/hostname；
 	// OpenWrt 系没有 /etc/hostname，容器自身 /proc/sys/kernel/hostname 只会返回容器 ID。
@@ -272,8 +447,10 @@ func (c *Collector) collectHost() HostInfo {
 		h.Cores = runtime.NumCPU()
 	}
 
-	if f := strings.Fields(readFileTrim(c.hostPath("/proc/loadavg"))); len(f) > 0 {
+	if f := strings.Fields(readFileTrim(c.hostPath("/proc/loadavg"))); len(f) >= 3 {
 		h.Load1, _ = strconv.ParseFloat(f[0], 64)
+		h.Load5, _ = strconv.ParseFloat(f[1], 64)
+		h.Load15, _ = strconv.ParseFloat(f[2], 64)
 	}
 	if f := strings.Fields(readFileTrim(c.hostPath("/proc/uptime"))); len(f) > 0 {
 		if v, err := strconv.ParseFloat(f[0], 64); err == nil {
@@ -282,10 +459,12 @@ func (c *Collector) collectHost() HostInfo {
 	}
 
 	h.CPUPct = c.sampleCPU(c.hostPath("/proc/stat"))
+	h.CPUCores = c.sampleCPUCores(c.hostPath("/proc/stat"))
 	c.readMemory(&h)
 	h.Virtualized = c.detectVirtualized()
 	h.IP = c.detectIP()
-	h.TempC = readTemp(c.hostPath("/sys/class/thermal"), c.hostPath("/sys/class/hwmon"))
+	h.TempC, h.TempName, h.Temps = readTemps(c.hostPath("/sys/class/thermal"), c.hostPath("/sys/class/hwmon"))
+	h.Fans = readFans(c.hostPath("/sys/class/hwmon"))
 	return h
 }
 
@@ -466,8 +645,68 @@ func (c *Collector) sampleCPU(path string) float64 {
 	return float64(busy) / float64(total-prev.total) * 100
 }
 
+// sampleCPUCores 用两次 /proc/stat 采样差分计算每核使用率（首次采样返回空数组，最多 32 核）
+func (c *Collector) sampleCPUCores(path string) []float64 {
+	c.sampleMu.Lock()
+	defer c.sampleMu.Unlock()
+
+	var rows []cpuSample
+	for _, line := range readLines(path) {
+		if !strings.HasPrefix(line, "cpu") || strings.HasPrefix(line, "cpu ") {
+			continue
+		}
+		f := strings.Fields(line)
+		if len(f) < 5 {
+			continue
+		}
+		var total, idle uint64
+		ok := true
+		for i, v := range f[1:] {
+			n, err := strconv.ParseUint(v, 10, 64)
+			if err != nil {
+				ok = false
+				break
+			}
+			total += n
+			if i == 3 || i == 4 { // idle + iowait
+				idle += n
+			}
+		}
+		if !ok || total == 0 {
+			continue
+		}
+		rows = append(rows, cpuSample{total: total, idle: idle})
+	}
+
+	prev := c.cpuCorePrev
+	c.cpuCorePrev = rows
+	if len(prev) == 0 || len(prev) != len(rows) {
+		return []float64{} // 首次采样或核数变化，无法差分
+	}
+	cores := make([]float64, 0, len(rows))
+	for i := range rows {
+		if len(cores) >= 32 {
+			break
+		}
+		if rows[i].total <= prev[i].total || rows[i].idle < prev[i].idle {
+			cores = append(cores, 0)
+			continue
+		}
+		busy := (rows[i].total - prev[i].total) - (rows[i].idle - prev[i].idle)
+		v := float64(busy) / float64(rows[i].total-prev[i].total) * 100
+		if v < 0 {
+			v = 0
+		}
+		if v > 100 {
+			v = 100
+		}
+		cores = append(cores, v)
+	}
+	return cores
+}
+
 func (c *Collector) readMemory(h *HostInfo) {
-	var total, available, swapTotal, swapFree uint64
+	var total, available, cached, swapTotal, swapFree uint64
 	for _, line := range readLines(c.hostPath("/proc/meminfo")) {
 		f := strings.Fields(line)
 		if len(f) < 2 {
@@ -483,6 +722,8 @@ func (c *Collector) readMemory(h *HostInfo) {
 			total = v
 		case "MemAvailable":
 			available = v
+		case "Cached":
+			cached = v
 		case "SwapTotal":
 			swapTotal = v
 		case "SwapFree":
@@ -490,6 +731,7 @@ func (c *Collector) readMemory(h *HostInfo) {
 		}
 	}
 	h.MemTotal = total
+	h.MemCache = cached
 	if total > available {
 		h.MemUsed = total - available
 	}
@@ -603,7 +845,106 @@ func unescapeMount(s string) string {
 	return r.Replace(s)
 }
 
-func (c *Collector) collectDisks(custom []string) []DiskInfo {
+// splitDiskPartition 去掉设备名的分区号；isPart 表示原名称是否为分区
+func splitDiskPartition(name string) (string, bool) {
+	// nvme0n1p1 / mmcblk0p1 / md0p1 / nbd0p1 的分区号在 p 之后
+	if strings.HasPrefix(name, "nvme") || strings.HasPrefix(name, "mmcblk") ||
+		strings.HasPrefix(name, "md") || strings.HasPrefix(name, "nbd") {
+		if i := strings.LastIndex(name, "p"); i > 0 {
+			if _, err := strconv.Atoi(name[i+1:]); err == nil {
+				return name[:i], true
+			}
+		}
+		return name, false
+	}
+	// sda1 / hda1 / vda1 这类末尾数字即分区号
+	i := len(name)
+	for i > 0 && name[i-1] >= '0' && name[i-1] <= '9' {
+		i--
+	}
+	if i > 0 && i < len(name) {
+		return name[:i], true
+	}
+	return name, false
+}
+
+// deviceName /dev/sda1 → sda；nvme0n1p3 → nvme0n1；非 /dev 源（ZFS）保留原样
+func deviceName(dev string) string {
+	name := strings.TrimPrefix(dev, "/dev/")
+	if name == dev {
+		return dev
+	}
+	base, _ := splitDiskPartition(name)
+	return base
+}
+
+// skipDiskStats 排除分区与 dm/md/loop/ram，避免与整盘或阵列重复计数
+func skipDiskStats(name string) bool {
+	for _, p := range []string{"dm-", "md", "loop", "ram"} {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	_, part := splitDiskPartition(name)
+	return part
+}
+
+func parseU(s string) uint64 {
+	v, _ := strconv.ParseUint(s, 10, 64)
+	return v
+}
+
+// collectDiskIO 读取 /proc/diskstats 并与上次采样差分，返回各物理盘的实时速率
+func (c *Collector) collectDiskIO() map[string]DiskIOInfo {
+	now := time.Now()
+	curr := make(map[string]diskstatSample)
+	for _, line := range readLines(c.hostPath("/proc/diskstats")) {
+		f := strings.Fields(line)
+		if len(f) < 11 {
+			continue
+		}
+		name := f[2]
+		if skipDiskStats(name) {
+			continue
+		}
+		curr[name] = diskstatSample{
+			reads:          parseU(f[3]),
+			sectorsRead:    parseU(f[5]),
+			msRead:         parseU(f[6]),
+			writes:         parseU(f[7]),
+			sectorsWritten: parseU(f[9]),
+			msWrite:        parseU(f[10]),
+			at:             now,
+		}
+	}
+
+	out := make(map[string]DiskIOInfo, len(curr))
+	for name, s := range curr {
+		d := DiskIOInfo{}
+		if prev, ok := c.diskPrev[name]; ok {
+			dt := s.at.Sub(prev.at).Seconds()
+			if dt >= 0.2 && s.reads >= prev.reads && s.writes >= prev.writes &&
+				s.sectorsRead >= prev.sectorsRead && s.sectorsWritten >= prev.sectorsWritten &&
+				s.msRead >= prev.msRead && s.msWrite >= prev.msWrite {
+				dr := s.reads - prev.reads
+				dw := s.writes - prev.writes
+				d.ops = dr + dw
+				d.ioMs = (s.msRead - prev.msRead) + (s.msWrite - prev.msWrite)
+				d.ReadBps = float64(s.sectorsRead-prev.sectorsRead) * 512 / dt
+				d.WriteBps = float64(s.sectorsWritten-prev.sectorsWritten) * 512 / dt
+				d.IOPS = float64(d.ops) / dt
+				if d.ops > 0 {
+					d.Await = float64(d.ioMs) / float64(d.ops)
+				}
+			}
+		}
+		out[name] = d
+	}
+	c.diskPrev = curr
+	return out
+}
+
+func (c *Collector) collectDisks(custom []string) ([]DiskInfo, DiskIOInfo) {
 	type mount struct {
 		dev, mp, fstype string
 	}
@@ -659,13 +1000,19 @@ func (c *Collector) collectDisks(custom []string) []DiskInfo {
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].mp < list[j].mp })
 
+	ioByDev := c.collectDiskIO()
+
 	out := make([]DiskInfo, 0, len(list))
 	for _, m := range list {
 		total, avail, err := diskUsage(c.hostPath(m.mp))
 		if err != nil || total == 0 {
 			continue
 		}
-		out = append(out, DiskInfo{Mount: m.mp, FSType: m.fstype, Total: total, Used: total - avail})
+		d := DiskInfo{Dev: deviceName(m.dev), Mount: m.mp, FSType: m.fstype, Total: total, Used: total - avail}
+		if io, ok := ioByDev[d.Dev]; ok {
+			d.ReadBps, d.WriteBps, d.IOPS, d.Await = io.ReadBps, io.WriteBps, io.IOPS, io.Await
+		}
+		out = append(out, d)
 		if len(out) >= 8 {
 			break
 		}
@@ -676,7 +1023,19 @@ func (c *Collector) collectDisks(custom []string) []DiskInfo {
 			out = append(out, DiskInfo{Mount: "/", FSType: "root", Total: total, Used: total - avail})
 		}
 	}
-	return out
+
+	var totalIO DiskIOInfo
+	for _, d := range ioByDev {
+		totalIO.ReadBps += d.ReadBps
+		totalIO.WriteBps += d.WriteBps
+		totalIO.IOPS += d.IOPS
+		totalIO.ops += d.ops
+		totalIO.ioMs += d.ioMs
+	}
+	if totalIO.ops > 0 {
+		totalIO.Await = float64(totalIO.ioMs) / float64(totalIO.ops)
+	}
+	return out, totalIO
 }
 
 func matchAnyPrefix(s string, prefixes []string) bool {
@@ -697,32 +1056,112 @@ func matchAnyPrefix(s string, prefixes []string) bool {
 
 /* ================= 温度 ================= */
 
-func readTemp(thermalDir, hwmonDir string) float64 {
-	best := -1.0
-	for _, zone := range globDirs(thermalDir, "thermal_zone") {
-		if v := parseMilliC(readFileTrim(filepath.Join(zone, "temp"))); v > 0 {
-			if best < 0 || v < best {
-				best = v
-			}
+// cpuTempName 判断传感器名是否属于 CPU 类关键字
+func cpuTempName(name string) bool {
+	n := strings.ToLower(name)
+	for _, k := range []string{"cpu", "coretemp", "k10temp", "soc", "x86_pkg_temp", "package", "tctl", "tdie", "cpu-thermal"} {
+		if strings.Contains(n, k) {
+			return true
 		}
 	}
-	if best > 0 {
-		return best
+	return false
+}
+
+type tempSensor struct {
+	name  string
+	value float64
+	cpu   bool
+}
+
+// readTemps 汇总 thermal / hwmon 传感器：CPU 类优先作为主温度，否则取全部最大值。
+// 返回主温度、主传感器名称与最多 8 个传感器明细（不可读为 -1）。
+func readTemps(thermalDir, hwmonDir string) (float64, string, []TempInfo) {
+	var sensors []tempSensor
+	for _, zone := range globDirs(thermalDir, "thermal_zone") {
+		name := readFileTrim(filepath.Join(zone, "type"))
+		if name == "" {
+			name = filepath.Base(zone)
+		}
+		sensors = append(sensors, tempSensor{
+			name:  name,
+			value: parseMilliC(readFileTrim(filepath.Join(zone, "temp"))),
+			cpu:   cpuTempName(name),
+		})
 	}
 	for _, hw := range globDirs(hwmonDir, "hwmon") {
+		base := readFileTrim(filepath.Join(hw, "name"))
 		matches, _ := filepath.Glob(filepath.Join(hw, "temp*_input"))
 		for _, m := range matches {
-			if v := parseMilliC(readFileTrim(m)); v > 0 {
-				if best < 0 || v < best {
-					best = v
-				}
+			name := readFileTrim(strings.TrimSuffix(m, "_input") + "_label")
+			if name == "" {
+				name = base
+			}
+			if name == "" {
+				name = strings.TrimSuffix(filepath.Base(m), "_input")
+			}
+			sensors = append(sensors, tempSensor{
+				name:  name,
+				value: parseMilliC(readFileTrim(m)),
+				cpu:   cpuTempName(strings.Join([]string{name, base}, " ")),
+			})
+		}
+	}
+
+	// CPU 类靠前（同类按温度降序），便于前端优先展示 CPU 温度
+	sort.SliceStable(sensors, func(i, j int) bool {
+		if sensors[i].cpu != sensors[j].cpu {
+			return sensors[i].cpu
+		}
+		return sensors[i].value > sensors[j].value
+	})
+
+	temps := make([]TempInfo, 0, 8)
+	for _, s := range sensors {
+		if len(temps) >= 8 {
+			break
+		}
+		temps = append(temps, TempInfo{Name: s.name, Value: s.value})
+	}
+
+	// 主温度：优先第一个可读 CPU 类传感器，未命中则取全部可读传感器最大值（排序后首个可读项）
+	for _, s := range sensors {
+		if s.cpu && s.value > 0 {
+			return s.value, s.name, temps
+		}
+	}
+	for _, s := range sensors {
+		if s.value > 0 {
+			return s.value, s.name, temps
+		}
+	}
+	return -1, "", temps
+}
+
+// readFans 读取 hwmon 风扇转速（fan*_input），最多 8 个
+func readFans(hwmonDir string) []FanInfo {
+	out := make([]FanInfo, 0, 8)
+	for _, hw := range globDirs(hwmonDir, "hwmon") {
+		base := readFileTrim(filepath.Join(hw, "name"))
+		matches, _ := filepath.Glob(filepath.Join(hw, "fan*_input"))
+		for _, m := range matches {
+			v, err := strconv.ParseFloat(readFileTrim(m), 64)
+			if err != nil || v < 0 {
+				continue
+			}
+			name := readFileTrim(strings.TrimSuffix(m, "_input") + "_label")
+			if name == "" {
+				name = base
+			}
+			if name == "" {
+				name = strings.TrimSuffix(filepath.Base(m), "_input")
+			}
+			out = append(out, FanInfo{Name: name, RPM: v})
+			if len(out) >= 8 {
+				return out
 			}
 		}
 	}
-	if best < 0 || best > 125 {
-		return -1
-	}
-	return best
+	return out
 }
 
 func globDirs(dir, prefix string) []string {

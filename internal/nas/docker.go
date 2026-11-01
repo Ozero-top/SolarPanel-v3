@@ -78,14 +78,14 @@ type dockerStats struct {
 		CPUUsage struct {
 			TotalUsage uint64 `json:"total_usage"`
 		} `json:"cpu_usage"`
-		SystemUsage uint64 `json:"system_usage"`
+		SystemUsage uint64 `json:"system_cpu_usage"`
 		OnlineCPUs  uint32 `json:"online_cpus"`
 	} `json:"cpu_stats"`
 	PreCPUStats struct {
 		CPUUsage struct {
 			TotalUsage uint64 `json:"total_usage"`
 		} `json:"cpu_usage"`
-		SystemUsage uint64 `json:"system_usage"`
+		SystemUsage uint64 `json:"system_cpu_usage"`
 	} `json:"precpu_stats"`
 	MemoryStats struct {
 		Usage uint64 `json:"usage"`
@@ -119,9 +119,20 @@ func (c *Collector) dockerGet(ctx context.Context, path string) ([]byte, error) 
 	return io.ReadAll(resp.Body)
 }
 
+// dockerInspect 容器 inspect 中需要的字段（启动时间、重启次数、健康状态）
+type dockerInspect struct {
+	RestartCount int `json:"RestartCount"`
+	State        struct {
+		StartedAt string `json:"StartedAt"`
+		Health    *struct {
+			Status string `json:"Status"`
+		} `json:"Health"`
+	} `json:"State"`
+}
+
 // collectContainers 拉取容器列表与运行中容器的资源占用
 func (c *Collector) collectContainers() []ContainerInfo {
-	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
 	body, err := c.dockerGet(ctx, dockerAPIPrefix+"/containers/json?all=1")
@@ -182,12 +193,14 @@ func (c *Collector) collectContainers() []ContainerInfo {
 
 	// 清理已消失容器的差分状态，避免长期运行内存增长
 	alive := make(map[string]ctSample, len(items))
+	c.ctMu.Lock()
 	for _, it := range items {
 		if s, ok := c.ctPrev[it.ID]; ok {
 			alive[it.ID] = s
 		}
 	}
 	c.ctPrev = alive
+	c.ctMu.Unlock()
 
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].State != items[j].State {
@@ -199,6 +212,22 @@ func (c *Collector) collectContainers() []ContainerInfo {
 }
 
 func (c *Collector) fillContainerStats(ctx context.Context, it *ContainerInfo) {
+	// inspect 先拿真实启动时间（容器重启后 Created 不变）、重启次数与健康状态
+	if body, err := c.dockerGet(ctx, dockerAPIPrefix+"/containers/"+it.ID+"/json"); err == nil {
+		var ins dockerInspect
+		if json.Unmarshal(body, &ins) == nil {
+			it.RestartCount = ins.RestartCount
+			if ins.State.Health != nil {
+				it.Health = ins.State.Health.Status
+			}
+			if t, err := time.Parse(time.RFC3339Nano, ins.State.StartedAt); err == nil {
+				if up := time.Now().Unix() - t.Unix(); up > 0 {
+					it.Uptime = up
+				}
+			}
+		}
+	}
+
 	body, err := c.dockerGet(ctx, dockerAPIPrefix+"/containers/"+it.ID+"/stats?stream=false")
 	if err != nil {
 		return
@@ -208,15 +237,11 @@ func (c *Collector) fillContainerStats(ctx context.Context, it *ContainerInfo) {
 		return
 	}
 
-	// CPU：容器用量增量 / 系统用量增量 × 在线 CPU 数
-	cpuDelta := st.CPUStats.CPUUsage.TotalUsage - st.PreCPUStats.CPUUsage.TotalUsage
-	sysDelta := st.CPUStats.SystemUsage - st.PreCPUStats.SystemUsage
+	// CPU：两次采集的累计值差分。新版 Docker 的非流式 stats 里 precpu_stats
+	// 往往与当前值相同（差分为 0），因此不再依赖它，统一用本地上一次样本。
 	cpus := st.CPUStats.OnlineCPUs
 	if cpus == 0 {
 		cpus = 1
-	}
-	if sysDelta > 0 && cpuDelta > 0 && st.CPUStats.CPUUsage.TotalUsage > st.PreCPUStats.CPUUsage.TotalUsage {
-		it.CPUPct = float64(cpuDelta) / float64(sysDelta) * float64(cpus) * 100
 	}
 
 	// 内存：扣除 page cache，limit 超过 1PB 视为未限制
@@ -243,7 +268,15 @@ func (c *Collector) fillContainerStats(ctx context.Context, it *ContainerInfo) {
 		tx += n.TxBytes
 	}
 	now := time.Now()
-	if prev, ok := c.ctPrev[it.ID]; ok && !prev.at.IsZero() {
+	curCPU := st.CPUStats.CPUUsage.TotalUsage
+	curSys := st.CPUStats.SystemUsage
+	c.ctMu.Lock()
+	prev, ok := c.ctPrev[it.ID]
+	c.ctMu.Unlock()
+	if ok && !prev.at.IsZero() {
+		if curSys > prev.sysCPU && curCPU >= prev.cpuTotal {
+			it.CPUPct = float64(curCPU-prev.cpuTotal) / float64(curSys-prev.sysCPU) * float64(cpus) * 100
+		}
 		if d := now.Sub(prev.at).Seconds(); d > 0.2 {
 			if rx >= prev.rx {
 				it.RxBps = float64(rx-prev.rx) / d
@@ -253,5 +286,7 @@ func (c *Collector) fillContainerStats(ctx context.Context, it *ContainerInfo) {
 			}
 		}
 	}
-	c.ctPrev[it.ID] = ctSample{rx: rx, tx: tx, at: now}
+	c.ctMu.Lock()
+	c.ctPrev[it.ID] = ctSample{rx: rx, tx: tx, cpuTotal: curCPU, sysCPU: curSys, at: now}
+	c.ctMu.Unlock()
 }

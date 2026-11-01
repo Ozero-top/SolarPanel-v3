@@ -4302,6 +4302,14 @@ function initNASPanel() {
   nasPanels().forEach(p => {
     if (!p || p.hidden) return;
     p.onclick = (ev) => {
+      const refreshBtn = ev.target.closest('[data-np-refresh]');
+      if (refreshBtn) {
+        // 手动刷新：只重新请求，展开/折叠不受影响
+        refreshBtn.classList.add('spin');
+        setTimeout(() => refreshBtn.classList.remove('spin'), 800);
+        refreshNAS();
+        return;
+      }
       if (ev.target.closest('[data-np-detail]')) { openNASDetail(); return; }
       if (ev.target.closest('[data-np-fold]') || p.classList.contains('collapsed')) {
         setNASCollapsed(!p.classList.contains('collapsed'), true);
@@ -4578,6 +4586,7 @@ function nasHTML(snap, mode) {
     <span class="np-title">${isCtr ? '🐳 容器' : '🖥️ NAS'}</span>
     <span class="np-dot"></span>
     <button class="np-detail" type="button" data-np-detail title="查看完整 NAS 信息">详情</button>
+    <button class="np-refresh" type="button" data-np-refresh title="立即刷新" aria-label="刷新 NAS 数据">⟳</button>
     <button class="np-fold" type="button" data-np-fold aria-label="收起 / 展开面板">›</button>
   </div>
   <div class="np-rail">${rail}</div>
@@ -4669,21 +4678,95 @@ function renderNASError(msg) {
 }
 
 /* ================= NAS 详细信息弹窗 ================= */
+// 弹窗交互状态：容器搜索、表头排序、曲线区间（每 3s 重绘后依然保持）
+const nasDetailUi = { ctQuery: '', sortKey: 'name', sortDir: 'asc', range: '10m', ctFocus: false, ctComposing: false };
+const NAS_D_RANGES = { '10m': '近 10 分钟', '1h': '近 1 小时', '24h': '近 24 小时' };
+
+// span 秒数 →「X 分钟 / X 小时」
+function nasSpanText(sec) {
+  sec = Number(sec) || 0;
+  if (sec >= 3600) {
+    const hrs = sec / 3600;
+    return (hrs >= 10 ? hrs.toFixed(0) : hrs.toFixed(1).replace(/\.0$/, '')) + ' 小时';
+  }
+  return Math.round(sec / 60) + ' 分钟';
+}
+
+function nasFmtMs(ms) {
+  ms = Number(ms) || 0;
+  if (ms <= 0) return '0 ms';
+  return (ms < 10 ? ms.toFixed(1) : ms.toFixed(0)) + ' ms';
+}
+
+// 取所选区间的历史数组；对应区间为空时（仅 10 分钟档）回退本地缓冲
+function nasDetailHist(snap) {
+  const raw = nasDetailUi.range === '1h' ? snap.history_hour : nasDetailUi.range === '24h' ? snap.history_day : snap.history;
+  const h = raw || {};
+  const rx = Array.isArray(h.rx) ? h.rx : [];
+  const tx = Array.isArray(h.tx) ? h.tx : [];
+  if (rx.length >= 2) {
+    return { rx: rx, tx: tx, interval: Number(h.interval) || 0, span: Number(h.span) || 0 };
+  }
+  if (nasDetailUi.range === '10m') {
+    const step = Math.max(2, Number(nasState.refresh) || 3);
+    return { rx: nasState.histRx, tx: nasState.histTx, interval: step, span: nasState.histRx.length * step };
+  }
+  return { rx: rx, tx: tx, interval: Number(h.interval) || 0, span: Number(h.span) || 0 };
+}
+
+// 容器排序：名称按字符串，其余按数值
+function nasSortCts(list) {
+  const key = nasDetailUi.sortKey;
+  const dir = nasDetailUi.sortDir === 'desc' ? -1 : 1;
+  const pick = (c) => {
+    if (key === 'cpu') return Number(c.cpu_pct) || 0;
+    if (key === 'mem') return Number(c.mem_used) || 0;
+    if (key === 'net') return (Number(c.rx_bps) || 0) + (Number(c.tx_bps) || 0);
+    if (key === 'uptime') return Number(c.uptime) || 0;
+    if (key === 'restart') return Number(c.restart_count) || 0;
+    return String(c.name || '').toLowerCase();
+  };
+  return list.slice().sort((a, b) => {
+    const va = pick(a);
+    const vb = pick(b);
+    if (typeof va === 'string' || typeof vb === 'string') {
+      return (va < vb ? -1 : va > vb ? 1 : 0) * dir;
+    }
+    return (va - vb) * dir;
+  });
+}
+
+// 容器健康检查状态：无健康检查时后端返回空串 → 显示占位符
+function nasHealthCell(health) {
+  const v = String(health || '').toLowerCase();
+  if (v === 'healthy') return '<span class="nas-h-ok">健康</span>';
+  if (v === 'unhealthy') return '<span class="nas-h-bad">异常</span>';
+  if (v === 'starting') return '<span class="nas-h-warn">启动中</span>';
+  return '—';
+}
+
 function nasDetailHTML(snap) {
   const h = snap.host || {};
   const net = snap.net || {};
   const cts = snap.containers || [];
   const running = cts.filter(c => c.state === 'running');
   const disks = snap.disks || [];
+  const masked = snap.guest_masked === true;
   const cpu = Math.round(h.cpu_pct || 0);
   const memPct = h.mem_total ? Math.round((h.mem_used / h.mem_total) * 100) : 0;
   const diskTotal = disks.reduce((s, d) => s + d.total, 0);
   const diskUsed = disks.reduce((s, d) => s + d.used, 0);
   const diskFree = Math.max(0, diskTotal - diskUsed);
   const diskPct = diskTotal ? Math.round((diskUsed / diskTotal) * 100) : 0;
-  const rxLine = nasSparkPath(nasState.histRx, 300, 110, 0, true);
-  const txLine = nasSparkPath(nasState.histTx, 300, 110, 0, true);
+
+  // 曲线数据按所选区间取，图例文案随 interval / span 变化
+  const hist = nasDetailHist(snap);
+  const rxLine = nasSparkPath(hist.rx, 300, 110, 0, true);
+  const txLine = nasSparkPath(hist.tx, 300, 110, 0, true);
   const rxArea = rxLine ? rxLine + ' L300,110 L0,110 Z' : '';
+  const rangeLabel = NAS_D_RANGES[nasDetailUi.range] || NAS_D_RANGES['10m'];
+  const legendSample = ((hist.interval > 0 ? '每 ' + hist.interval + 's 采样' : '') +
+    (hist.span > 0 ? (hist.interval > 0 ? ' · ' : '') + '共 ' + nasSpanText(hist.span) : '')) || rangeLabel;
   const updated = snap.collected_at
     ? new Date(snap.collected_at * 1000).toLocaleTimeString('zh-CN', { hour12: false })
     : '--:--:--';
@@ -4694,16 +4777,107 @@ function nasDetailHTML(snap) {
       <div class="s">${s}</div>
     </div>`;
 
+  // 负载 / 温度：temp_name 存在时用它（如「CPU 温度」），否则用统一文案
+  const loadTxt = '负载 ' + (Number(h.load1) || 0).toFixed(2) + ' / ' + (Number(h.load5) || 0).toFixed(2) + ' / ' + (Number(h.load15) || 0).toFixed(2);
+  const tempTxt = Number(h.temp_c) > 0
+    ? (h.temp_name ? esc(h.temp_name) : 'CPU 温度') + ' ' + Math.round(Number(h.temp_c)) + '°C'
+    : (h.virtualized ? '虚拟机无温度传感器' : '无温度传感器');
+  const memSub = '共 ' + nasFmtBytes(h.mem_total) + ' · 使用 ' + memPct + '%' +
+    (Number(h.mem_cache) > 0 ? ' · 缓存 ' + nasFmtBytes(h.mem_cache) : '') +
+    (Number(h.swap_total) > 0 ? ' · 交换 ' + nasFmtBytes(h.swap_used) + '/' + nasFmtBytes(h.swap_total) : '');
+
   const diskRows = disks.map(d => {
-    const p = Math.round((d.used / d.total) * 100);
+    const p = d.total ? Math.round((d.used / d.total) * 100) : 0;
+    const sub = [];
+    if (d.dev) sub.push('设备 ' + esc(d.dev));
+    if (Number(d.read_bps) > 0) sub.push('读 ' + nasFmtRate(d.read_bps));
+    if (Number(d.write_bps) > 0) sub.push('写 ' + nasFmtRate(d.write_bps));
+    if (Number(d.iops) > 0) sub.push('IOPS ' + Math.round(Number(d.iops)));
+    if (Number(d.await) > 0) sub.push('等待 ' + nasFmtMs(d.await));
     return `<div class="nas-d-disk">
       <div class="r"><span>${esc(d.mount)}${d.fstype ? ' · ' + esc(d.fstype) : ''}</span>
-      <span>${nasFmtBytes(d.used)} / ${nasFmtBytes(d.total)}（${p}%，剩余 ${nasFmtBytes(d.total - d.used)}）</span></div>
+      <span>${nasFmtBytes(d.used)} / ${nasFmtBytes(d.total)}（${p}%，剩余 ${nasFmtBytes(Math.max(0, d.total - d.used))}）</span></div>
       <div class="bar" style="margin-top:5px"><i class="${nasBarClass(p)}" style="width:${p}%"></i></div>
+      ${sub.length ? '<div class="nas-d-sub">' + sub.join(' · ') + '</div>' : ''}
     </div>`;
   }).join('') || '<div class="np-empty">未识别到存储池</div>';
 
-  const ctRows = cts.map(c => {
+  // 磁盘 IO 合计（后端未返回 disk_io 时不渲染该面板）
+  const dio = snap.disk_io;
+  const ioPanel = dio && typeof dio === 'object' ? `
+  <div class="nas-d-panel nas-d-io" style="margin-top:10px">
+    <h5>磁盘 IO</h5>
+    <div class="nas-d-io-grid">
+      <div><span>读速率</span><b>${nasFmtRate(dio.read_bps)}</b></div>
+      <div><span>写速率</span><b>${nasFmtRate(dio.write_bps)}</b></div>
+      <div><span>IOPS</span><b>${Math.round(Number(dio.iops) || 0)}</b></div>
+      <div><span>平均等待</span><b>${nasFmtMs(dio.await)}</b></div>
+    </div>
+  </div>` : '';
+
+  // 温度与风扇（访客脱敏时后端已清空，且不渲染该面板）
+  let tempPanel = '';
+  if (!masked) {
+    const temps = Array.isArray(h.temps) ? h.temps : [];
+    const fans = Array.isArray(h.fans) ? h.fans : [];
+    const tRows = temps.map(t => {
+      const v = Number(t.value);
+      const unread = !isFinite(v) || v < 0;
+      const cls = unread ? '' : v > 75 ? 'danger' : v > 60 ? 'warn' : '';
+      return `<div class="nas-d-trow"><span>${esc(t.name)}</span><b class="${cls}">${unread ? '不可读' : Math.round(v) + '°C'}</b></div>`;
+    }).join('');
+    const fRows = fans.map(f => {
+      const rpm = Number(f.rpm);
+      return `<div class="nas-d-trow"><span>${esc(f.name)}</span><b>${rpm > 0 ? Math.round(rpm) + ' RPM' : '—'}</b></div>`;
+    }).join('');
+    tempPanel = `<div class="nas-d-panel nas-d-temp">
+      <h5>温度与风扇</h5>
+      ${temps.length ? '<div class="nas-d-tlist">' + tRows + '</div>' : ''}
+      ${fans.length ? '<div class="nas-d-tlist">' + fRows + '</div>' : ''}
+      ${(!temps.length && !fans.length) ? '<div class="np-empty">未检测到温度/风扇传感器</div>' : ''}
+    </div>`;
+  }
+
+  // CPU 每个核心：单核或数组缺失时不渲染；超过 16 核只展示前 16 个
+  const cores = Array.isArray(h.cpu_cores) ? h.cpu_cores : [];
+  let corePanel = '';
+  if (cores.length > 1) {
+    const shown = cores.length > 16 ? cores.slice(0, 16) : cores;
+    const rows = shown.map((v, i) => {
+      const p = Math.max(0, Math.min(100, Number(v) || 0));
+      return `<div class="nas-d-core-row">
+        <span class="lbl">${i}</span>
+        <span class="bar"><i class="${nasBarClass(p)}" style="width:${p.toFixed(0)}%"></i></span>
+        <span class="val">${p.toFixed(0)}%</span>
+      </div>`;
+    }).join('');
+    corePanel = `<div class="nas-d-panel nas-d-core">
+      <h5>CPU 每个核心</h5>
+      ${rows}
+      ${cores.length > 16 ? '<div class="nas-d-sub">仅显示前 16 核 · 共 ' + cores.length + ' 核</div>' : ''}
+    </div>`;
+  }
+  const auxGrid = (tempPanel || corePanel)
+    ? `<div class="nas-d-grid${(tempPanel && corePanel) ? '' : ' single'}">${tempPanel}${corePanel}</div>`
+    : '';
+
+  // 区间分段按钮
+  const rangeBtns = Object.keys(NAS_D_RANGES).map(k =>
+    `<button type="button"${nasDetailUi.range === k ? ' class="active"' : ''} data-nas-range="${k}">${NAS_D_RANGES[k]}</button>`
+  ).join('');
+
+  // 容器搜索 + 排序
+  const q = String(nasDetailUi.ctQuery || '').trim().toLowerCase();
+  const filtered = q
+    ? cts.filter(c => (String(c.name || '') + ' ' + String(c.image || '')).toLowerCase().indexOf(q) >= 0)
+    : cts;
+  const sortTh = (label, key, cls) => {
+    const active = nasDetailUi.sortKey === key;
+    const arrow = active ? (nasDetailUi.sortDir === 'desc' ? '▾' : '▴') : '↑↓';
+    return `<th class="sortable${active ? ' active' : ''}${cls ? ' ' + cls : ''}" data-nas-sort="${key}">${label}<i class="ar">${arrow}</i></th>`;
+  };
+
+  const ctRows = nasSortCts(filtered).map(c => {
     const isRun = c.state === 'running';
     const memPct2 = c.mem_limit ? Math.round((c.mem_used / c.mem_limit) * 100) : 0;
     return `<tr>
@@ -4715,8 +4889,10 @@ function nasDetailHTML(snap) {
       <td class="num">${nasFmtBytes(c.mem_used)}${c.mem_limit ? ' / ' + nasFmtBytes(c.mem_limit) + '（' + memPct2 + '%）' : ''}</td>
       <td class="num"><span class="v-down">↓${nasFmtRate(c.rx_bps)}</span> / <span class="v-up">↑${nasFmtRate(c.tx_bps)}</span></td>
       <td class="num">${nasFmtUptime(c.uptime)}</td>
+      <td class="num"${(Number(c.restart_count) || 0) > 0 ? ' style="color:var(--danger);font-weight:600"' : ''}>${Number(c.restart_count) || 0}</td>
+      <td>${nasHealthCell(c.health)}</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="8" class="np-empty">暂无容器</td></tr>';
+  }).join('') || `<tr><td colspan="10" class="np-empty">${cts.length ? '没有匹配的容器' : '暂无容器'}</td></tr>`;
 
   return `
   <div class="nas-d-head">
@@ -4724,11 +4900,15 @@ function nasDetailHTML(snap) {
       <h4>${esc(h.hostname || 'NAS')}</h4>
       <p>${h.ip ? esc(h.ip) + ' · ' : ''}${esc(h.os_name || 'Linux')}${h.kernel ? ' · ' + esc(h.kernel) : ''} · ${h.cores || 0} 核 · ${esc(h.arch || '')} · 已运行 ${nasFmtUptime(h.uptime)}</p>
     </div>
-    <div style="margin-left:auto;font-size:11px;color:var(--text-muted)">${updated} 更新${net.scope === 'container' ? ' · 容器网卡口径' : ''}</div>
+    <div class="nas-d-head-right">
+      <div class="nas-d-updated">${updated} 更新${net.scope === 'container' ? ' · 容器网卡口径' : ''}</div>
+      <button class="nas-d-refresh" type="button" data-nas-refresh title="立即刷新" aria-label="刷新 NAS 数据">⟳</button>
+    </div>
   </div>
+  ${masked ? '<div class="nas-d-mask">访客视图：容器、温度/风扇与主机地址信息已隐藏</div>' : ''}
   <div class="nas-d-kpis">
-    ${kpi('CPU', cpu, '%', `负载 ${(h.load1 || 0).toFixed(2)} · ${h.temp_c > 0 ? Math.round(h.temp_c) + '°C' : (h.virtualized ? '虚拟机无温度传感器' : '无温度传感器')}`)}
-    ${kpi('内存', nasFmtBytes(h.mem_used), '', `共 ${nasFmtBytes(h.mem_total)} · 使用 ${memPct}%`)}
+    ${kpi('CPU', cpu, '%', `${loadTxt} · ${tempTxt}`)}
+    ${kpi('内存', nasFmtBytes(h.mem_used), '', memSub)}
     ${kpi('存储', diskPct, '%', `${disks.length} 块盘 · 总 ${nasFmtBytes(diskTotal)} · 剩余 ${nasFmtBytes(diskFree)}`)}
     <div class="nas-d-kpi">
       <div class="k">网络</div>
@@ -4738,7 +4918,10 @@ function nasDetailHTML(snap) {
   </div>
   <div class="nas-d-grid">
     <div class="nas-d-panel">
-      <h5>网络吞吐（近 10 分钟）</h5>
+      <div class="nas-d-p-head">
+        <h5>网络吞吐</h5>
+        <div class="nas-d-range">${rangeBtns}</div>
+      </div>
       <svg class="nas-d-net" viewBox="0 0 300 110" preserveAspectRatio="none" aria-hidden="true">
         <g stroke="var(--edge)" stroke-width="1">
           <line x1="0" y1="27" x2="300" y2="27"/><line x1="0" y1="55" x2="300" y2="55"/><line x1="0" y1="83" x2="300" y2="83"/>
@@ -4751,7 +4934,7 @@ function nasDetailHTML(snap) {
         <span><i style="background:var(--accent)"></i>下行 ${nasFmtRate(net.rx_bps)}</span>
         <span><i style="background:var(--success)"></i>上行 ${nasFmtRate(net.tx_bps)}</span>
         <span>对数刻度 1B/s – 10GB/s</span>
-        <span>每 5s 采样 · 共 10 分钟</span>
+        <span>${legendSample}</span>
       </div>
     </div>
     <div class="nas-d-panel">
@@ -4759,20 +4942,27 @@ function nasDetailHTML(snap) {
       ${diskRows}
     </div>
   </div>
-  <div class="nas-d-panel" style="margin-top:10px">
-    <h5>Docker 容器</h5>
+  ${ioPanel}
+  ${auxGrid}
+  ${masked ? '' : `<div class="nas-d-panel" style="margin-top:10px">
+    <div class="nas-d-p-head">
+      <h5>Docker 容器</h5>
+      <input class="nas-d-search" id="nasCtSearch" type="search" placeholder="搜索容器名 / 镜像" value="${esc(nasDetailUi.ctQuery)}" autocomplete="off">
+    </div>
     <div style="overflow-x:auto">
       <table class="nas-d-table">
-        <thead><tr><th>容器</th><th>镜像</th><th>状态</th><th>端口</th><th>处理器</th><th>已使用内存</th><th>网络 ↓ / ↑</th><th>运行时长</th></tr></thead>
+        <thead><tr>${sortTh('容器', 'name')}<th>镜像</th><th>状态</th><th>端口</th>${sortTh('处理器', 'cpu', 'num')}${sortTh('已使用内存', 'mem', 'num')}${sortTh('网络 ↓ / ↑', 'net', 'num')}${sortTh('运行时长', 'uptime', 'num')}${sortTh('重启', 'restart', 'num')}<th>健康</th></tr></thead>
         <tbody>${ctRows}</tbody>
       </table>
     </div>
-  </div>
+  </div>`}
   <div class="nas-d-foot">
-    <span>容器 <b>${running.length}</b> 运行 / <b>${cts.length}</b> 个</span>
+    ${masked
+      ? '<span>访客视图 · 容器与硬件细节已隐藏</span>'
+      : `<span>容器 <b>${running.length}</b> 运行 / <b>${cts.length}</b> 个</span>
     <span>CPU 合计 <b>${cts.reduce((s, c) => s + (c.cpu_pct || 0), 0).toFixed(1)}%</b></span>
     <span>内存合计 <b>${nasFmtBytes(cts.reduce((s, c) => s + (c.mem_used || 0), 0))}</b></span>
-    <span>Docker <b>${snap.docker_ok ? '已连接' : '未连接'}</b></span>
+    <span>Docker <b>${snap.docker_ok ? '已连接' : '未连接'}</b></span>`}
   </div>`;
 }
 
@@ -4780,9 +4970,71 @@ function renderNASDetailIfOpen() {
   const m = document.getElementById('nasDetailModal');
   const body = document.getElementById('nasDetailBody');
   if (!m || !body || !m.classList.contains('show')) return;
+  // 重绘前记录搜索框焦点，重绘后由 bindNASDetailUI 恢复
+  const oldInput = body.querySelector('#nasCtSearch');
+  nasDetailUi.ctFocus = !!(oldInput && document.activeElement === oldInput);
   body.innerHTML = nasState.snap
     ? nasDetailHTML(nasState.snap)
     : '<div class="np-empty">正在采集 NAS 数据…</div>';
+  bindNASDetailUI();
+}
+
+// 详情弹窗每次重绘后重新绑定：区间切换 / 表头排序 / 容器搜索 / 刷新
+function bindNASDetailUI() {
+  const body = document.getElementById('nasDetailBody');
+  if (!body) return;
+
+  body.querySelectorAll('[data-nas-range]').forEach(btn => {
+    btn.onclick = () => {
+      const r = btn.getAttribute('data-nas-range');
+      if (!NAS_D_RANGES[r] || r === nasDetailUi.range) return;
+      nasDetailUi.range = r;
+      renderNASDetailIfOpen();
+    };
+  });
+
+  body.querySelectorAll('[data-nas-sort]').forEach(th => {
+    th.onclick = () => {
+      const key = th.getAttribute('data-nas-sort');
+      if (nasDetailUi.sortKey === key) {
+        nasDetailUi.sortDir = nasDetailUi.sortDir === 'desc' ? 'asc' : 'desc';
+      } else {
+        nasDetailUi.sortKey = key;
+        nasDetailUi.sortDir = key === 'name' ? 'asc' : 'desc';
+      }
+      renderNASDetailIfOpen();
+    };
+  });
+
+  const refreshBtn = body.querySelector('[data-nas-refresh]');
+  if (refreshBtn) {
+    refreshBtn.onclick = () => {
+      refreshBtn.classList.add('spin');
+      setTimeout(() => refreshBtn.classList.remove('spin'), 800);
+      refreshNAS();
+    };
+  }
+
+  const input = body.querySelector('#nasCtSearch');
+  if (input) {
+    input.value = nasDetailUi.ctQuery;
+    input.oninput = () => {
+      nasDetailUi.ctQuery = input.value;
+      if (nasDetailUi.ctComposing) return; // 中文输入法组字期间不重绘
+      renderNASDetailIfOpen();
+    };
+    input.oncompositionstart = () => { nasDetailUi.ctComposing = true; };
+    input.oncompositionend = () => {
+      nasDetailUi.ctComposing = false;
+      nasDetailUi.ctQuery = input.value;
+      renderNASDetailIfOpen();
+    };
+    if (nasDetailUi.ctFocus) {
+      input.focus();
+      const n = input.value.length;
+      try { input.setSelectionRange(n, n); } catch (e) { /* 部分输入类型不支持，忽略 */ }
+    }
+  }
 }
 
 function openNASDetail() {

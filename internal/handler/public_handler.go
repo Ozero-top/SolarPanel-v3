@@ -73,6 +73,7 @@ func maybeLogGuestVisit(w http.ResponseWriter, r *http.Request) {
 var sensitiveSettingKeys = map[string]bool{
 	"guest_password_hash": true,
 	"clip_ai_api_key":     true,
+	"nas_alert_webhook":   true,
 }
 
 type GroupWithItems struct {

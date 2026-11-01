@@ -286,6 +286,7 @@ func main() {
 		api.With(rateLimitMW("wallpaper", 30, 60)).Get("/wallpaper.php", wallpaperHandler.Dispatch)
 		// 面板轮询 + 详情弹窗 + 多标签页共享同一出口 IP，限流放宽到 240 次/分
 		api.With(rateLimitMW("nas", 240, 60)).Get("/nas.php", nasHandler.Get)
+		api.With(rateLimitMW("nas", 240, 60)).Post("/nas.php", nasHandler.Dispatch)
 		// 版本检查：结果在后端缓存，正常情况不会频繁访问外网
 		api.With(rateLimitMW("version", 30, 60)).Get("/version.php", versionHandler.Get)
 		// auth.php — 全局 session 已注入

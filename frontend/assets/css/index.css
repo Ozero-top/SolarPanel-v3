@@ -2660,9 +2660,101 @@ body.nas-both .gn-toggle { display: none !important; }
 .nas-d-foot { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 11px; color: var(--text-muted); }
 .nas-d-foot b { color: var(--text); font-weight: 600; }
 
+/* ---- 详情弹窗：新增指标区块（负载/温度/缓存、磁盘 IO、温度风扇、每核、访客提示） ---- */
+.nas-d-p-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.nas-d-p-head h5 { margin: 0; }
+.nas-d-sub { margin-top: 3px; font-size: 10.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.nas-d-grid.single { grid-template-columns: 1fr; }
+
+.nas-d-head-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.nas-d-updated { font-size: 11px; color: var(--text-muted); }
+.nas-d-refresh {
+  width: 26px; height: 26px; flex: none; border: 0; border-radius: 9px; cursor: pointer;
+  background: var(--surface-2); color: var(--text-muted); font-size: 14px; line-height: 1;
+  display: grid; place-items: center;
+  transition: background var(--tr) var(--ease), color var(--tr) var(--ease);
+}
+.nas-d-refresh:hover { background: var(--accent-soft); color: var(--accent); }
+
+.nas-d-range { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--surface); box-shadow: var(--inset); }
+.nas-d-range button {
+  border: 0; background: transparent; color: var(--text-muted); cursor: pointer; font: inherit;
+  font-size: 10.5px; padding: 3px 8px; border-radius: 7px; white-space: nowrap;
+  transition: background var(--tr) var(--ease), color var(--tr) var(--ease);
+}
+.nas-d-range button:hover { color: var(--accent); }
+.nas-d-range button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+.nas-d-temp .nas-d-tlist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; }
+.nas-d-temp .nas-d-tlist + .nas-d-tlist { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--edge); }
+.nas-d-trow { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 11px; min-width: 0; }
+.nas-d-trow span { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nas-d-trow b { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.nas-d-trow b.warn { color: var(--warning, var(--accent)); }
+.nas-d-trow b.danger { color: var(--danger); }
+
+.nas-d-core .nas-d-core-row { display: grid; grid-template-columns: 22px 1fr 38px; align-items: center; gap: 8px; margin-top: 4px; }
+.nas-d-core .lbl { font-size: 10.5px; color: var(--text-muted); text-align: right; font-variant-numeric: tabular-nums; }
+.nas-d-core .val { font-size: 10.5px; text-align: right; font-variant-numeric: tabular-nums; }
+.nas-d-core .bar { height: 5px; border-radius: 3px; overflow: hidden; background: var(--surface); box-shadow: var(--inset); }
+.nas-d-core .bar i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), #9db0ff); }
+.nas-d-core .bar i.warn { background: linear-gradient(90deg, #d9963f, #f0c178); }
+.nas-d-core .bar i.danger { background: linear-gradient(90deg, #e05d5d, #f09a9a); }
+
+.nas-d-io .nas-d-io-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.nas-d-io .nas-d-io-grid div { min-width: 0; padding: 8px 10px; border-radius: 12px; background: var(--surface); box-shadow: var(--inset); }
+.nas-d-io .nas-d-io-grid span { display: block; font-size: 10.5px; color: var(--text-muted); }
+.nas-d-io .nas-d-io-grid b { display: block; margin-top: 2px; font-size: 13.5px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.nas-d-mask {
+  margin-bottom: 10px; padding: 7px 11px; border-radius: 10px;
+  font-size: 11px; color: var(--accent);
+  background: var(--accent-soft); box-shadow: var(--inset);
+}
+
+.nas-d-search {
+  width: 180px; max-width: 40vw; padding: 5px 9px; border-radius: 9px;
+  border: 1px solid var(--edge); background: var(--surface); color: var(--text);
+  font: inherit; font-size: 11px; outline: none;
+}
+.nas-d-search:focus { border-color: var(--accent-soft); box-shadow: 0 0 0 3px var(--accent-soft); }
+.nas-d-search::placeholder { color: var(--text-muted); }
+
+.nas-d-table th.sortable { cursor: pointer; user-select: none; transition: color var(--tr) var(--ease); }
+.nas-d-table th.sortable:hover { color: var(--accent); }
+.nas-d-table th.sortable.active { color: var(--accent); }
+.nas-d-table th.num { text-align: right; }
+.nas-d-table th .ar { font-style: normal; margin-left: 3px; font-size: 9px; opacity: .5; }
+.nas-d-table th.sortable.active .ar { opacity: 1; }
+.nas-h-ok { color: var(--success); }
+.nas-h-bad { color: var(--danger); }
+.nas-h-warn { color: var(--text); }
+
+/* ---- 悬浮面板刷新按钮 ---- */
+.np-refresh {
+  width: 24px; height: 24px; flex: none; border: 0; border-radius: 8px;
+  background: transparent; color: var(--text-muted); cursor: pointer; font-size: 13px; line-height: 1;
+  display: grid; place-items: center;
+  transition: background var(--tr) var(--ease), color var(--tr) var(--ease), transform var(--tr) var(--ease);
+}
+.np-refresh:hover { background: var(--hover-bg); color: var(--accent); }
+.np-head .np-refresh + .np-fold { margin-left: 2px; }
+.nas-panel.collapsed .np-refresh { display: none; }
+@keyframes nas-refresh-spin { to { transform: rotate(360deg); } }
+.np-refresh.spin, .nas-d-refresh.spin { animation: nas-refresh-spin .8s linear; }
+
 @media (max-width: 820px) {
   .nas-d-kpis { grid-template-columns: repeat(2, 1fr); }
   .nas-d-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  .nas-d-grid { grid-template-columns: 1fr; }
+  .nas-d-p-head { align-items: stretch; }
+  .nas-d-range { flex-wrap: wrap; }
+  .nas-d-io .nas-d-io-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .nas-d-temp .nas-d-tlist { grid-template-columns: 1fr; }
+  .nas-d-search { width: 100%; max-width: none; }
 }
 
 /* 网络上下行配色：下行蓝、上行绿（与曲线颜色一致） */
