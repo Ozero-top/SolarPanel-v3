@@ -250,7 +250,35 @@ function applyDefaultGroup() {
   }
 }
 
-/* ---------- 基础元素渲染（标题/logo/公告/页脚/壁纸/内容区） ---------- */
+/* ---------- 基础元素渲染（标题/logo/页脚/壁纸/内容区） ---------- */
+/* 壁纸首帧缓存：<head> 内联脚本在接口返回前读取，避免先闪主题默认背景 */
+const WP_URL_KEY = 'sp_wp_url';
+const WP_FX_KEY = 'sp_wp_fx';
+
+function saveWpUrl(url, src) {
+  try {
+    if (!url) { localStorage.removeItem(WP_URL_KEY); return; }
+    localStorage.setItem(WP_URL_KEY, JSON.stringify({
+      url: url,
+      src: src || '',
+      day: new Date().toISOString().slice(0, 10),
+    }));
+  } catch (e) { /* 隐私模式忽略 */ }
+}
+
+function clearWpCache() {
+  try {
+    localStorage.removeItem(WP_URL_KEY);
+    localStorage.removeItem(WP_FX_KEY);
+  } catch (e) { /* 隐私模式忽略 */ }
+  const rs = document.documentElement.style;
+  rs.removeProperty('--wp-bg');
+  rs.removeProperty('--wp-mask');
+  rs.removeProperty('--wp-filter');
+  rs.removeProperty('--wp-scale');
+  delete document.documentElement.dataset.wp;
+}
+
 /** 壁纸遮罩与模糊：以后台设置为唯一事实源，wetab 面板滑杆直接写入同一设置 */
 function applyWallpaperFx(s) {
   s = s || state.settings || {};
@@ -258,8 +286,8 @@ function applyWallpaperFx(s) {
   const mask = document.getElementById('bgMask');
   if (!bg || !mask) return;
   const opacity = parseFloat(s.mask_opacity);
-  mask.style.background =
-    'rgba(0,0,0,' + (isNaN(opacity) ? 0.35 : Math.min(Math.max(opacity, 0), 1)) + ')';
+  const maskVal = isNaN(opacity) ? 0.35 : Math.min(Math.max(opacity, 0), 1);
+  mask.style.background = 'rgba(0,0,0,' + maskVal + ')';
   // 壁纸模糊（0~30px，默认 6），同步放大避免模糊后边缘露白
   const bRaw = parseInt(s.wallpaper_blur, 10);
   const blur = isNaN(bRaw) ? 6 : Math.min(Math.max(bRaw, 0), 30);
@@ -267,6 +295,14 @@ function applyWallpaperFx(s) {
   const scale = blur > 0 ? 1.1 : 1;
   bg.style.filter = blur > 0 ? 'blur(' + blur + 'px)' : '';
   bg.style.transform = scale > 1 ? 'scale(' + scale + ')' : '';
+  // 同步 CSS 变量 + 本地缓存，供下次首帧直接使用
+  const rs = document.documentElement.style;
+  rs.setProperty('--wp-mask', 'rgba(0,0,0,' + maskVal + ')');
+  rs.setProperty('--wp-filter', blur > 0 ? 'blur(' + blur + 'px)' : 'none');
+  rs.setProperty('--wp-scale', scale > 1 ? 'scale(' + scale + ')' : 'none');
+  try {
+    localStorage.setItem(WP_FX_KEY, JSON.stringify({ mask: maskVal, blur: blur }));
+  } catch (e) { /* 隐私模式忽略 */ }
 }
 
 function renderBase() {
@@ -280,17 +316,24 @@ function renderBase() {
   const hasWp = !!(s.wallpaper || s.wallpaper_source);
   document.body.classList.toggle('has-wallpaper', hasWp);
   if (hasWp) {
+    document.documentElement.dataset.wp = '1'; // 首帧壁纸规则生效
     applyWallpaperFx(s);
   } else {
     bg.style.backgroundImage = '';
     mask.style.background = 'transparent';
     bg.style.filter = '';
     bg.style.transform = '';
+    clearWpCache();
   }
   // 壁纸来源：每日壁纸源优先（异步拉取，sessionStorage 当日缓存），回退静态壁纸
   const applyWp = (url) => {
-    if (url) bg.style.backgroundImage = 'url("' + assetUrl(url).replace(/"/g, '%22') + '")';
-    else bg.style.backgroundImage = '';
+    const resolved = url ? assetUrl(url) : '';
+    bg.style.backgroundImage = resolved ? 'url("' + resolved.replace(/"/g, '%22') + '")' : '';
+    document.documentElement.style.setProperty(
+      '--wp-bg',
+      resolved ? 'url("' + resolved.replace(/"/g, '%22') + '")' : 'none'
+    );
+    saveWpUrl(resolved, s.wallpaper_source || '');
     syncWetabTextTone(); // 壁纸确定后同步卡片文字明暗
   };
   if (s.wallpaper_source) {

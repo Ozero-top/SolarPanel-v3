@@ -58,6 +58,19 @@ body::-webkit-scrollbar {
   background-size: cover;
   background-position: center;
 }
+/* 首帧壁纸：<head> 内联脚本按本地缓存写入 --wp-* 变量，先于接口返回渲染壁纸，
+   避免打开瞬间先看到主题默认背景、再跳成壁纸 */
+:root[data-wp='1'] .bg-layer {
+  background-image: var(--wp-bg) !important;
+  filter: var(--wp-filter, none) !important;
+  transform: var(--wp-scale, none) !important;
+}
+:root[data-wp='1'] .bg-mask {
+  background: var(--wp-mask, transparent) !important;
+}
+:root[data-wp='1'] .style-fx {
+  display: none !important;
+}
 .bg-mask {
   position: fixed;
   inset: 0;

@@ -2,9 +2,12 @@
 <html lang="zh-CN" data-theme="light" data-style="liquid-glass">
 <head>
 <meta charset="UTF-8">
-<!-- FOUC 防闪：首帧渲染前从 localStorage 恢复主题，避免硬编码 data-theme/data-style 被 JS 异步覆盖 -->
+<!-- FOUC 防闪：首帧渲染前从 localStorage 恢复主题与壁纸，避免被 JS 异步覆盖后先闪默认背景 -->
 <script>
-(function(){try{var s=localStorage.getItem('sp_theme');var t;if(s==='system'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.mode='system'}else if(s==='light'||s==='dark'){t=s;document.documentElement.dataset.mode=s}else{t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.mode='system'}document.documentElement.dataset.theme=t;var st=localStorage.getItem('sp_style');if(st){document.documentElement.dataset.style=st}}catch(e){/*隐私模式忽略*/}})();
+(function(){try{var s=localStorage.getItem('sp_theme');var t;if(s==='system'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.mode='system'}else if(s==='light'||s==='dark'){t=s;document.documentElement.dataset.mode=s}else{t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.mode='system'}document.documentElement.dataset.theme=t;var st=localStorage.getItem('sp_style');if(st){document.documentElement.dataset.style=st}
+/* 首帧壁纸：接口返回前先用上次成功应用的壁纸与遮罩参数顶上，消除「先主题默认背景、再跳壁纸」的闪动 */
+var root=document.documentElement,rs=root.style;var w=JSON.parse(localStorage.getItem('sp_wp_url')||'null');var fx=JSON.parse(localStorage.getItem('sp_wp_fx')||'null');var today=new Date().toISOString().slice(0,10);
+if(w&&w.url&&(!w.src||w.day===today)){rs.setProperty('--wp-bg','url("'+String(w.url).replace(/"/g,'%22')+'")');if(fx&&isFinite(fx.mask)&&isFinite(fx.blur)){rs.setProperty('--wp-mask','rgba(0,0,0,'+Math.min(Math.max(Number(fx.mask),0),1)+')');rs.setProperty('--wp-filter',fx.blur>0?'blur('+Math.min(Math.max(Number(fx.blur),0),30)+'px)':'none');rs.setProperty('--wp-scale',fx.blur>0?'scale(1.1)':'none')}root.dataset.wp='1'}}catch(e){/*隐私模式忽略*/}})();
 </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="rgba(238,243,255,0.9)">
@@ -16,7 +19,7 @@
   <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
   <title>SolarPanel</title>
   <link rel="stylesheet" href="assets/css/common.css?v=94307f77">
-  <link rel="stylesheet" href="assets/css/index.css?v=f5958c75">
+  <link rel="stylesheet" href="assets/css/index.css?v=f69f4a58">
   <link rel="stylesheet" href="assets/css/themes.css?v=b7e3093e">
 </head>
 <body>
@@ -277,6 +280,6 @@
 
   <script src="assets/vendor/sortable.min.js?v=18a2566c"></script>
   <script src="assets/js/api.js?v=0440aa68"></script>
-  <script src="assets/js/index.js?v=a5a36dd6"></script>
+  <script src="assets/js/index.js?v=e3e40025"></script>
 </body>
 </html>
