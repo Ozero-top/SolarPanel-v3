@@ -408,6 +408,9 @@ func saveFavicon(cfg *config.Config, host, ext string, data []byte) string {
 	if !validExt {
 		ext = ".png"
 	}
+	if !validIconData(data, ext) {
+		return ""
+	}
 	if ext == ".svg" {
 		data = sanitizeSVG(data)
 	}
@@ -429,6 +432,7 @@ func saveFavicon(cfg *config.Config, host, ext string, data []byte) string {
 		os.Remove(p)
 		return ""
 	}
+	invalidateFaviconDataURL(host)
 	return "/frontend/uploads/favicon/" + md5h + ext
 }
 

@@ -1,11 +1,9 @@
 package handler
 
 import (
-	"encoding/base64"
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -289,21 +287,9 @@ func cachedFaviconDataURL(cfg *config.Config, rawURL string) string {
 	if host == "" {
 		return ""
 	}
-	disk, _, ext := faviconCachePath(cfg, host)
-	if disk == "" {
+	e, ok := faviconDataURL(cfg, host)
+	if !ok {
 		return ""
 	}
-	st, err := os.Stat(disk)
-	if err != nil || st.Size() == 0 || st.Size() > 64*1024 {
-		return ""
-	}
-	data, err := os.ReadFile(disk)
-	if err != nil || len(data) == 0 {
-		return ""
-	}
-	ct := faviconProxyContentTypes[ext]
-	if ct == "" {
-		return ""
-	}
-	return "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(data)
+	return e.url
 }

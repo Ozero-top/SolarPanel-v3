@@ -25,6 +25,7 @@ func optimizeCachedFavicons(cfg *config.Config) {
 		return
 	}
 	n := 0
+	bad := 0
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -36,12 +37,21 @@ func optimizeCachedFavicons(cfg *config.Config) {
 			continue // SVG / 已是 WEBP，保持原样
 		}
 		info, err := e.Info()
-		if err != nil || info.Size() < 2*1024 {
+		if err != nil {
 			continue
 		}
 		p := filepath.Join(dir, e.Name())
 		data, err := os.ReadFile(p)
 		if err != nil {
+			continue
+		}
+		// 图标站偶尔返回 HTML 错误页被当成 .ico 存下来，这类文件直接清掉
+		if !validIconData(data, ext) {
+			os.Remove(p)
+			bad++
+			continue
+		}
+		if info.Size() < 2*1024 {
 			continue
 		}
 		out, newExt := optimizeFaviconImage(data, ext)
@@ -60,6 +70,9 @@ func optimizeCachedFavicons(cfg *config.Config) {
 	if n > 0 {
 		log.Printf("[favicon] 历史缓存图标已压缩 %d 个", n)
 	}
+	if bad > 0 {
+		log.Printf("[favicon] 已清理 %d 个无效图标文件（HTML/损坏内容）", bad)
+	}
 }
 
 // StartFaviconPrewarm 异步预热全部 favicon 类型卡片（并发 2，逐个错开，避免打满出网连接）
@@ -67,6 +80,7 @@ func StartFaviconPrewarm(cfg *config.Config) {
 	go func() {
 		time.Sleep(5 * time.Second) // 等 HTTP 服务与数据库就绪
 		optimizeCachedFavicons(cfg)
+		clearFaviconDataCache()
 		if db.DB == nil {
 			return
 		}
@@ -107,9 +121,18 @@ func StartFaviconPrewarm(cfg *config.Config) {
 				if checkFaviconCache(cfg, h) != "" {
 					return
 				}
+				// 预热失败过的站点在冷却期内直接跳过，避免每次启动重复打无效请求
+				if v, ok := faviconNegative.Load(h); ok {
+					if t, _ := v.(time.Time); time.Since(t) < faviconNegativeTTL {
+						return
+					}
+				}
 				time.Sleep(300 * time.Millisecond)
 				if saved := trySaveIcon(cfg, "https://"+h); saved != "" {
 					log.Printf("[favicon] 预热完成 %s → %s", h, saved)
+				} else {
+					faviconNegative.Store(h, time.Now())
+					log.Printf("[favicon] 预热失败 %s（%s 内不再重试，首访直接 404 走首字母占位）", h, faviconNegativeTTL)
 				}
 			}(host)
 		}

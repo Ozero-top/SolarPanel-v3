@@ -41,6 +41,59 @@ var faviconInflight sync.Map
 var faviconNegative sync.Map
 var faviconNegativeTTL = 24 * time.Hour
 
+// faviconDataCache 缓存 host → 已编码的 data URL，批量接口命中后不再逐图标 stat/读盘。
+// 写入、手动刷新、启动迁移会显式失效；图标本身极少变动。
+type faviconDataEntry struct {
+	url  string
+	size int64
+	mod  int64
+}
+
+var faviconDataCache sync.Map
+
+const faviconDataMaxBytes = 64 << 10
+
+func faviconDataURL(cfg *config.Config, host string) (faviconDataEntry, bool) {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if v, ok := faviconDataCache.Load(host); ok {
+		return v.(faviconDataEntry), true
+	}
+	disk, _, ext := faviconCachePath(cfg, host)
+	if disk == "" {
+		return faviconDataEntry{}, false
+	}
+	st, err := os.Stat(disk)
+	if err != nil || st.Size() == 0 || st.Size() > faviconDataMaxBytes {
+		return faviconDataEntry{}, false
+	}
+	ct := faviconProxyContentTypes[ext]
+	if ct == "" {
+		return faviconDataEntry{}, false
+	}
+	data, err := os.ReadFile(disk)
+	if err != nil || len(data) == 0 {
+		return faviconDataEntry{}, false
+	}
+	e := faviconDataEntry{
+		url:  "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(data),
+		size: st.Size(),
+		mod:  st.ModTime().Unix(),
+	}
+	faviconDataCache.Store(host, e)
+	return e, true
+}
+
+func invalidateFaviconDataURL(host string) {
+	faviconDataCache.Delete(strings.ToLower(strings.TrimSpace(host)))
+}
+
+func clearFaviconDataCache() {
+	faviconDataCache.Range(func(k, _ any) bool {
+		faviconDataCache.Delete(k)
+		return true
+	})
+}
+
 func faviconCachePath(cfg *config.Config, host string) (diskPath, urlPath, ext string) {
 	md5h := md5Hex(host)
 	dir := filepath.Join(cfg.UploadDir, "favicon")
@@ -76,6 +129,7 @@ func (h *FaviconProxyHandler) Proxy(w http.ResponseWriter, r *http.Request) {
 		if disk, _, _ := faviconCachePath(h.cfg, host); disk != "" {
 			os.Remove(disk)
 		}
+		invalidateFaviconDataURL(host)
 		faviconNegative.Delete(host)
 	}
 
@@ -130,10 +184,9 @@ func (h *FaviconProxyHandler) Proxy(w http.ResponseWriter, r *http.Request) {
 
 const (
 	batchIconMaxHosts = 48
-	// 图标体积中位数约 3.4KB，48 张约 160KB；这里再用总量兜底，
+	// 图标转 WebP 后中位数约 1.5KB，48 张约 72KB；这里再用总量兜底，
 	// 避免个别超大 SVG 把一次响应撑到几百 KB
 	batchIconMaxBytes = 192 << 10
-	batchIconMaxOne   = 48 << 10
 )
 
 // batchIcons 批量返回多个域名已缓存的图标：只读本地磁盘、请求内不联网，
@@ -155,26 +208,14 @@ func (h *FaviconProxyHandler) batchIcons(w http.ResponseWriter, r *http.Request)
 		if _, dup := icons[host]; dup {
 			continue
 		}
-		disk, _, ext := faviconCachePath(h.cfg, host)
-		if disk == "" {
+		e, ok := faviconDataURL(h.cfg, host)
+		if !ok {
 			continue
 		}
-		st, err := os.Stat(disk)
-		if err != nil || st.Size() == 0 || st.Size() > batchIconMaxOne {
-			continue
-		}
-		data, err := os.ReadFile(disk)
-		if err != nil || len(data) == 0 {
-			continue
-		}
-		ct := faviconProxyContentTypes[ext]
-		if ct == "" {
-			ct = "application/octet-stream"
-		}
-		icons[host] = "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(data)
-		total += len(data)
-		sig.WriteString(host + ":" + strconv.FormatInt(st.Size(), 10) + ":" +
-			strconv.FormatInt(st.ModTime().Unix(), 10) + ";")
+		icons[host] = e.url
+		total += len(e.url)
+		sig.WriteString(host + ":" + strconv.FormatInt(e.size, 10) + ":" +
+			strconv.FormatInt(e.mod, 10) + ";")
 	}
 
 	etag := `"b` + md5Hex(sig.String()) + `"`

@@ -16,6 +16,34 @@ import (
 // 超出就等比缩到 64px 内，显著减小字节数与解码耗时。
 const faviconMaxPx = 64
 
+// validIconData 按文件头判断内容是否是真正的图片。
+// 部分图标站会返回 200 + text/html 的错误页，旧逻辑会把整页 HTML 当 .ico 落盘，
+// 既解不出来又占带宽（实测出现过 564KB 的“图标”）。
+func validIconData(data []byte, ext string) bool {
+	if len(data) < 8 {
+		return false
+	}
+	switch {
+	case bytes.HasPrefix(data, []byte("\x89PNG")):
+		return true
+	case bytes.HasPrefix(data, []byte{0xFF, 0xD8, 0xFF}):
+		return true
+	case bytes.HasPrefix(data, []byte("GIF8")):
+		return true
+	case len(data) > 12 && bytes.HasPrefix(data, []byte("RIFF")) && bytes.Equal(data[8:12], []byte("WEBP")):
+		return true
+	case bytes.HasPrefix(data, []byte("BM")):
+		return true
+	case bytes.HasPrefix(data, []byte{0x00, 0x00, 0x01, 0x00}):
+		return true
+	}
+	if ext == ".svg" {
+		head := bytes.ToLower(bytes.TrimSpace(data[:min(len(data), 512)]))
+		return bytes.HasPrefix(head, []byte("<svg")) || bytes.HasPrefix(head, []byte("<?xml"))
+	}
+	return false
+}
+
 // optimizeFaviconImage 把抓到的位图图标缩到 ≤64px 并以 WebP 落盘。
 // 同为 64px 的 PNG 中位数约 6KB，WebP 通常 1~2KB，首屏几十张的传输量差一个量级；
 // SVG / 已是 WEBP 以及纯 BMP 的 ICO 无法用标准库解码，原样返回（调用方继续存原文件）。
@@ -178,20 +206,37 @@ func decodeICOBMP(entry []byte) image.Image {
 	if hdrSize < 40 || hdrSize > len(entry) || comp != 0 || w <= 0 || w > 1024 || h2 < 2 {
 		return nil
 	}
-	if bpp != 32 && bpp != 24 {
+	if bpp != 32 && bpp != 24 && bpp != 8 && bpp != 4 && bpp != 1 {
 		return nil
 	}
 	h := h2 / 2
+	if h > 1024 {
+		return nil
+	}
+	// 8 位及以下带调色板，像素数据前要跳过 4 字节/色的调色板
+	palCount := 0
+	if bpp <= 8 {
+		colorsUsed := int(binary.LittleEndian.Uint32(entry[32:36]))
+		if colorsUsed <= 0 || colorsUsed > 1<<bpp {
+			palCount = 1 << bpp
+		} else {
+			palCount = colorsUsed
+		}
+	}
 	rowBytes := ((w*bpp + 31) / 32) * 4
-	off := hdrSize
+	off := hdrSize + palCount*4
 	if off+rowBytes*h > len(entry) {
 		return nil
 	}
+	var palette []byte
+	if palCount > 0 {
+		palette = entry[hdrSize : hdrSize+palCount*4]
+	}
 	dst := image.NewNRGBA(image.Rect(0, 0, w, h))
-	// 24 位图标后面跟 1bpp 的 AND 掩码：bit=1 表示透明
+	// 24 位及调色板图标后面跟 1bpp 的 AND 掩码：bit=1 表示透明
 	maskOff := off + rowBytes*h
 	maskRow := ((w + 31) / 32) * 4
-	hasMask := bpp == 24 && maskOff+maskRow*h <= len(entry)
+	hasMask := bpp != 32 && maskOff+maskRow*h <= len(entry)
 	hasAlpha := false
 	for y := 0; y < h; y++ {
 		row := entry[off+(h-1-y)*rowBytes : off+(h-y)*rowBytes]
@@ -200,8 +245,8 @@ func decodeICOBMP(entry []byte) image.Image {
 			mask = entry[maskOff+(h-1-y)*maskRow : maskOff+(h-y)*maskRow]
 		}
 		for x := 0; x < w; x++ {
-			i := x * (bpp / 8)
 			if bpp == 32 {
+				i := x * 4
 				a := row[i+3]
 				if a != 0 {
 					hasAlpha = true
@@ -213,7 +258,31 @@ func decodeICOBMP(entry []byte) image.Image {
 			if mask != nil && mask[x/8]&(0x80>>uint(x%8)) != 0 {
 				a = 0
 			}
-			dst.SetNRGBA(x, y, color.NRGBA{R: row[i+2], G: row[i+1], B: row[i], A: a})
+			if bpp == 24 {
+				i := x * 3
+				dst.SetNRGBA(x, y, color.NRGBA{R: row[i+2], G: row[i+1], B: row[i], A: a})
+				continue
+			}
+			idx := 0
+			switch bpp {
+			case 8:
+				idx = int(row[x])
+			case 4:
+				if x%2 == 0 {
+					idx = int(row[x/2] >> 4)
+				} else {
+					idx = int(row[x/2] & 0x0f)
+				}
+			default:
+				if row[x/8]&(0x80>>uint(x%8)) != 0 {
+					idx = 1
+				}
+			}
+			var r, g, b uint8
+			if idx >= 0 && idx*4+2 < len(palette) {
+				b, g, r = palette[idx*4], palette[idx*4+1], palette[idx*4+2]
+			}
+			dst.SetNRGBA(x, y, color.NRGBA{R: r, G: g, B: b, A: a})
 		}
 	}
 	if bpp == 32 && !hasAlpha {
