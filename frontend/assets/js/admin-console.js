@@ -515,12 +515,6 @@
     var refreshBtn = $('dashRefreshBtn');
     if (refreshBtn) refreshBtn.addEventListener('click', reloadData);
 
-    var addBtn = $('dashAddItemBtn');
-    if (addBtn) addBtn.addEventListener('click', function () {
-      var origin = $('addItemBtn');
-      if (origin) origin.click();
-    });
-
     var gotoItems = $('dashGotoItems');
     if (gotoItems) gotoItems.addEventListener('click', function () { goTab('items'); });
 

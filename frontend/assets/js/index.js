@@ -141,87 +141,6 @@ function probeLanURL(url) {
   });
 }
 
-function bindTopbarAutoHide() {
-  const topbar = document.querySelector('.topbar');
-  if (!topbar) return;
-
-  const mobile = window.matchMedia('(max-width: 640px)').matches;
-  if (mobile) return; // 移动端不走滚动隐藏，由 initTopbarBySettings 控制
-
-  let lastY = window.scrollY;
-  let ticking = false;
-  const HIDE_THRESHOLD = 64;
-
-  function apply() {
-    if (ticking) return;
-    ticking = true;
-    requestAnimationFrame(() => {
-      ticking = false;
-      const y = window.scrollY;
-      const dy = y - lastY;
-
-      if (y <= 10) {
-        topbar.classList.remove('hidden-scroll');
-      } else if (dy > HIDE_THRESHOLD) {
-        topbar.classList.add('hidden-scroll');
-      }
-
-      lastY = y;
-    });
-  }
-
-  window.addEventListener('scroll', apply, { passive: true });
-}
-
-/** 根据后端设置初始化顶栏显隐 */
-function initTopbarBySettings(settings) {
-  const topbar = document.querySelector('.topbar');
-  const fab = document.getElementById('topbarFab');
-  if (!topbar) return;
-
-  const isMobile = window.matchMedia('(max-width: 640px)').matches;
-  const desktopEnabled = (settings.topbar_desktop_enabled ?? '0') === '1';
-  const mobileEnabled  = (settings.topbar_mobile_enabled  ?? '0') === '1';
-
-  if (isMobile) {
-    if (!mobileEnabled) {
-      topbar.classList.add('mobile-hidden');
-      if (fab) fab.style.display = '';
-      bindTopbarFab(topbar, fab);
-    } else {
-      topbar.classList.remove('mobile-hidden');
-      if (fab) fab.style.display = 'none';
-    }
-  } else {
-    if (!desktopEnabled) {
-      topbar.style.display = 'none';
-    } else {
-      topbar.style.display = '';
-      bindTopbarAutoHide();
-    }
-  }
-
-  // 设置已应用：先关掉过渡再揭示顶栏，避免首帧出现收起/滑动动画
-  topbar.style.transition = 'none';
-  document.documentElement.classList.add('sp-topbar-ready');
-  requestAnimationFrame(() => {
-    topbar.style.transition = '';
-  });
-}
-
-function bindTopbarFab(topbar, fab) {
-  if (!fab || fab.dataset.bound === '1') return;
-  fab.dataset.bound = '1';
-  function syncIcon() {
-    fab.textContent = topbar.classList.contains('mobile-hidden') ? '▾' : '▴';
-  }
-  syncIcon();
-  fab.addEventListener('click', () => {
-    topbar.classList.toggle('mobile-hidden');
-    syncIcon();
-  });
-}
-
 async function boot() {
   let data;
   try {
@@ -229,15 +148,12 @@ async function boot() {
   } catch (e) {
     document.getElementById('groupsWrap').innerHTML =
       '<div class="empty-tip glass">数据加载失败：' + esc(e.message) + '</div>';
-    // 设置拉取失败时不再等待，直接揭示顶栏，避免永久不可见
-    document.documentElement.classList.add('sp-topbar-ready');
     return;
   }
 
   // 访客访问密码：开启且未通过验证时，仅渲染锁屏页，不加载分组/卡片/新闻
   if (data.guest_required) {
     state.settings = data.settings || {};
-    initTopbarBySettings(state.settings);
     state.theme = applyTheme(state.settings);
     applyWetabPrefs(wetabPrefs());
     updateThemeBtn();
@@ -248,7 +164,6 @@ async function boot() {
   }
 
   state.settings = data.settings || {};
-  initTopbarBySettings(state.settings);
   state.groups = data.groups || [];
   state.user = data.user || null;
   state.theme = applyTheme(state.settings);
@@ -336,9 +251,6 @@ function applyDefaultGroup() {
 }
 
 /* ---------- 基础元素渲染（标题/logo/公告/页脚/壁纸/内容区） ---------- */
-/** 壁纸当前缩放倍率（由 applyWallpaperFx 写入，视差用它在可视区内安全平移） */
-let spBgScale = 1;
-
 /** 壁纸遮罩与模糊：以后台设置为唯一事实源，wetab 面板滑杆直接写入同一设置 */
 function applyWallpaperFx(s) {
   s = s || state.settings || {};
@@ -351,55 +263,16 @@ function applyWallpaperFx(s) {
   // 壁纸模糊（0~30px，默认 6），同步放大避免模糊后边缘露白
   const bRaw = parseInt(s.wallpaper_blur, 10);
   const blur = isNaN(bRaw) ? 6 : Math.min(Math.max(bRaw, 0), 30);
-  // 背景变换：wetab 叠加滚动视差（--wetab-par 由滚动监听写入），模糊时放大 1.1 防露边
-  const parallax = document.documentElement.dataset.style === 'wetab';
-  const scale = blur > 0 ? 1.1 : (parallax ? 1.06 : 1);
-  spBgScale = scale;
+  // 壁纸固定不随滚动位移，保证多分组切换时视觉一致；模糊时放大 1.1 防露边
+  const scale = blur > 0 ? 1.1 : 1;
   bg.style.filter = blur > 0 ? 'blur(' + blur + 'px)' : '';
-  bg.style.transform = (parallax || scale > 1)
-    ? 'translate3d(0, var(--wetab-par, 0px), 0) scale(' + scale + ')'
-    : '';
-}
-
-/** Wetab 壁纸视差：滚动时背景缓慢位移，制造纵深（仅 wetab + 有壁纸时生效） */
-function initWetabParallax() {
-  if (window.__spWetabParallax) return;
-  window.__spWetabParallax = true;
-  const root = document.documentElement;
-  let ticking = false;
-  const apply = () => {
-    if (ticking) return;
-    ticking = true;
-    requestAnimationFrame(() => {
-      ticking = false;
-      const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (root.dataset.style !== 'wetab' || reduced || !document.body.classList.contains('has-wallpaper')) {
-        root.style.setProperty('--wetab-par', '0px');
-        return;
-      }
-      // 位移取滚动量的 12%，但不得超过放大后上下各留出的余量，
-      // 否则背景层下移会在顶部露出 html 背景（表现为一条纯色白条）
-      const slack = Math.max(0, ((spBgScale - 1) * window.innerHeight) / 2 - 2);
-      const par = Math.min(window.scrollY * 0.12, 120, slack);
-      root.style.setProperty('--wetab-par', par.toFixed(1) + 'px');
-    });
-  };
-  window.addEventListener('scroll', apply, { passive: true });
-  apply();
+  bg.style.transform = scale > 1 ? 'scale(' + scale + ')' : '';
 }
 
 function renderBase() {
   const s = state.settings;
 
   document.title = s.site_title || 'SolarPanel';
-  document.getElementById('siteTitle').textContent = s.site_title || 'SolarPanel';
-
-  const logo = document.getElementById('logoImg');
-  if (s.site_logo) {
-    logo.src = assetUrl(s.site_logo);
-    logo.hidden = false;
-    logo.onerror = () => { logo.hidden = true; };
-  }
 
   // 壁纸与遮罩（未设置壁纸时使用柔和渐变背景，不叠加遮罩；有壁纸时隐藏风格装饰层）
   const bg = document.getElementById('bgLayer');
@@ -427,8 +300,6 @@ function renderBase() {
   } else {
     syncWetabTextTone(); // 无壁纸（渐变背景）时恢复主题默认文字颜色
   }
-  initWetabParallax();
-
   // 内容区域尺寸（最大宽度 / 左右边距 / 顶部边距 / 底部边距）
   const num = (v, d) => {
     const n = parseInt(v, 10);
@@ -447,18 +318,6 @@ function renderBase() {
   spApplyClockFont(s.clock_font || '');
   // 整页字体（12 款免费设计字体，空 = 跟随系统）
   spApplyPageFont(s.page_font || '');
-
-  // 公告：后台开关打开且有内容时才显示
-  const ann = document.getElementById('annBar');
-  if (s.announcement_show === '1' && s.announcement && sessionStorage.getItem('sp_ann_dismissed') !== '1') {
-    ann.textContent = '📢 ' + s.announcement;
-    ann.title = s.announcement + '（点击关闭）';
-    ann.hidden = false;
-    ann.onclick = () => {
-      ann.hidden = true;
-      sessionStorage.setItem('sp_ann_dismissed', '1');
-    };
-  }
 
   // 页脚：文字（可选）+ 管理入口 + 当前版本号
   const footer = document.getElementById('footer');
@@ -2976,29 +2835,55 @@ function hideCardContextMenu() {
   if (m) m.remove();
 }
 
-/** 外网/内网切换按钮：文字反映当前模式 */
+/** 外网/内网切换快捷项：图标与提示反映当前模式 */
 function updateLanBtn() {
-  const btn = document.getElementById('lanBtn');
+  const btn = document.getElementById('toolLan');
   if (!btn) return;
   const src = state.lanAuto ? '自动识别' : '手动切换，24 小时后恢复自动识别';
-  btn.textContent = state.lanMode ? '内网' : '外网';
-  btn.title = (state.lanMode ? '当前：内网地址' : '当前：外网地址') + '（' + src + '），点击切换';
+  const tip = (state.lanMode ? '当前：内网地址' : '当前：外网地址') + '（' + src + '），点击切换';
+  const icon = btn.querySelector('.tool-ic');
+  if (icon) icon.textContent = state.lanMode ? '🏠' : '🌐';
+  btn.dataset.tip = tip;
+  btn.setAttribute('aria-label', tip);
 }
 
 /* ---------- 主题切换（浅色 / 深色 / 跟随系统 三态循环） ---------- */
 const THEME_CYCLE = ['light', 'dark', 'system'];
 const THEME_META = {
-  light: { label: '🌞 浅色', tip: '当前：浅色模式，点击切换为深色' },
-  dark: { label: '🌙 深色', tip: '当前：深色模式，点击切换为跟随系统' },
-  system: { label: '🖥️ 跟随', tip: '当前：跟随系统深浅，点击切换为浅色' },
+  light: { label: '🌞', tip: '当前：浅色模式，点击切换为深色' },
+  dark: { label: '🌙', tip: '当前：深色模式，点击切换为跟随系统' },
+  system: { label: '🖥️', tip: '当前：跟随系统深浅，点击切换为浅色' },
 };
 
 function updateThemeBtn() {
-  const btn = document.getElementById('themeBtn');
+  const btn = document.getElementById('toolTheme');
   if (!btn) return;
   const m = THEME_META[state.theme] || THEME_META.dark;
-  btn.textContent = m.label;
-  btn.title = m.tip;
+  const icon = btn.querySelector('.tool-ic');
+  if (icon) icon.textContent = m.label;
+  btn.dataset.tip = m.tip;
+  btn.setAttribute('aria-label', m.tip);
+}
+
+/** 切换主题（浅色 → 深色 → 跟随系统） */
+function cycleTheme() {
+  const idx = THEME_CYCLE.indexOf(state.theme);
+  const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length] || 'light';
+  state.theme = next;
+  localStorage.setItem('sp_theme', next);
+  setThemeMode(next);
+  if (document.documentElement.dataset.style === 'wetab') setWetabPrefs({ themeMode: next });
+  updateThemeBtn();
+}
+
+/** 外网 / 内网地址切换（所有用户可用，无角色检查） */
+function toggleLanMode() {
+  state.lanMode = !state.lanMode;
+  state.lanAuto = false;
+  saveLanOverride(state.lanMode ? 'lan' : 'public');
+  updateLanBtn();
+  toast(state.lanMode ? '已切换到内网地址' : '已切换到外网地址', 'success');
+  reloadPublic();
 }
 
 function bindGlobal() {
@@ -3026,61 +2911,25 @@ function bindGlobal() {
     if (foundItem) showCardContextMenu(e.clientX, e.clientY, foundItem, foundGroupId);
   });
 
-  document.getElementById('themeBtn').onclick = () => {
-    const idx = THEME_CYCLE.indexOf(state.theme);
-    const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length] || 'light';
-    state.theme = next;
-    localStorage.setItem('sp_theme', next);
-    setThemeMode(next);
-    if (document.documentElement.dataset.style === 'wetab') setWetabPrefs({ themeMode: next });
-    updateThemeBtn();
-  };
-
-  // 外网/内网切换（所有用户可用，无角色检查）
-  const lanBtn = document.getElementById('lanBtn');
-  if (lanBtn) {
-    lanBtn.onclick = () => {
-      state.lanMode = !state.lanMode;
-      state.lanAuto = false;
-      saveLanOverride(state.lanMode ? 'lan' : 'public');
-      updateLanBtn();
-      toast(state.lanMode ? '已切换到内网地址' : '已切换到外网地址', 'success');
-      reloadPublic();
-    };
-  }
-
   // 关闭 iframe 弹层
   const modal = document.getElementById('iframeModal');
-  // 右下角快捷菜单：单个悬浮按钮 + 弹出列表，菜单项复用顶栏按钮
+  // 右下角快捷菜单：单个悬浮按钮 + 弹出列表
   const floatTools = document.getElementById('floatTools');
   const floatToolsMenu = document.getElementById('floatToolsMenu');
   if (floatTools && floatToolsMenu) {
     const closeFloatTools = () => { floatToolsMenu.hidden = true; floatTools.classList.remove('active'); };
     const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
     const syncFloatTools = () => {
-      const pairs = { toolUpdate: 'updateBtn', toolTheme: 'themeBtn', toolLan: 'lanBtn' };
-      for (const tid in pairs) {
-        const item = document.getElementById(tid), src = document.getElementById(pairs[tid]);
-        if (!item || !src) continue;
-        item.hidden = src.hidden;
-        // 圆形按钮只放图标，标题留给 data-tip（悬停浮出）；从顶栏按钮文案里拆出「图标 + 文字」
-        const txt = (src.textContent || '').trim();
-        const m = txt.match(/^([^\w\u4e00-\u9fa5]+)\s*(.*)$/);
-        const icon = item.querySelector('.tool-ic');
-        const label = m ? (m[2].trim() || txt) : txt;
-        if (m && icon) icon.textContent = m[1].trim();
-        if (label) { item.dataset.tip = label; item.setAttribute('aria-label', label); }
-      }
       const install = document.getElementById('toolInstall');
       if (install) install.hidden = isStandalone();
     };
     const actions = {
       toolTop: () => window.scrollTo({ top: 0, behavior: 'smooth' }),
       toolInstall: () => promptInstall(),
-      toolUpdate: () => document.getElementById('updateBtn')?.click(),
-      toolShortcuts: () => document.getElementById('shortcutsBtn')?.click(),
-      toolTheme: () => document.getElementById('themeBtn')?.click(),
-      toolLan: () => document.getElementById('lanBtn')?.click(),
+      toolUpdate: () => openChangelogModal(),
+      toolShortcuts: () => document.getElementById('shortcutsModal').classList.add('show'),
+      toolTheme: cycleTheme,
+      toolLan: toggleLanMode,
     };
     for (const tid in actions) {
       const item = document.getElementById(tid);
@@ -3113,7 +2962,7 @@ function bindGlobal() {
 
   bindSortMode();
 
-  // PWA：顶栏安装按钮（beforeinstallprompt 时显示）
+  // PWA：快捷菜单安装入口（beforeinstallprompt 时显示）
   bindPWAInstall();
 
   // 键盘快捷键
@@ -3681,11 +3530,11 @@ function closeChangelogModal() {
 }
 
 /**
- * 升级提示：仅管理员可见。有新版本时顶栏出现徽章，点击打开更新日志弹窗。
+ * 升级提示：仅管理员可见。有新版本时快捷菜单出现「新版本」入口，点击打开更新日志弹窗。
  * 结果存 sessionStorage，同一会话只查一次；失败静默，不影响主页使用。
  */
 async function initUpdateNotice() {
-  const btn = document.getElementById('updateBtn');
+  const btn = document.getElementById('toolUpdate');
   if (!btn || !state.user || state.user.role !== 'admin') return;
 
   let info = null;
@@ -3709,8 +3558,8 @@ async function initUpdateNotice() {
 
   state.updateInfo = info;
   btn.hidden = false;
-  btn.title = '发现新版本 ' + info.latest + '（当前 ' + info.current + '）';
-  btn.onclick = openChangelogModal;
+  btn.dataset.tip = '发现新版本 ' + info.latest + '（当前 ' + info.current + '）';
+  btn.setAttribute('aria-label', btn.dataset.tip);
 }
 
 /* ---------- 访客访问锁屏（guest_required=true 时 boot 提前 return 调此函数） ---------- */
@@ -3802,7 +3651,7 @@ function bindShortcuts() {
         e.preventDefault();
         document.getElementById('searchInput').focus();
         break;
-      case 't': updateThemeBtn && updateThemeBtn(); document.getElementById('themeBtn').click(); break;
+      case 't': cycleTheme(); break;
       case 'n': switchView('news'); break;
       case 'b':
       case 'h': switchView('nav'); break;
@@ -3826,12 +3675,9 @@ function bindShortcuts() {
   document.getElementById('changelogModal')?.addEventListener('click', e => {
     if (e.target.id === 'changelogModal') closeChangelogModal();
   });
-  // 顶栏快捷键按钮（nav 源码风格）
-  const scBtn = document.getElementById('shortcutsBtn');
-  if (scBtn) scBtn.onclick = () => document.getElementById('shortcutsModal').classList.add('show');
 }
 
-/* ============ 顶栏 PWA 安装按钮（Chrome/Edge 触发 beforeinstallprompt 时显示） ============ */
+/* ============ PWA 安装入口（Chrome/Edge 触发 beforeinstallprompt 时出现在快捷菜单） ============ */
 let deferredInstallPrompt = null;
 
 // 统一安装入口：有安装事件就直接弹系统提示，否则给出浏览器内的安装路径
@@ -3841,8 +3687,6 @@ async function promptInstall() {
     deferredInstallPrompt = null;
     evt.prompt();
     const res = await evt.userChoice.catch(() => null);
-    const topBtn = document.getElementById('pwaInstallBtn');
-    if (topBtn) topBtn.hidden = true;
     const item = document.getElementById('toolInstall');
     if (item) item.hidden = true;
     return res;
@@ -3852,16 +3696,14 @@ async function promptInstall() {
 }
 
 function bindPWAInstall() {
-  const btn = document.getElementById('pwaInstallBtn');
   window.addEventListener('beforeinstallprompt', e => {
     e.preventDefault();
     deferredInstallPrompt = e;
-    if (btn) btn.hidden = false;
+    const item = document.getElementById('toolInstall');
+    if (item) item.hidden = false;
   });
-  if (btn) btn.addEventListener('click', () => { promptInstall(); });
   window.addEventListener('appinstalled', () => {
     deferredInstallPrompt = null;
-    if (btn) btn.hidden = true;
     const item = document.getElementById('toolInstall');
     if (item) item.hidden = true;
   });

@@ -16,7 +16,7 @@ type SettingsHandler struct{}
 
 var allowedSettingKeys = map[string]struct{}{
 	"site_title": {}, "site_logo": {}, "wallpaper": {}, "mask_opacity": {},
-	"wallpaper_blur": {}, "announcement": {}, "announcement_show": {},
+	"wallpaper_blur": {},
 	"footer": {}, "clock_show": {}, "clock_font": {}, "page_font": {}, "default_theme": {}, "theme_style": {},
 	"card_style": {}, "card_opacity": {}, "default_lan_mode": {}, "lan_hostnames": {},
 	"default_group": {},
@@ -30,8 +30,7 @@ var allowedSettingKeys = map[string]struct{}{
 	"icp_show": {}, "icp_number": {}, "icp_link": {}, "police_show": {},
 	"police_number": {}, "police_link": {}, "wallpaper_source": {},
 	"guest_access_enabled": {}, "guest_password_hash": {},
-	"search_bar_enabled": {}, "topbar_desktop_enabled": {},
-	"topbar_mobile_enabled": {},
+	"search_bar_enabled": {},
 	"update_check":          {}, "update_check_interval": {},
 	"auto_backup_enabled": {}, "auto_backup_interval": {},
 	"clip_enabled": {}, "clip_default_group": {}, "clip_default_capture": {},

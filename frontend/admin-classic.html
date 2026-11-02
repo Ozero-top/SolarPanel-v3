@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.ico?v=1b5d8c6c" type="image/x-icon">
   <link rel="stylesheet" href="assets/css/common.css?v=94307f77">
   <link rel="stylesheet" href="assets/css/auth-admin.css?v=c0b4b649">
-  <link rel="stylesheet" href="assets/css/themes.css?v=d8731efa">
+  <link rel="stylesheet" href="assets/css/themes.css?v=8ebe8160">
 </head>
 <body class="admin-classic">
   <div class="style-fx" aria-hidden="true"></div>
@@ -128,7 +128,7 @@
         <button type="button" class="subtab" data-panel="nas">🖥️ NAS 监控</button>
       </nav>
 
-      <!-- 站点信息（基本信息 / 公告 / 备案） -->
+      <!-- 站点信息（基本信息 / 备案） -->
       <div class="settings-section">
         <div class="section-head">
           <h3>🏠 站点信息</h3>
@@ -158,21 +158,6 @@
                 <input class="input" id="s_site_logo" type="text" placeholder="图片地址，或点击上传">
                 <button class="btn" type="button" data-upload="s_site_logo">上传图片</button>
               </div>
-            </div>
-          </div>
-
-          <h4 class="sub-group-title">📢 公告</h4>
-          <div class="form-row">
-            <div class="form-item" style="flex:2">
-              <label>公告内容（需打开右侧公告开关才会显示）</label>
-              <textarea class="textarea" id="s_announcement" maxlength="500"></textarea>
-            </div>
-            <div class="form-item" style="flex:1">
-              <label>公告开关（默认关闭）</label>
-              <select class="select" id="s_announcement_show">
-                <option value="0">关闭（不在主页显示）</option>
-                <option value="1">开启（主页顶栏显示公告）</option>
-              </select>
             </div>
           </div>
 
@@ -423,7 +408,7 @@
           <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-search">保存</button>
         </div>
         <form id="sf-search" data-section="search" autocomplete="off">
-          <h4 class="sub-group-title">🧭 顶栏与搜索栏</h4>
+          <h4 class="sub-group-title">🧭 搜索栏</h4>
           <div class="form-row">
             <div class="form-item">
               <label>搜索引擎搜索栏</label>
@@ -432,24 +417,6 @@
                 <option value="0">隐藏</option>
               </select>
             </div>
-            <div class="form-item">
-              <label>桌面端顶栏（品牌/按钮）</label>
-              <select class="select" id="s_topbar_desktop_enabled">
-                <option value="0">隐藏</option>
-                <option value="1">显示（向下滚动自动收起）</option>
-              </select>
-            </div>
-            <div class="form-item">
-              <label>移动端顶栏（品牌/按钮）</label>
-              <select class="select" id="s_topbar_mobile_enabled">
-                <option value="0">默认隐藏（右上角悬浮按钮切换）</option>
-                <option value="1">始终显示</option>
-              </select>
-            </div>
-          </div>
-
-          <h4 class="sub-group-title">🔍 搜索引擎</h4>
-          <div class="form-row">
             <div class="form-item">
               <label>默认搜索引擎</label>
               <select class="select" id="s_search_default"></select>
@@ -1442,8 +1409,8 @@
   </div>
 
   <script src="assets/js/qrcode.min.js"></script>
-  <script src="assets/js/api.js?v=43893360"></script>
-  <script src="assets/js/admin.js?v=d05422da"></script>
+  <script src="assets/js/api.js?v=0440aa68"></script>
+  <script src="assets/js/admin.js?v=29b17373"></script>
   <script src="assets/js/admin-ui.js?v=0218fafc"></script>
 </body>
 </html>

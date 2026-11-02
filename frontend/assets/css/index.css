@@ -24,11 +24,9 @@
 
 /* 风格切换过渡：只给结构性表面做颜色过渡，避免整套配色硬切（260ms 后移除，不影响日常 hover） */
 html.sp-theme-swap .bg-layer,
-html.sp-theme-swap .topbar,
 html.sp-theme-swap .group,
 html.sp-theme-swap .card,
 html.sp-theme-swap .search-box,
-html.sp-theme-swap .icon-btn,
 html.sp-theme-swap .btn,
 html.sp-theme-swap .navbar-tabs,
 html.sp-theme-swap .wetab-dock,
@@ -81,177 +79,9 @@ body::-webkit-scrollbar {
   display: contents;
 }
 
-/* ---------- 顶栏（胶囊浮岛） ---------- */
-.topbar {
-  position: sticky;
-  top: 14px;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 20px;
-  margin-bottom: 30px;
-  border-radius: 999px;
-  transition: transform 0.35s cubic-bezier(.4,0,.2,1), opacity 0.35s ease;
-  will-change: transform;
-}
-/* 后端设置生效前先隐藏，避免进入页面瞬间闪现品牌与按钮 */
-html:not(.sp-topbar-ready) .topbar {
-  visibility: hidden;
-}
-/* 滚动向下隐藏（只有到顶部才恢复显示，向上滚不弹回） */
-.topbar.hidden-scroll {
-  transform: translateY(-140%);
-  opacity: 0;
-  pointer-events: none;
-}
-/* 移动端：默认收起，点击悬浮按钮展开；iOS 上 sticky+transform 冲突，用 max-height 方案 */
-@media (max-width: 640px) {
-  .topbar {
-    transition: max-height 0.35s ease, opacity 0.35s ease, padding 0.35s ease, margin 0.35s ease;
-    overflow: hidden;
-    max-height: 80px;
-  }
-  .topbar.mobile-hidden {
-    max-height: 0;
-    padding-top: 0;
-    padding-bottom: 0;
-    margin-bottom: 0;
-    opacity: 0;
-    pointer-events: none;
-  }
-}
 
-/* ---------- 移动端顶栏悬浮开关 ---------- */
-.topbar-fab {
-  position: fixed;
-  top: 14px;
-  right: 14px;
-  z-index: 200;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  border: none;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  cursor: pointer;
-  box-shadow: var(--raised-md, 0 4px 14px rgba(0,0,0,.15));
-  background: var(--glass-bg, rgba(255,255,255,.85));
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  color: var(--text-primary, #222);
-  padding: 0;
-  transition: transform 0.2s ease, opacity 0.2s ease;
-}
-.topbar-fab:active { transform: scale(0.9); }
-@media (max-width: 640px) {
-  .topbar-fab { display: flex; }
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-.brand img {
-  width: 30px;
-  height: 30px;
-  border-radius: 10px;
-  object-fit: cover;
-  box-shadow: var(--raised-sm);
-}
-.brand .title {
-  font-size: 17px;
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.top-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-.ann-pill {
-  max-width: 420px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  color: var(--text-muted);
-  background: var(--surface);
-  box-shadow: var(--pressed-sm);
-  border-radius: 999px;
-  padding: 6px 15px;
-  cursor: default;
-}
-.icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  font-size: 16px;
-  border-radius: 12px;
-  border: 1px solid var(--edge);
-  background: var(--surface);
-  color: var(--text);
-  cursor: pointer;
-  text-decoration: none !important;
-  box-shadow: var(--raised-sm);
-  transition: box-shadow var(--tr) var(--ease), transform var(--tr) var(--ease),
-    color var(--tr) var(--ease);
-}
-.icon-btn:hover {
-  color: var(--accent);
-  transform: translateY(-2px);
-  box-shadow: var(--raised);
-}
-/* 主题三态按钮 + 内外网切换：带文字（如 🌙 深色 / 外网），自适应宽度 */
-#themeBtn, #lanBtn {
-  width: auto;
-  padding: 0 14px;
-  gap: 6px;
-  font-size: 13.5px;
-  font-weight: 600;
-  white-space: nowrap;
-  border-radius: 999px;
-}
-.icon-btn:active {
-  transform: translateY(0);
-  box-shadow: var(--pressed-sm);
-}
 
-/* 升级提示按钮（仅管理员可见）：胶囊 + 右上角小红点 */
-#updateBtn {
-  position: relative;
-  width: auto;
-  padding: 0 12px;
-  gap: 6px;
-  font-size: 13.5px;
-  font-weight: 600;
-  border-radius: 999px;
-  color: var(--accent);
-  border-color: var(--accent);
-  white-space: nowrap;
-}
-/* .icon-btn 的 display 会盖掉 UA 的 [hidden]，这里显式声明 */
-#updateBtn[hidden] { display: none; }
-#updateBtn::after {
-  content: '';
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #e2503a;
-  box-shadow: 0 0 0 2px var(--surface);
-}
+
 /* 更新日志弹窗顶部的新版本提示 */
 .cl-update-tip {
   margin-bottom: 12px;
@@ -1721,28 +1551,6 @@ body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
 @media (max-width: 640px) {
   .clock-time {
     font-size: 46px;
-  }
-  .topbar {
-    top: 10px;
-    padding: 8px 12px;
-    gap: 10px;
-  }
-  .brand .title {
-    font-size: 15px;
-  }
-  .top-actions {
-    gap: 6px;
-  }
-  .icon-btn {
-    width: 34px;
-    height: 34px;
-  }
-  #themeBtn, #lanBtn {
-    padding: 0 10px;
-    font-size: 12.5px;
-  }
-  .ann-pill {
-    display: none;
   }
   /* nav（导航栏详细）样式：移动端固定一行双卡片（navapp 由下方 .style-app 规则接管） */
   .cards {

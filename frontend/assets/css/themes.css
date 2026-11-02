@@ -3573,10 +3573,6 @@ body.has-wallpaper .style-fx {
 
 :root[data-style='wetab'] #heroWrap { display: block; position: sticky; top: 0; z-index: 24; padding: 10px 0 18px; }
 
-:root[data-style='wetab'] #heroWrap::before { content: ''; position: absolute; left: 50%; top: 0; width: 100vw; height: 100%; transform: translateX(-50%); z-index: -1; pointer-events: none; background: linear-gradient(180deg, rgba(255, 255, 255, 0.62) 0%, rgba(255, 255, 255, 0.34) 42%, rgba(255, 255, 255, 0.12) 72%, rgba(255, 255, 255, 0) 100%); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 80%, transparent 100%); mask-image: linear-gradient(180deg, #000 0%, #000 80%, transparent 100%); }
-
-:root[data-theme='dark'][data-style='wetab'] #heroWrap::before { background: linear-gradient(180deg, rgba(10, 13, 24, 0.68) 0%, rgba(10, 13, 24, 0.38) 42%, rgba(10, 13, 24, 0.12) 72%, rgba(10, 13, 24, 0) 100%); }
-
 :root[data-style='wetab'] #heroWrap .clock-area { margin-bottom: 12px; }
 
 :root[data-style='wetab'] .navbar-tabs { position: fixed; left: 14px; top: 50%; transform: translateY(-50%) translateX(calc(-100% - 16px)); opacity: 0; pointer-events: none; z-index: 60; display: flex; flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; align-items: center; gap: 8px; width: 48px; max-width: 48px; max-height: min(78vh, 760px); margin: 0; padding: 6px; border-radius: 20px; overflow: visible; background: color-mix(in srgb, var(--surface) 86%, transparent); border: 1px solid var(--edge); box-shadow: var(--raised-lg), inset 0 1px 0 rgba(255, 255, 255, 0.28); backdrop-filter: blur(28px) saturate(180%); -webkit-backdrop-filter: blur(28px) saturate(180%); transition: transform 320ms var(--ease), opacity 240ms var(--ease); }
@@ -3864,7 +3860,7 @@ body.has-wallpaper .style-fx {
 
 @media (max-width: 1024px) { :root[data-style='wetab'] .navbar-tabs { display: none !important; } :root[data-style='wetab'] .wetab-rail-handle { display: none !important; } :root[data-style='wetab'] .page { padding: 0 16px 128px; } :root[data-style='wetab'] .float-tools { bottom: 108px; } :root[data-style='wetab'] .wetab-dock { bottom: 10px; max-width: 94vw; } }
 
-@media (max-width: 720px) { :root[data-style='wetab'] #heroWrap { position: static; padding: 0; } :root[data-style='wetab'] #heroWrap::before { content: none; } }
+@media (max-width: 720px) { :root[data-style='wetab'] #heroWrap { position: static; padding: 0; } }
 
 @media (max-width: 640px) { :root[data-style='wetab'] .cards,
 :root[data-style='wetab'] .cards.style-app { grid-template-columns: repeat(auto-fill, minmax(var(--wetab-card-width, 96px), 1fr)); row-gap: var(--wetab-row-gap, 10px); column-gap: var(--wetab-col-gap, 10px); } :root[data-style='wetab'] body .card { padding: 12px 6px 10px; } :root[data-style='wetab'] .card .icon { width: 46px; height: 46px; border-radius: 14px; } :root[data-style='wetab'] body .wetab-dock .dock-card { width: 62px; } :root[data-style='wetab'] .wetab-prefs-btn,

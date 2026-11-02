@@ -1725,8 +1725,6 @@ function fillSettingsForm(s) {
   const blurVal = isNaN(bv) ? 6 : Math.min(Math.max(bv, 0), 30);
   document.getElementById('s_wallpaper_blur').value = blurVal;
   document.getElementById('v_wallpaper_blur').textContent = String(blurVal);
-  document.getElementById('s_announcement').value = s.announcement || '';
-  document.getElementById('s_announcement_show').value = s.announcement_show === '1' ? '1' : '0';
   document.getElementById('s_default_lan_mode').value = s.default_lan_mode === 'lan' ? 'lan' : (s.default_lan_mode === 'auto' ? 'auto' : 'public');
   document.getElementById('s_lan_hostnames').value = s.lan_hostnames || '';
   document.getElementById('s_site_url').value = s.site_url || '';
@@ -2392,9 +2390,9 @@ function refreshEngineDefaults() {
 /* 分区定义：每个分区独立保存，只提交自己的设置项（后端白名单兼容部分提交）
    分区顺序与站点设置的二级导航一一对应：站点信息 → 外观与卡片 → 导航与搜索 → 访问控制 → 热点新闻 → NAS 监控 */
 const SETTING_SECTIONS = {
-  basic:  { label: '站点信息', keys: ['site_title', 'site_url', 'footer', 'site_logo', 'announcement_show', 'announcement', 'icp_show', 'icp_number', 'icp_link', 'police_show', 'police_number', 'police_link', 'default_lan_mode', 'lan_hostnames'] },
+  basic:  { label: '站点信息', keys: ['site_title', 'site_url', 'footer', 'site_logo', 'icp_show', 'icp_number', 'icp_link', 'police_show', 'police_number', 'police_link', 'default_lan_mode', 'lan_hostnames'] },
   theme:  { label: '外观与卡片', keys: ['default_theme', 'theme_style', 'card_style', 'card_opacity', 'default_group', 'content_maxwidth', 'content_pad_lr', 'content_pad_top', 'content_pad_bottom', 'page_font', 'clock_font', 'clock_show', 'weather_show', 'weather_city', 'wallpaper', 'mask_opacity', 'wallpaper_blur', 'wallpaper_source'] },
-  search: { label: '导航与搜索', keys: ['search_bar_enabled', 'topbar_desktop_enabled', 'topbar_mobile_enabled', 'search_engines', 'search_default', 'search_width'] },
+  search: { label: '导航与搜索', keys: ['search_bar_enabled', 'search_engines', 'search_default', 'search_width'] },
   access: { label: '访问控制', keys: ['guest_access_enabled', 'guest_password_hash'] },
   news:   { label: '热点新闻', keys: ['news_show', 'news_auto_refresh', 'news_sources', 'news_order'] },
   nas:    { label: 'NAS 监控', keys: ['nas_show', 'nas_layout', 'nas_refresh', 'nas_guest', 'nas_disk_paths', 'nas_modal_alpha', 'nas_alert_enable', 'nas_alert_disk', 'nas_alert_temp', 'nas_alert_webhook'] },

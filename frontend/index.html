@@ -16,8 +16,8 @@
   <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
   <title>SolarPanel</title>
   <link rel="stylesheet" href="assets/css/common.css?v=94307f77">
-  <link rel="stylesheet" href="assets/css/index.css?v=a134eda0">
-  <link rel="stylesheet" href="assets/css/themes.css?v=d8731efa">
+  <link rel="stylesheet" href="assets/css/index.css?v=18441e63">
+  <link rel="stylesheet" href="assets/css/themes.css?v=8ebe8160">
 </head>
 <body>
   <div class="bg-layer" id="bgLayer"></div>
@@ -29,24 +29,6 @@
   <button class="gn-toggle" id="gnToggle" hidden aria-label="展开分组目录" title="展开分组目录"></button>
 
   <div class="page">
-    <!-- 顶栏：内容由后端设置 -->
-    <header class="topbar glass">
-      <div class="brand">
-        <img id="logoImg" alt="" hidden>
-        <span class="title" id="siteTitle">SolarPanel</span>
-      </div>
-      <div class="top-actions">
-        <span class="ann-pill" id="annBar" hidden title=""></span>
-        <button class="icon-btn" id="pwaInstallBtn" hidden title="安装为应用" aria-label="安装为应用">📥</button>
-        <button class="icon-btn" id="updateBtn" hidden title="发现新版本" aria-label="发现新版本">⬆️ 新版本</button>
-        <button class="icon-btn" id="shortcutsBtn" title="键盘快捷键（?）" aria-label="键盘快捷键">⌨️</button>
-        <button class="icon-btn" id="themeBtn" title="切换主题">🌙</button>
-        <button class="icon-btn" id="lanBtn" title="外网/内网切换" aria-label="外网内网切换">外网</button>
-      </div>
-    </header>
-
-    <!-- 移动端顶栏悬浮开关按钮 -->
-    <button class="topbar-fab" id="topbarFab" aria-label="展开顶栏">▾</button>
     <!-- 首屏主视觉（时钟 / 天气 / 搜索）：wetab 主题下整块吸顶，其余主题保持原文档流 -->
     <div class="hero-wrap" id="heroWrap">
     <section class="clock-area" id="clockArea">
@@ -287,14 +269,14 @@
   <div id="floatToolsMenu" class="tool-menu" hidden>
     <button class="tool-item" id="toolTop" data-tip="返回顶部" aria-label="返回顶部"><span class="tool-ic" aria-hidden="true">🔝</span></button>
     <button class="tool-item" id="toolInstall" data-tip="安装为应用" aria-label="安装为应用"><span class="tool-ic" aria-hidden="true">📥</span></button>
-    <button class="tool-item" id="toolUpdate" data-tip="新版本" aria-label="新版本"><span class="tool-ic" aria-hidden="true">⬆️</span></button>
+    <button class="tool-item" id="toolUpdate" data-tip="新版本" aria-label="新版本" hidden><span class="tool-ic" aria-hidden="true">⬆️</span></button>
     <button class="tool-item" id="toolShortcuts" data-tip="键盘快捷键" aria-label="键盘快捷键"><span class="tool-ic" aria-hidden="true">⌨️</span></button>
     <button class="tool-item" id="toolTheme" data-tip="切换主题" aria-label="切换主题"><span class="tool-ic" aria-hidden="true">🌙</span></button>
     <button class="tool-item" id="toolLan" data-tip="外网/内网切换" aria-label="外网/内网切换"><span class="tool-ic" aria-hidden="true">🌐</span></button>
   </div>
 
   <script src="assets/vendor/sortable.min.js?v=18a2566c"></script>
-  <script src="assets/js/api.js?v=43893360"></script>
-  <script src="assets/js/index.js?v=a4e3f653"></script>
+  <script src="assets/js/api.js?v=0440aa68"></script>
+  <script src="assets/js/index.js?v=4516254e"></script>
 </body>
 </html>

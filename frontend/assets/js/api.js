@@ -3,8 +3,14 @@
  */
 
 /* ================= 应用版本与更新日志（每次更新只需改这里） ================= */
-const APP_VERSION = 'v3.7.4';
+const APP_VERSION = 'v3.7.5';
 const APP_CHANGELOG = [
+  { ver: 'v3.7.5', date: '2026-11-02', items: [
+    '🧹 移除主页顶栏（包含PC端 / 移动端）与其功能按钮统一收进右下角快捷菜单',
+    '📢 移除公告功能及后台相关设置，站点信息更精简',
+    '🐛 修复 Tab标签页顶部蒙版遮挡壁纸，去除多余的半透明模糊层',
+    '🖼️ Tab标签页壁纸改为固定显示，多分组滚动切换时不再随页面位移',
+  ]},
   { ver: 'v3.7.4', date: '2026-11-02', items: [
     '📦 剪藏库支持批量导出：按当前筛选导出 ZIP，逐条 Markdown + clips.csv 索引，适合归档与迁移',
     '🔍 剪藏库支持重复链接检测：按链接分组列出重复卡片，可一键保留最新并清理其余',
@@ -666,7 +672,7 @@ function applyTheme(settings) {
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (document.documentElement.dataset.mode === 'system') {
         setThemeMode('system');
-        if (typeof updateThemeBtn === 'function' && document.getElementById('themeBtn')) updateThemeBtn();
+        if (typeof updateThemeBtn === 'function' && document.getElementById('toolTheme')) updateThemeBtn();
       }
     });
   }
