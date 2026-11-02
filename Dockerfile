@@ -36,7 +36,15 @@ COPY . .
 COPY --from=frontend-builder /build/frontend ./frontend
 
 # -s -w 剥离符号表
-RUN go build -ldflags="-s -w" -o /solarpanel .
+# arm/v7 例外：Go 对 linux/arm 的 musl 回退名是 /lib/ld-musl-arm.so.1，
+# 而 Alpine(armhf) 实际叫 /lib/ld-musl-armhf.so.1，匹配失败会退回 glibc 的
+# /lib/ld-linux.so.3（运行镜像里不存在），导致 exec 报「找不到 /app/solarpanel」。
+# 这里仅对 arm 显式指定解释器，amd64/arm64 的构建参数保持不变。
+RUN LDFLAGS="-s -w"; \
+    if [ "$TARGETARCH" = "arm" ]; then \
+      LDFLAGS="$LDFLAGS -I /lib/ld-musl-armhf.so.1"; \
+    fi; \
+    go build -ldflags="$LDFLAGS" -o /solarpanel .
 
 # ===== Stage 3: 最小运行时 =====
 FROM alpine:3.22
