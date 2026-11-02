@@ -2,28 +2,12 @@
 const CACHE_NAME = 'sp-cache-23f4f86c';
 const RUNTIME_CACHE = 'sp-runtime-23f4f86c';
 
-// 预缓存（安装时）
+// 预缓存（安装时）：只放离线兜底页。
+// CSS/JS 在页面里都带 ?v= 内容戳，下面再列裸地址既不会命中（caches.match 按完整 URL 匹配），
+// 又会在每次版本升级时额外拉近 1MB 原始体积，与首屏请求抢带宽。
 const PRECACHE_URLS = [
   './',
-  'index.html',
-  'login.html',
-  'admin.html',
   'offline.html',
-  'assets/css/common.css',
-  'assets/css/index.css',
-  'assets/css/auth-admin.css',
-  'assets/css/themes.css',
-  'assets/js/api.js',
-  'assets/js/index.js',
-  'assets/js/login.js',
-  'assets/js/admin.js',
-  'clip.html',
-  'assets/css/clip.css',
-  'assets/js/clip.js',
-  'clip-read.html',
-  'assets/css/clip-read.css',
-  'assets/js/clip-read.js',
-  'assets/vendor/sortable.min.js',
 ];
 
 self.addEventListener('install', e => {

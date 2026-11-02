@@ -4,10 +4,12 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha1"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"embed"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"io/fs"
@@ -18,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -68,6 +71,30 @@ func contentTypeByExt(path string) string {
 	default:
 		return "application/octet-stream"
 	}
+}
+
+// writeEmbedResponse 输出内嵌静态资源：
+//   - 带 ?v= 版本戳（构建时按内容改写）的资源长缓存 immutable，二次访问不再发请求；
+//   - 页面 HTML 走 no-cache，靠内容哈希 ETag 命中 304，避免每次重传整页。
+func writeEmbedResponse(w http.ResponseWriter, r *http.Request, data []byte, contentType string) {
+	sum := sha1.Sum(data)
+	etag := `"` + hex.EncodeToString(sum[:]) + `"`
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+	w.Header().Set("ETag", etag)
+	if r.URL.Query().Get("v") != "" {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "no-cache")
+	}
+	if inm := r.Header.Get("If-None-Match"); inm != "" && strings.Contains(inm, etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
 }
 
 func seedPresetWallpapers(uploadDir string) {
@@ -388,11 +415,7 @@ func main() {
 				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
-			if contentType != "" {
-				w.Header().Set("Content-Type", contentType)
-			}
-			w.WriteHeader(http.StatusOK)
-			w.Write(data)
+			writeEmbedResponse(w, r, data, contentType)
 		}
 	}
 
@@ -453,10 +476,7 @@ func main() {
 		embedPath := "frontend" + cleanPath
 		data, err := frontendFS.ReadFile(embedPath)
 		if err == nil {
-			ct := contentTypeByExt(cleanPath)
-			w.Header().Set("Content-Type", ct)
-			w.WriteHeader(http.StatusOK)
-			w.Write(data)
+			writeEmbedResponse(w, r, data, contentTypeByExt(cleanPath))
 			return
 		}
 		http.Error(w, "not found: "+path, http.StatusNotFound)
