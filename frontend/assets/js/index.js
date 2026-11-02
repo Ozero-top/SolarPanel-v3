@@ -622,16 +622,57 @@ function iconDBSend(mode, fn) {
 const iconCacheGet = host => iconDBSend('readonly', s => s.get(host));
 const iconCachePut = (host, dataUrl) => iconDBSend('readwrite', s => s.put(dataUrl, host));
 
-function blobToDataURL(blob) {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => resolve(String(fr.result || ''));
-    fr.onerror = () => reject(fr.error || new Error('read error'));
-    fr.readAsDataURL(blob);
+/* ---------- 图标批量拉取 ----------
+   首屏可见卡片往往几十张，逐卡请求 favicon.php 在弱网上行下要排好几轮；
+   把 80ms 内出现的域名合并成一次 hosts=... 请求（服务端只读磁盘缓存），一轮取回。 */
+const iconBatchQueue = new Set();
+const iconBatchWaiters = new Map();
+let iconBatchTimer = 0;
+const ICON_BATCH_SIZE = 48;
+
+/** 批量接口：hosts → { host: dataURL }，失败/无缓存返回 null */
+function fetchIconBatch(hosts) {
+  if (!hosts.length) return Promise.resolve(null);
+  return fetch(FAVICON_PROXY_BASE + 'favicon.php?hosts=' + encodeURIComponent(hosts.join(',')), { credentials: 'same-origin' })
+    .then(res => (res.ok ? res.json() : null))
+    .then(j => (j && j.data && j.data.icons) || null)
+    .catch(() => null);
+}
+
+/** 单个域名合并到下一批；返回 Promise<dataURL|null> */
+function iconBatchGet(host) {
+  if (!host) return Promise.resolve(null);
+  return new Promise(resolve => {
+    const waiters = iconBatchWaiters.get(host);
+    if (waiters) waiters.push(resolve);
+    else iconBatchWaiters.set(host, [resolve]);
+    iconBatchQueue.add(host);
+    clearTimeout(iconBatchTimer);
+    iconBatchTimer = setTimeout(flushIconBatch, 80);
   });
 }
 
-/** 后台预取全部分组的 favicon：串行 + 间隔 900ms（接口限流 300 次/分钟），不抢占首屏带宽 */
+function flushIconBatch() {
+  const hosts = Array.from(iconBatchQueue).slice(0, ICON_BATCH_SIZE);
+  if (!hosts.length) return;
+  hosts.forEach(h => iconBatchQueue.delete(h));
+
+  const finish = map => {
+    hosts.forEach(h => {
+      const waiters = iconBatchWaiters.get(h) || [];
+      iconBatchWaiters.delete(h);
+      const url = map ? map[h] : null;
+      if (url) iconCachePut(h, url);
+      waiters.forEach(fn => fn(url || null));
+    });
+  };
+  // 2.5s 兜底：批量接口不通时立刻回落逐卡代理，不能让图标一直空着
+  const guard = setTimeout(() => finish(null), 2500);
+  fetchIconBatch(hosts).then(map => { clearTimeout(guard); finish(map); });
+  if (iconBatchQueue.size) setTimeout(flushIconBatch, 120);
+}
+
+/** 后台预取全部分组的 favicon：按批 40 个 + 间隔 900ms（接口限流 300 次/分钟），不抢占首屏带宽 */
 async function prefetchAllIcons() {
   if (!navigator.onLine || !('indexedDB' in window)) return;
   const hosts = [];
@@ -646,19 +687,17 @@ async function prefetchAllIcons() {
   }));
   if (!hosts.length) return;
 
+  // 先剔除本地已有缓存的域名，只补缺的
+  const pending = [];
   for (const host of hosts) {
+    if (!(await iconCacheGet(host))) pending.push(host);
+  }
+  for (let i = 0; i < pending.length; i += 40) {
     if (!navigator.onLine) break;
-    if (await iconCacheGet(host)) continue;
-    try {
-      const resp = await fetch(FAVICON_PROXY_BASE + 'favicon.php?host=' + encodeURIComponent(host), { credentials: 'same-origin' });
-      if (resp.ok) {
-        const blob = await resp.blob();
-        if (blob.size > 0 && blob.size <= 64 * 1024) {
-          const dataUrl = await blobToDataURL(blob);
-          if (dataUrl) await iconCachePut(host, dataUrl);
-        }
-      }
-    } catch (_) { /* 单个站点失败不影响后续 */ }
+    const map = await fetchIconBatch(pending.slice(i, i + 40));
+    if (map) {
+      for (const [h, url] of Object.entries(map)) await iconCachePut(h, url);
+    }
     await new Promise(r => setTimeout(r, 900));
   }
 }
@@ -2721,12 +2760,16 @@ function buildCard(item, styleApp) {
       if (item.icon_data) {
         pick(srcs, 0);
       } else {
-        // 先查 IndexedDB（毫秒级命中免网络），未命中再发起代理请求
+        // 先查 IndexedDB（毫秒级命中免网络），未命中并入批量请求，缺失再走逐卡代理
         armCardIcon(icon, () => {
           iconCacheGet(host).then(dataUrl => {
             if (picked || iconState.done) return;
-            if (dataUrl) pick([dataUrl].concat(proxySrcs), 0);
-            else pick(srcs, idx);
+            if (dataUrl) { pick([dataUrl].concat(proxySrcs), 0); return; }
+            iconBatchGet(host).then(batchUrl => {
+              if (picked || iconState.done) return;
+              if (batchUrl) pick([batchUrl].concat(proxySrcs), 0);
+              else pick(srcs, idx);
+            });
           }).catch(() => { if (!picked) pick(srcs, idx); });
         });
       }

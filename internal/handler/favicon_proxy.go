@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/base64"
 	"log"
 	"net/http"
 	"os"
@@ -55,6 +56,12 @@ func faviconCachePath(cfg *config.Config, host string) (diskPath, urlPath, ext s
 }
 
 func (h *FaviconProxyHandler) Proxy(w http.ResponseWriter, r *http.Request) {
+	// 批量模式：?hosts=a,b,c 一次返回多个域名已缓存的图标（data URL）。
+	// 首屏可见卡片往往几十张，逐卡请求在弱网上行下要排好几轮，合并成一次请求快得多。
+	if r.URL.Query().Get("hosts") != "" {
+		h.batchIcons(w, r)
+		return
+	}
 	host := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("host")))
 	if host == "" || len(host) > 253 || !faviconHostRe.MatchString(host) || strings.Contains(host, "..") {
 		w.WriteHeader(http.StatusBadRequest)
@@ -119,6 +126,55 @@ func (h *FaviconProxyHandler) Proxy(w http.ResponseWriter, r *http.Request) {
 	faviconNegative.Store(host, time.Now())
 	log.Printf("[favicon] host=%s — all candidates failed, served 404", host)
 	h.serveNotFound(w)
+}
+
+const (
+	batchIconMaxHosts = 48
+	// 图标体积中位数约 3.4KB，48 张约 160KB；这里再用总量兜底，
+	// 避免个别超大 SVG 把一次响应撑到几百 KB
+	batchIconMaxBytes = 192 << 10
+	batchIconMaxOne   = 48 << 10
+)
+
+// batchIcons 批量返回多个域名已缓存的图标：只读本地磁盘、请求内不联网，
+// 未缓存的域名直接留空，由前端回退到逐卡代理（那里会现抓并落盘）。
+func (h *FaviconProxyHandler) batchIcons(w http.ResponseWriter, r *http.Request) {
+	icons := make(map[string]string)
+	total := 0
+	for _, raw := range strings.Split(r.URL.Query().Get("hosts"), ",") {
+		if len(icons) >= batchIconMaxHosts || total >= batchIconMaxBytes {
+			break
+		}
+		host := strings.ToLower(strings.TrimSpace(raw))
+		if host == "" || len(host) > 253 || !faviconHostRe.MatchString(host) ||
+			strings.Contains(host, "..") || isPrivateHost(host) {
+			continue
+		}
+		if _, dup := icons[host]; dup {
+			continue
+		}
+		disk, _, ext := faviconCachePath(h.cfg, host)
+		if disk == "" {
+			continue
+		}
+		st, err := os.Stat(disk)
+		if err != nil || st.Size() == 0 || st.Size() > batchIconMaxOne {
+			continue
+		}
+		data, err := os.ReadFile(disk)
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		ct := faviconProxyContentTypes[ext]
+		if ct == "" {
+			ct = "application/octet-stream"
+		}
+		icons[host] = "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(data)
+		total += len(data)
+	}
+	// 图标基本不变，允许浏览器短缓存，切组来回时不重复拉
+	w.Header().Set("Cache-Control", "private, max-age=600")
+	OK(w, map[string]any{"icons": icons})
 }
 
 // serveNotFound 图标不存在时返回 404（带短缓存，避免同一次访问中反复请求）
