@@ -2431,8 +2431,6 @@ kbd {
   kbd { min-width: 22px; height: 22px; padding: 0 6px; }
 }
 
-/* update-ready / shortcuts-btn 已移除（Docker 版无 SW update 提示） */
-
 /* ================= 分组图标显示 ================= */
 /* 导航栏标签：图标+文字保持一行完整 */
 .ntab-btn { white-space: nowrap; }

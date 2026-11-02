@@ -183,15 +183,3 @@ func LoadRemovedPresets(uploadDir string) map[string]bool {
 	}
 	return out
 }
-
-func markRemovedPreset(uploadDir, name string) {
-	if LoadRemovedPresets(uploadDir)[name] {
-		return
-	}
-	f, err := os.OpenFile(filepath.Join(uploadDir, "weather", removedPresetFile), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	f.WriteString(name + "\n")
-}
