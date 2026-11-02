@@ -218,8 +218,11 @@ func (h *PublicHandler) Public(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// inlineIconLimit 首屏内联图标数量：与前端首屏直载预算一致
-const inlineIconLimit = 10
+// inlineIconLimit 首屏内联图标数量：与前端首屏直载预算一致（转 WebP 后单张约 1~2KB）
+const inlineIconLimit = 32
+
+// inlineIconMaxBytes 内联 data URL 总长兜底，避免个别未压缩大图把卡片接口撑大
+const inlineIconMaxBytes = 96 << 10
 
 // inlineFirstScreenIcons 给首个顶级分组链路（自身 + 子分组）的前几张 favicon 卡片填 IconData。
 // 卡片按渲染顺序取：先本分组卡片，再子分组卡片。
@@ -245,10 +248,10 @@ func (h *PublicHandler) inlineFirstScreenIcons(groups []GroupWithItems) {
 		return
 	}
 
-	count := 0
+	count, total := 0, 0
 	var walk func(id int)
 	walk = func(id int) {
-		if count >= inlineIconLimit {
+		if count >= inlineIconLimit || total >= inlineIconMaxBytes {
 			return
 		}
 		g := byID[id]
@@ -256,7 +259,7 @@ func (h *PublicHandler) inlineFirstScreenIcons(groups []GroupWithItems) {
 			return
 		}
 		for i := range g.Items {
-			if count >= inlineIconLimit {
+			if count >= inlineIconLimit || total >= inlineIconMaxBytes {
 				return
 			}
 			it := &g.Items[i]
@@ -266,6 +269,7 @@ func (h *PublicHandler) inlineFirstScreenIcons(groups []GroupWithItems) {
 			if data := cachedFaviconDataURL(h.cfg, it.URL); data != "" {
 				it.IconData = data
 				count++
+				total += len(data)
 			}
 		}
 		for _, cid := range children[id] {

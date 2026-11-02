@@ -138,9 +138,11 @@ const (
 
 // batchIcons 批量返回多个域名已缓存的图标：只读本地磁盘、请求内不联网，
 // 未缓存的域名直接留空，由前端回退到逐卡代理（那里会现抓并落盘）。
+// 响应带内容 ETag 且允许共享缓存，nginx/CDN 可命中，避免每次都回源 NAS。
 func (h *FaviconProxyHandler) batchIcons(w http.ResponseWriter, r *http.Request) {
 	icons := make(map[string]string)
 	total := 0
+	var sig strings.Builder
 	for _, raw := range strings.Split(r.URL.Query().Get("hosts"), ",") {
 		if len(icons) >= batchIconMaxHosts || total >= batchIconMaxBytes {
 			break
@@ -171,9 +173,19 @@ func (h *FaviconProxyHandler) batchIcons(w http.ResponseWriter, r *http.Request)
 		}
 		icons[host] = "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(data)
 		total += len(data)
+		sig.WriteString(host + ":" + strconv.FormatInt(st.Size(), 10) + ":" +
+			strconv.FormatInt(st.ModTime().Unix(), 10) + ";")
 	}
-	// 图标基本不变，允许浏览器短缓存，切组来回时不重复拉
-	w.Header().Set("Cache-Control", "private, max-age=600")
+
+	etag := `"b` + md5Hex(sig.String()) + `"`
+	w.Header().Set("ETag", etag)
+	if inm := r.Header.Get("If-None-Match"); inm != "" && strings.Contains(inm, etag) {
+		w.Header().Set("Cache-Control", "public, max-age=600")
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	// 图标基本不变，允许浏览器与共享缓存短缓存，切组来回时不重复拉
+	w.Header().Set("Cache-Control", "public, max-age=600, stale-while-revalidate=600")
 	OK(w, map[string]any{"icons": icons})
 }
 

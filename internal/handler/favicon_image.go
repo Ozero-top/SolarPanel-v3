@@ -8,14 +8,17 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+
+	"github.com/gen2brain/webp"
 )
 
 // faviconMaxPx 卡片图标盒最大 58px（2x 屏按 64px 输出足够清晰），
 // 超出就等比缩到 64px 内，显著减小字节数与解码耗时。
 const faviconMaxPx = 64
 
-// optimizeFaviconImage 把抓到的位图图标缩到 ≤64px 并以 PNG 落盘；
-// SVG / WEBP 以及纯 BMP 的 ICO 标准库无法解码，原样返回（调用方继续存原文件）。
+// optimizeFaviconImage 把抓到的位图图标缩到 ≤64px 并以 WebP 落盘。
+// 同为 64px 的 PNG 中位数约 6KB，WebP 通常 1~2KB，首屏几十张的传输量差一个量级；
+// SVG / 已是 WEBP 以及纯 BMP 的 ICO 无法用标准库解码，原样返回（调用方继续存原文件）。
 func optimizeFaviconImage(data []byte, ext string) ([]byte, string) {
 	var img image.Image
 	var err error
@@ -41,10 +44,6 @@ func optimizeFaviconImage(data []byte, ext string) ([]byte, string) {
 	if w < 1 || h < 1 {
 		return data, ext
 	}
-	// 小图且体积不大：不动，省一次编解码
-	if w <= faviconMaxPx && h <= faviconMaxPx && len(data) <= 24*1024 {
-		return data, ext
-	}
 
 	nw, nh := w, h
 	if w > faviconMaxPx || h > faviconMaxPx {
@@ -65,14 +64,14 @@ func optimizeFaviconImage(data []byte, ext string) ([]byte, string) {
 
 	out := resizeArea(img, nw, nh)
 	var buf bytes.Buffer
-	if err := png.Encode(&buf, out); err != nil {
+	if err := webp.Encode(&buf, out, webp.Options{Quality: 78, Method: 4}); err != nil {
 		return data, ext
 	}
-	// 原图本来就不大、重编码反而更大 → 保留原图，避免帮倒忙
-	if w <= faviconMaxPx && h <= faviconMaxPx && buf.Len() >= len(data) {
+	// 重编码反而更大 → 保留原图，避免帮倒忙
+	if buf.Len() >= len(data) {
 		return data, ext
 	}
-	return buf.Bytes(), ".png"
+	return buf.Bytes(), ".webp"
 }
 
 // resizeArea 面积加权平均缩放：缩小时比最近邻平滑，且只需目标图大小的内存。

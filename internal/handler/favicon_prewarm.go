@@ -16,7 +16,8 @@ import (
 	"solarpanel/internal/db"
 )
 
-// optimizeCachedFavicons 启动时把历史缓存里的大图标就地缩到 ≤64px（一次性迁移，之后基本全是小图）。
+// optimizeCachedFavicons 启动时把历史缓存里的位图图标统一转成 ≤64px WebP（一次性迁移，
+// 之后新抓的图标在 saveFavicon 阶段已是 WebP）。小于 2KB 的图标体积可忽略，跳过以免每次启动重复编解码。
 func optimizeCachedFavicons(cfg *config.Config) {
 	dir := filepath.Join(cfg.UploadDir, "favicon")
 	entries, err := os.ReadDir(dir)
@@ -32,11 +33,11 @@ func optimizeCachedFavicons(cfg *config.Config) {
 		switch ext {
 		case ".png", ".jpg", ".gif", ".ico":
 		default:
-			continue // SVG / WEBP 无法用标准库解码，保持原样
+			continue // SVG / 已是 WEBP，保持原样
 		}
 		info, err := e.Info()
-		if err != nil || info.Size() < 20*1024 {
-			continue // 已经是小文件，跳过
+		if err != nil || info.Size() < 2*1024 {
+			continue
 		}
 		p := filepath.Join(dir, e.Name())
 		data, err := os.ReadFile(p)
