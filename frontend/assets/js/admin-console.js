@@ -651,6 +651,59 @@
     }
   }
 
+  /* ================= 图标体检 ================= */
+  function initFaviconSweep() {
+    var btn = $('faviconSweepBtn');
+    if (!btn) return;
+    var timer = null;
+    var firstPoll = true;
+
+    function stop() {
+      if (timer) { clearInterval(timer); timer = null; }
+      btn.disabled = false;
+      btn.textContent = '图标体检';
+    }
+
+    function render(st) {
+      if (!st) return;
+      if (st.running) {
+        btn.disabled = true;
+        btn.textContent = '体检中…';
+        return;
+      }
+      stop();
+      if (!firstPoll && st.finished_at) {
+        toast('图标体检完成：转换 ' + st.converted + '，清理 ' + st.cleaned +
+          '，修复 ' + st.repaired + '，补抓 ' + st.refetched + '，失败 ' + st.failed, 'success');
+      }
+    }
+
+    function poll() {
+      API.get(API_BASE + 'favicon-sweep.php')
+        .then(render)
+        .catch(function () { stop(); })
+        .then(function () { firstPoll = false; });
+    }
+
+    btn.addEventListener('click', function () {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      btn.textContent = '提交中…';
+      API.post(API_BASE + 'favicon-sweep.php', {})
+        .then(function (st) {
+          toast('图标体检已开始，可继续其它操作', 'success');
+          if (!timer) timer = setInterval(poll, 1000);
+          render(st || { running: true });
+        })
+        .catch(function (e) {
+          stop();
+          toast(e.message, 'error');
+        });
+    });
+
+    poll();
+  }
+
   /* ================= 启动 ================= */
   function boot() {
     initSkin();
@@ -658,6 +711,7 @@
     initChrome();
     initDashboardActions();
     initTables();
+    initFaviconSweep();
     hookLoaders();
 
     try {

@@ -383,6 +383,9 @@ func main() {
 			authed.Post("/feeds.php", feedsHandler.Dispatch)
 			authed.Get("/feeds.php", feedsHandler.Dispatch)
 			authed.Post("/import.php", importHandler.Dispatch)
+			// 图标体检：转换/清理/修复路径/补抓缺失，异步执行
+			authed.Get("/favicon-sweep.php", handler.FaviconSweepHandler(cfg))
+			authed.Post("/favicon-sweep.php", handler.FaviconSweepHandler(cfg))
 		})
 	})
 

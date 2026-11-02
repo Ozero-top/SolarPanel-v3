@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"compress/gzip"
+	"encoding/json"
 	"log"
 	"net/http"
 	"net/url"
@@ -204,23 +206,50 @@ func (h *PublicHandler) Public(w http.ResponseWriter, r *http.Request) {
 		grouped = append(grouped, gw)
 	}
 
-	// 首屏图标内联：第一个顶级分组（含其子分组）的前 10 张 favicon 卡片附带 data URL，
-	// 只读本地缓存、不在请求内联网抓取；其余图标交给前端 IndexedDB 缓存 + 后台预取。
+	// 首屏图标内联：只给第一个顶级分组（含其子分组）的前 8 张 favicon 卡片附带 data URL，
+	// 其余图标交给批量接口 + 前端 IndexedDB 缓存，避免 public 接口被图标撑大。
 	h.inlineFirstScreenIcons(grouped)
 
-	OK(w, map[string]any{
-		"settings":       settings,
-		"groups":         grouped,
-		"user":           userInfo,
-		"guest_required": guestRequired,
+	body, err := json.Marshal(map[string]any{
+		"code": 0,
+		"data": map[string]any{
+			"settings":       settings,
+			"groups":         grouped,
+			"user":           userInfo,
+			"guest_required": guestRequired,
+		},
+		"msg": "",
 	})
+	if err != nil {
+		Fail(w, "序列化失败")
+		return
+	}
+	etag := `"p` + md5Hex(string(body)) + `"`
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Vary", "Accept-Encoding")
+	if inm := strings.TrimSpace(r.Header.Get("If-None-Match")); inm != "" &&
+		(inm == "*" || strings.Trim(inm, `"`) == strings.Trim(etag, `"`)) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	// 卡片列表 ~80KB，gzip 后约 10KB，弱网首访收益明显；ngnix 已开 gzip 时不会重复压缩
+	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		w.Header().Set("Content-Encoding", "gzip")
+		gz := gzip.NewWriter(w)
+		gz.Write(body)
+		gz.Close()
+		return
+	}
+	w.Write(body)
 }
 
-// inlineIconLimit 首屏内联图标数量：与前端首屏直载预算一致（转 WebP 后单张约 1~2KB）
-const inlineIconLimit = 32
+// inlineIconLimit 首屏内联图标数量：首屏只直出 8 张，其余走批量接口
+const inlineIconLimit = 8
 
 // inlineIconMaxBytes 内联 data URL 总长兜底，避免个别未压缩大图把卡片接口撑大
-const inlineIconMaxBytes = 96 << 10
+const inlineIconMaxBytes = 24 << 10
 
 // inlineFirstScreenIcons 给首个顶级分组链路（自身 + 子分组）的前几张 favicon 卡片填 IconData。
 // 卡片按渲染顺序取：先本分组卡片，再子分组卡片。
