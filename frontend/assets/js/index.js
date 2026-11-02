@@ -310,8 +310,8 @@ function renderBase() {
   rs.setProperty('--content-px', num(s.content_pad_lr, 20) + 'px');
   rs.setProperty('--content-pt', num(s.content_pad_top, 0) + 'px');
   rs.setProperty('--content-pb', num(s.content_pad_bottom, 40) + 'px');
-  // 卡片透明度（40~100，默认 100 不透明）
-  const co = Math.min(Math.max(num(s.card_opacity, 100), 40), 100);
+  // 卡片透明度（0~100，默认 100 为主题默认底色；Tab标签页主题不生效）
+  const co = Math.min(Math.max(num(s.card_opacity, 100), 0), 100);
   rs.setProperty('--card-opacity', String(co / 100));
 
   // 时钟 / 天气字体（12 款免费设计字体，空 = 跟随系统）

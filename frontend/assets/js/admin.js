@@ -1750,7 +1750,7 @@ function fillSettingsForm(s) {
   document.getElementById('s_card_style').value = ['nav', 'navapp'].includes(s.card_style) ? s.card_style : 'nav';
   renderDefaultGroupOptions(s.default_group || '');
   const cv = parseInt(s.card_opacity, 10);
-  const cardOpacity = isNaN(cv) ? 100 : Math.min(Math.max(cv, 40), 100);
+  const cardOpacity = isNaN(cv) ? 100 : Math.min(Math.max(cv, 0), 100);
   document.getElementById('s_card_opacity').value = cardOpacity;
   document.getElementById('v_card_opacity').textContent = String(cardOpacity);
   document.getElementById('s_search_bar_enabled').value = s.search_bar_enabled === '0' ? '0' : '1';

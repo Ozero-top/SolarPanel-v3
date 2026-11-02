@@ -963,8 +963,13 @@ body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
   isolation: isolate;
 }
 
-/* 卡片背景透明度：只降低卡片底色 alpha，文字与图标保持不透明（主题 hover 规则优先） */
-:root body .card {
+/* 卡片背景透明度：只降低卡片底色 alpha，文字与图标保持不透明（主题 hover 规则优先）
+   提高特异性，覆盖各主题 :root[data-style='x'] body .card 的硬编码底色；
+   hover / 搜索命中态保留各自高亮；wetab 与应用小图标样式用 !important 去底色，不受此设置影响。
+   0% 完全透明，100% 为主题默认底色。 */
+:root body .card:not(:hover):not(.search-hit),
+:root[data-style] body .card:not(:hover):not(.search-hit),
+:root:not([data-style]) body .card:not(:hover):not(.search-hit) {
   background: color-mix(in srgb, var(--surface) calc(var(--card-opacity, 1) * 100%), transparent);
 }
 
@@ -1158,16 +1163,16 @@ body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
   transition-timing-function: var(--sp-ease-in);
 }
 
-/* 卡片入场：位移 + 缩放 + 淡入的「浮现」（错峰出现，按 DOM 顺序递增延迟）
+/* 卡片入场：只做位移 + 缩放，不再淡入。
+   原因：透明度过场会让带 backdrop-filter 的主题卡片在首屏瞬间变成全透明
+   （opacity < 1 会形成 backdrop root，卡片取不到壁纸背景），与后台设置值不一致。
    --sk-base 由分组渲染时写入（分组序号 × 40ms，封顶 120ms），与组入场错开，
    整体封顶约 0.6s，避免原先组 960ms + 卡片 220ms 的机械长排队 */
 @keyframes scale-in {
   from {
-    opacity: 0;
     transform: translateY(10px) scale(0.96);
   }
   to {
-    opacity: 1;
     transform: translateY(0) scale(1);
   }
 }
@@ -1193,16 +1198,14 @@ body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
 /* 切组/搜索等重绘：不再整屏卡片弹入，改为整块轻微滑入（由 JS 给 section 加 class） */
 @keyframes swap-in {
   from {
-    opacity: 0;
     transform: translateY(8px) scale(0.994);
   }
   to {
-    opacity: 1;
     transform: translateY(0) scale(1);
   }
 }
 .group.swap-in {
-  animation: swap-in var(--sp-dur-md) var(--sp-ease-out) both;
+  animation: swap-in var(--sp-dur-md) var(--sp-ease-out) backwards;
 }
 
 /* 切组入场：切换标签/分组时分组本身不再整块滑入，卡片自上而下逐个错峰浮现。
@@ -1210,11 +1213,9 @@ body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
    --sk-base 由 JS 按分组顺序写入，与下方 nth-child 的逐卡延迟叠加。 */
 @keyframes cardRise {
   from {
-    opacity: 0;
     transform: translateY(10px) scale(0.97);
   }
   to {
-    opacity: 1;
     transform: translateY(0) scale(1);
   }
 }
@@ -1476,15 +1477,15 @@ body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
 /* ---------- 分组入场：打开主页后由上而下逐个浮现（仅首屏，JS 控制只播一次） ---------- */
 /* 注：系统「减少动效」偏好开启时动画被禁用属预期兜底行为 */
 .group.group-in {
-  animation: groupIn var(--sp-dur-lg) var(--sp-ease-out) both;
+  /* 必须用 backwards：both 会让动画结束后仍保留 transform，使分组长期处于
+     合成层并成为 backdrop root，内部液态玻璃卡片取不到背景 */
+  animation: groupIn var(--sp-dur-lg) var(--sp-ease-out) backwards;
 }
 @keyframes groupIn {
   from {
-    opacity: 0;
     transform: translateY(16px) scale(0.992);
   }
   to {
-    opacity: 1;
     transform: translateY(0) scale(1);
   }
 }
