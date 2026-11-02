@@ -150,7 +150,7 @@ function main() {
 
   // 读 themes.json
   if (!fs.existsSync(THEMES_JSON)) {
-    console.error(`❌ themes.json 不存在，请先运行: node scripts/extract-themes.js`);
+    console.error(`❌ themes.json 不存在，请从仓库恢复 frontend/themes.json`);
     process.exit(1);
   }
   const json = JSON.parse(fs.readFileSync(THEMES_JSON, 'utf8'));
