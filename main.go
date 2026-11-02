@@ -42,6 +42,44 @@ var uploadCacheExt = map[string]bool{
 	".gif": true, ".ico": true, ".bmp": true, ".svg": true,
 }
 
+var faviconAliasExts = []string{".webp", ".svg", ".png", ".ico", ".jpg", ".jpeg", ".gif"}
+
+// resolveFaviconAlias 图标迁移后旧扩展名（.ico/.png）的 URL 已失效，
+// 按文件名里的 md5 找到实际存在的文件，返回重写后的路径。
+func resolveFaviconAlias(uploadDir, p string) (string, bool) {
+	var prefix, rel string
+	switch {
+	case strings.HasPrefix(p, "/frontend/uploads/favicon/"):
+		prefix = "/frontend/uploads/favicon/"
+		rel = strings.TrimPrefix(p, prefix)
+	case strings.HasPrefix(p, "/uploads/favicon/"):
+		prefix = "/uploads/favicon/"
+		rel = strings.TrimPrefix(p, prefix)
+	default:
+		return "", false
+	}
+	if strings.Contains(rel, "/") {
+		return "", false
+	}
+	ext := filepath.Ext(rel)
+	stem := strings.TrimSuffix(rel, ext)
+	if len(stem) != 32 || strings.Trim(stem, "0123456789abcdef") != "" {
+		return "", false
+	}
+	if _, err := os.Stat(filepath.Join(uploadDir, "favicon", stem+ext)); err == nil {
+		return "", false
+	}
+	for _, e := range faviconAliasExts {
+		if e == ext {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(uploadDir, "favicon", stem+e)); err == nil {
+			return prefix + stem + e, true
+		}
+	}
+	return "", false
+}
+
 func contentTypeByExt(path string) string {
 	switch filepath.Ext(path) {
 	case ".html":
@@ -446,6 +484,11 @@ func main() {
 				w.Header().Set("Cache-Control", "public, max-age=604800")
 			} else {
 				w.Header().Set("Cache-Control", "public, max-age=3600")
+			}
+			// 图标迁移（.ico/.png → .webp）会让数据库和浏览器缓存里的旧扩展名路径失效，
+			// 这里按 md5 前缀找到实际落盘文件，避免整页几十个 404。
+			if newPath, ok := resolveFaviconAlias(cfg.UploadDir, r.URL.Path); ok {
+				r.URL.Path = newPath
 			}
 			next.ServeHTTP(w, r)
 		})

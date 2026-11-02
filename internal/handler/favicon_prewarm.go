@@ -41,6 +41,7 @@ func optimizeCachedFavicons(cfg *config.Config) {
 			continue
 		}
 		p := filepath.Join(dir, e.Name())
+		oldURL := "/frontend/uploads/favicon/" + e.Name()
 		data, err := os.ReadFile(p)
 		if err != nil {
 			continue
@@ -49,6 +50,9 @@ func optimizeCachedFavicons(cfg *config.Config) {
 		if !validIconData(data, ext) {
 			os.Remove(p)
 			bad++
+			if db.DB != nil {
+				db.DB.Exec("UPDATE items SET icon_value='' WHERE icon_value=?", oldURL)
+			}
 			continue
 		}
 		if info.Size() < 2*1024 {
@@ -63,6 +67,10 @@ func optimizeCachedFavicons(cfg *config.Config) {
 			continue
 		}
 		if np != p {
+			if db.DB != nil {
+				db.DB.Exec("UPDATE items SET icon_value=? WHERE icon_value=?",
+					"/frontend/uploads/favicon/"+filepath.Base(np), oldURL)
+			}
 			os.Remove(p)
 		}
 		n++
@@ -75,11 +83,60 @@ func optimizeCachedFavicons(cfg *config.Config) {
 	}
 }
 
+// repairFaviconItemPaths 一次性修正 items 里指向已迁移/已清理图标文件的旧路径：
+// 能按 md5 找到新扩展名就改成新路径，找不到就清空，让前端回退到按域名抓取。
+func repairFaviconItemPaths(cfg *config.Config) {
+	if db.DB == nil {
+		return
+	}
+	rows, err := db.DB.Query(`SELECT id, icon_value FROM items WHERE icon_value LIKE '/frontend/uploads/favicon/%'`)
+	if err != nil {
+		return
+	}
+	type fix struct {
+		id    int64
+		value string
+	}
+	var fixes []fix
+	dir := filepath.Join(cfg.UploadDir, "favicon")
+	for rows.Next() {
+		var id int64
+		var v string
+		if rows.Scan(&id, &v) != nil {
+			continue
+		}
+		rel := strings.TrimPrefix(v, "/frontend/uploads/favicon/")
+		if strings.Contains(rel, "/") {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dir, rel)); err == nil {
+			continue
+		}
+		stem := strings.TrimSuffix(rel, filepath.Ext(rel))
+		found := ""
+		for _, e := range faviconExts {
+			if _, err := os.Stat(filepath.Join(dir, stem+e)); err == nil {
+				found = "/frontend/uploads/favicon/" + stem + e
+				break
+			}
+		}
+		fixes = append(fixes, fix{id: id, value: found})
+	}
+	rows.Close()
+	for _, f := range fixes {
+		db.DB.Exec("UPDATE items SET icon_value=? WHERE id=?", f.value, f.id)
+	}
+	if len(fixes) > 0 {
+		log.Printf("[favicon] 修正 %d 条失效图标路径", len(fixes))
+	}
+}
+
 // StartFaviconPrewarm 异步预热全部 favicon 类型卡片（并发 2，逐个错开，避免打满出网连接）
 func StartFaviconPrewarm(cfg *config.Config) {
 	go func() {
 		time.Sleep(5 * time.Second) // 等 HTTP 服务与数据库就绪
 		optimizeCachedFavicons(cfg)
+		repairFaviconItemPaths(cfg)
 		clearFaviconDataCache()
 		if db.DB == nil {
 			return
