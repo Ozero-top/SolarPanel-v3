@@ -6,10 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>管理后台 - SolarPanel</title>
   <link rel="icon" href="favicon.ico?v=1b5d8c6c" type="image/x-icon">
-  <link rel="stylesheet" href="assets/css/common.css?v=94307f77">
-  <link rel="stylesheet" href="assets/css/auth-admin.css?v=c0b4b649">
-  <link rel="stylesheet" href="assets/css/themes.css?v=b7e3093e">
-  <link rel="stylesheet" href="assets/css/console.css?v=a67550a1">
+  <link rel="stylesheet" href="assets/css/common.css?v=f54dd704">
+  <link rel="stylesheet" href="assets/css/auth-admin.css?v=9f234362">
+  <link rel="stylesheet" href="assets/css/themes.css?v=c41f9617">
+  <link rel="stylesheet" href="assets/css/console.css?v=390703a8">
 </head>
 <body class="admin-console" data-admin-skin="aurora">
   <script>(function(){try{var k=localStorage.getItem('sp_admin_skin');if(!k||['aurora','neon','element'].indexOf(k)<0)k='aurora';document.body.dataset.adminSkin=k;document.documentElement.dataset.theme=k==='element'?'light':'dark';document.documentElement.dataset.style='console';}catch(e){}})();</script>
@@ -106,9 +106,9 @@
       </div>
 
       <div class="dash-grid">
-        <div class="dash-card span-2">
+        <div class="dash-card group-card">
           <div class="dash-card-head">
-            <div><h3>分组分布</h3><p>按卡片数量排序，展示前 6 个分组</p></div>
+            <div><h3>分组分布</h3><p>父组在前，子组紧随（父组-子组）</p></div>
             <span class="dash-chip" id="groupChip">—</span>
           </div>
           <div class="donut-row">
@@ -126,15 +126,23 @@
           <div class="dash-card-head dash-sub-head"><div><h3>站点概览</h3></div></div>
           <div class="mini-list" id="overviewList"></div>
         </div>
-      </div>
 
-      <div class="dash-grid">
-        <div class="dash-card span-2">
+        <div class="dash-card">
           <div class="dash-card-head">
             <div><h3>最近添加</h3><p>按录入顺序展示最新卡片</p></div>
             <button class="btn btn-sm" type="button" id="dashGotoItems">全部卡片</button>
           </div>
           <div class="recent-list" id="recentList"></div>
+        </div>
+      </div>
+
+      <div class="dash-grid">
+        <div class="dash-card span-2" id="dashAuditCard">
+          <div class="dash-card-head">
+            <div><h3>审计日志</h3><p>最近登录与操作记录</p></div>
+            <button class="btn btn-sm" type="button" id="dashGotoAudit">查看全部</button>
+          </div>
+          <div class="audit-preview" id="auditPreviewList"></div>
         </div>
 
         <div class="dash-card">
@@ -173,8 +181,9 @@
           <tr>
             <th style="width:36px"><input type="checkbox" id="itemsCheckAll" title="全选当前页"></th>
             <th style="width:56px">图标</th>
-            <th>标题</th>
-            <th>地址</th>
+            <th style="width:140px">标题</th>
+            <th style="width:170px">地址</th>
+            <th>描述</th>
             <th style="width:110px">分组</th>
             <th style="width:120px">打开方式</th>
             <th style="width:230px">操作</th>
@@ -237,7 +246,6 @@
         <button type="button" class="subtab" data-panel="basic">🏠 站点信息</button>
         <button type="button" class="subtab" data-panel="theme">🎨 外观与卡片</button>
         <button type="button" class="subtab" data-panel="search">🧭 导航与搜索</button>
-        <button type="button" class="subtab" data-panel="access">🔐 访问控制</button>
         <button type="button" class="subtab" data-panel="news">📰 热点新闻</button>
         <button type="button" class="subtab" data-panel="nas">🖥️ NAS 监控</button>
       </nav>
@@ -250,7 +258,7 @@
         </div>
         <form id="sf-basic" data-section="basic" autocomplete="off">
           <h4 class="sub-group-title">🏠 基本信息</h4>
-          <div class="form-row">
+          <div class="form-row aligned cols-4 basic-cols">
             <div class="form-item">
               <label>站点标题</label>
               <input class="input" id="s_site_title" type="text" maxlength="50">
@@ -259,8 +267,6 @@
               <label>站点地址（「退出登录」将跳转到此）</label>
               <input class="input" id="s_site_url" type="text" placeholder="如 https://nav.example.com 或 http://192.168.1.10">
             </div>
-          </div>
-          <div class="form-row">
             <div class="form-item">
               <label>页脚文字</label>
               <input class="input" id="s_footer" type="text" maxlength="100">
@@ -276,7 +282,7 @@
           </div>
 
           <h4 class="sub-group-title">📋 备案信息</h4>
-          <div class="form-row">
+          <div class="form-row aligned cols-6">
             <div class="form-item">
               <label>ICP 备案</label>
               <select class="select" id="s_icp_show">
@@ -292,8 +298,6 @@
               <label>ICP 备案链接（点击备案号跳转，留空则不链）</label>
               <input class="input" id="s_icp_link" type="text" placeholder="如 https://beian.miit.gov.cn/">
             </div>
-          </div>
-          <div class="form-row">
             <div class="form-item">
               <label>公安备案</label>
               <select class="select" id="s_police_show">
@@ -338,225 +342,7 @@
               <strong>判断错了也不怕：</strong>点卡片时会先试着连内网地址，连不上会自动改开外网地址，不需要手动切。
             </div>
           </div>
-        </form>
-      </div>
-
-      <!-- 外观与卡片（主题 + 卡片 + 布局 + 时钟天气 + 壁纸） -->
-      <div class="settings-section">
-        <div class="section-head">
-          <h3>🎨 外观与卡片</h3>
-          <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-theme">保存</button>
-        </div>
-        <form id="sf-theme" data-section="theme" autocomplete="off">
-          <nav class="settings-subnav theme-subnav" id="themeSubnav" aria-label="外观与卡片分类">
-            <button class="subtab active" type="button" data-subpane="appearance">🎨 外观设置</button>
-            <button class="subtab" type="button" data-subpane="wallpaper">🖼️ 壁纸与每日图</button>
-          </nav>
-
-          <div class="subpane" data-pane="appearance">
-          <h4 class="sub-group-title">🎭 主题与卡片</h4>
-          <div class="form-row">
-            <div class="form-item">
-              <label>默认主题（深浅模式）</label>
-              <select class="select" id="s_default_theme">
-                <option value="dark">🌙 深色</option>
-                <option value="light">🌞 浅色</option>
-                <option value="system">🖥️ 跟随系统</option>
-              </select>
-              <div class="form-hint" id="s_default_theme_note"></div>
-            </div>
-            <div class="form-item">
-              <label>风格主题</label>
-              <select class="select" id="s_theme_style">
-                <option value="liquid-glass">Liquid Glass 液态玻璃（默认 · 磨砂透光 · 流动光斑 · 仅浅色）</option>
-                <option value="wetab">Tab标签页（仿新标签页 · 壁纸主视觉  · 左悬浮分组条 · 底部 Dock · 图标间距 / 大小 / 内容宽度可调）</option>
-                <option value="soft">Soft 柔和浮雕（柔光弥散 · 流动光斑 · 大圆角 · 轻投影 · 通透卡片）</option>
-                <option value="aurora">Aurora 动态极光（柔光渐变 · 缓慢流动 · 光环描边）</option>
-                <option value="blueprint">Blueprint 工程蓝图（深蓝底 · 白线网格 · 等宽字 · 橙色标注）</option>
-                <option value="corporate-clean">Corporate Clean 企业简洁（白卡细边 · 蓝主色 · 焦点环 · 轻浮起）</option>
-                <option value="iris">IRIS 光圈（深空 HUD · 氙蓝酸绿 · 漂移网格）</option>
-                <option value="neo-brutalist">Neo-Brutalist 新野兽派（纯黑粗框 · 硬边阴影 · 直角 · 高对比撞色）</option>
-                <option value="retro-vintage">Retro Vintage 复古怀旧（羊皮纸 · 粗棕框 · 衬线大写 · 角花）</option>
-                <option value="sketch-style">铅笔手绘风（纸张纹理 · 虚线铅笔框 · 涂黑反白）</option>
-                <option value="soft-utility">Soft Utility 柔和工具（暖灰画布 · 深青主色 · 发丝线 · 小圆角 · 薄荷状态）</option>
-              </select>
-              <div class="form-hint">主页即时生效；深浅模式可由访客在主页右上角按钮自行切换</div>
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-item">
-              <label>卡片样式</label>
-              <select class="select" id="s_card_style">
-                <option value="nav">导航栏（分组标签切换）</option>
-                <option value="navapp">导航栏·应用（标签切换 + 小图标标题）</option>
-              </select>
-            </div>
-            <div class="form-item">
-              <label>卡片背景透明度：<span class="range-val" id="v_card_opacity">100</span>%</label>
-              <input type="range" class="range" id="s_card_opacity" min="0" max="100" step="5" value="100">
-              <div class="form-hint">仅调整卡片底色透明度，文字与图标不受影响；0% 完全透明，100% 为主题默认底色。Tab标签页主题不支持该设置。</div>
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-item">
-              <label>默认显示分组</label>
-              <select class="select" id="s_default_group">
-                <option value="">自动（第一个有内容的分组）</option>
-              </select>
-              <div class="form-hint">打开主页时默认定位到该分组；可选一级或二级分组，选「自动」则显示第一个有内容的分组。</div>
-            </div>
-          </div>
-
-          <h4 class="sub-group-title">📐 布局与内容</h4>
-          <div class="form-item">
-            <label>内容区域（控制主页卡片区域的宽度与边距，拖动滑块调整，单位 px）</label>
-            <div class="form-row">
-              <div class="form-item">
-                <label>最大宽度：<span class="range-val" id="v_content_maxwidth">1200</span> px</label>
-                <input type="range" class="range" id="s_content_maxwidth" min="300" max="4000" step="10" value="1200">
-              </div>
-              <div class="form-item">
-                <label>两侧边距：<span class="range-val" id="v_content_pad_lr">20</span> px</label>
-                <input type="range" class="range" id="s_content_pad_lr" min="0" max="300" step="2" value="20">
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-item">
-                <label>顶部边距：<span class="range-val" id="v_content_pad_top">0</span> px</label>
-                <input type="range" class="range" id="s_content_pad_top" min="0" max="300" step="2" value="0">
-              </div>
-              <div class="form-item">
-                <label>底部边距：<span class="range-val" id="v_content_pad_bottom">40</span> px</label>
-                <input type="range" class="range" id="s_content_pad_bottom" min="0" max="300" step="2" value="40">
-              </div>
-            </div>
-            <div class="form-hint">保存后刷新主页生效；若未生效多为浏览器缓存，可强制刷新（Ctrl+F5）。</div>
-          </div>
-
-          <h4 class="sub-group-title">🔤 页面字体</h4>
-          <div class="form-item">
-            <label>整体页面字体（12 款免费设计字体）</label>
-            <select class="select" id="s_page_font"></select>
-            <div class="form-hint">作用于主页正文、卡片标题与描述、顶栏等；中文字体按需加载字形子集，首次切换稍慢；离线时回退系统字体。时钟/天气的专用字体在下方「时钟与天气」设置。</div>
-            <div class="font-preview" id="pageFontPreview">SolarPanel 导航 · 12:30 · 晴 24°C · 今天也要加油呀</div>
-          </div>
-
-          <h4 class="sub-group-title">🕒 时钟与天气</h4>
-          <div class="form-row">
-            <div class="form-item">
-              <label>显示时钟</label>
-              <select class="select" id="s_clock_show">
-                <option value="1">显示</option>
-                <option value="0">隐藏</option>
-              </select>
-            </div>
-            <div class="form-item">
-              <label>天气显示</label>
-              <select class="select" id="s_weather_show">
-                <option value="1">显示（与时间横向并排）</option>
-                <option value="0">隐藏</option>
-              </select>
-            </div>
-            <div class="form-item">
-              <label>天气城市（留空 = 按访客 IP 自动定位）</label>
-              <input class="input" id="s_weather_city" type="text" placeholder="如：北京 / Shanghai（留空自动定位）">
-            </div>
-          </div>
-          <div class="form-item">
-            <label>时钟 / 天气字体（12 款免费设计字体）</label>
-            <select class="select" id="s_clock_font"></select>
-            <div class="form-hint">留空时继承「页面字体」；中文字体按需加载，离线回退系统字体。</div>
-            <div class="font-preview" id="clockFontPreview">12:30 <span>晴 24°C · 10月24日 周六</span></div>
-          </div>
-          </div><!-- /appearance -->
-
-          <div class="subpane" data-pane="wallpaper" hidden>
-          <div class="form-item">
-            <label>主页壁纸（填写地址或点击「图库」选择，上传的壁纸自动进入图库）</label>
-            <div class="wallpaper-pick">
-              <img class="setting-preview" id="p_wallpaper" alt="">
-              <div class="upload-row">
-                <input class="input" id="s_wallpaper" type="text" placeholder="壁纸地址，留空使用默认渐变背景">
-                <button class="btn" type="button" data-upload="s_wallpaper">上传壁纸</button>
-                <button class="btn" type="button" id="openGalleryBtn">🖼️ 图库</button>
-                <button class="btn btn-danger btn-sm" type="button" id="clearWallpaperBtn">清空</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-item">
-              <label>壁纸遮罩透明度：<span class="range-val" id="v_mask_opacity">0.35</span>（0~1，越大越暗）</label>
-              <input type="range" class="range" id="s_mask_opacity" min="0" max="1" step="0.05" value="0.35">
-            </div>
-            <div class="form-item">
-              <label>壁纸模糊：<span class="range-val" id="v_wallpaper_blur">6</span> px（0~30，0 = 不模糊）</label>
-              <input type="range" class="range" id="s_wallpaper_blur" min="0" max="30" step="1" value="6">
-              <div class="form-hint">保存后刷新主页生效</div>
-            </div>
-          </div>
-
-          <div class="form-item">
-            <label>每日壁纸源（开启后主页静态壁纸将被每日自动更新的壁纸覆盖；留空 = 禁用）</label>
-            <div class="upload-row">
-              <select class="select" id="s_wallpaper_source">
-                <option value="">禁用（使用上方静态壁纸）</option>
-                <option value="bing_cn">🇨🇳 Bing 中文（zh-CN，默认）</option>
-                <option value="picsum">📷 Lorem Picsum（每日一张固定精选风景）</option>
-              </select>
-              <button class="btn" type="button" id="dailyPreviewBtn">🔍 预览 / 切换</button>
-            </div>
-            <div class="form-hint">切换源后下一次访问会重新抓取新源并各自缓存。旧值 bing / bing_en / bing_jp 自动归一化为 bing_cn。</div>
-          </div>
-          </div><!-- /wallpaper -->
-
-        </form>
-      </div>
-
-      <!-- 导航与搜索 -->
-      <div class="settings-section">
-        <div class="section-head">
-          <h3>🧭 导航与搜索</h3>
-          <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-search">保存</button>
-        </div>
-        <form id="sf-search" data-section="search" autocomplete="off">
-          <h4 class="sub-group-title">🧭 搜索栏</h4>
-          <div class="form-row">
-            <div class="form-item">
-              <label>搜索引擎搜索栏</label>
-              <select class="select" id="s_search_bar_enabled">
-                <option value="1">显示（主页顶部）</option>
-                <option value="0">隐藏</option>
-              </select>
-            </div>
-            <div class="form-item">
-              <label>默认搜索引擎</label>
-              <select class="select" id="s_search_default"></select>
-            </div>
-          </div>
-          <div class="form-item">
-            <label>搜索栏宽度（滑块调整，单位 px）</label>
-            <input type="range" class="range" id="s_search_width" min="360" max="1200" step="10" value="640">
-            <div class="form-hint">当前：<span class="range-val" id="v_search_width">640</span> px（默认 640，保存后刷新主页生效）</div>
-          </div>
-          <div class="form-item">
-            <label>搜索引擎列表（主页搜索框按此显示）</label>
-            <div id="engineRows"></div>
-            <button class="btn btn-sm" type="button" id="addEngineBtn">＋ 添加引擎</button>
-            <div class="form-hint">搜索地址中使用 %s 作为关键词占位符，例如：https://www.baidu.com/s?wd=%s</div>
-          </div>
-        </form>
-      </div>
-
-      <!-- 访问控制 -->
-      <div class="settings-section">
-        <div class="section-head">
-          <h3>🔐 访问控制</h3>
-          <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-access">保存</button>
-        </div>
-        <form id="sf-access" data-section="access" autocomplete="off">
+          <h4 class="sub-group-title">🔐 访问控制</h4>
           <div class="form-row">
             <div class="form-item">
               <label>访客访问开关（默认关闭）</label>
@@ -575,6 +361,214 @@
         </form>
       </div>
 
+      <!-- 外观与卡片（主题 + 卡片 + 布局 + 时钟天气 + 壁纸） -->
+      <div class="settings-section">
+        <div class="section-head">
+          <h3>🎨 外观与卡片</h3>
+        </div>
+        <form id="sf-theme" data-section="theme" autocomplete="off">
+          <div class="subpane" data-pane="appearance">
+          <div class="sub-group-head">
+            <h4 class="sub-group-title">🎭 主题与卡片</h4>
+            <button class="btn btn-primary btn-sm group-save" type="button" data-keys="default_theme,theme_style,card_style,default_group">保存</button>
+          </div>
+          <div class="form-row aligned cols-4">
+            <div class="form-item">
+              <label>风格主题</label>
+              <select class="select" id="s_theme_style">
+                <option value="liquid-glass">Liquid Glass 液态玻璃（默认 · 磨砂透光 · 流动光斑 · 仅浅色）</option>
+                <option value="wetab">Tab标签页（仿新标签页 · 壁纸主视觉  · 左悬浮分组条 · 底部 Dock · 图标间距 / 大小 / 内容宽度可调）</option>
+                <option value="soft">Soft 柔和浮雕（柔光弥散 · 流动光斑 · 大圆角 · 轻投影 · 通透卡片）</option>
+                <option value="aurora">Aurora 动态极光（柔光渐变 · 缓慢流动 · 光环描边）</option>
+                <option value="blueprint">Blueprint 工程蓝图（深蓝底 · 白线网格 · 等宽字 · 橙色标注）</option>
+                <option value="corporate-clean">Corporate Clean 企业简洁（白卡细边 · 蓝主色 · 焦点环 · 轻浮起）</option>
+                <option value="iris">IRIS 光圈（深空 HUD · 氙蓝酸绿 · 漂移网格）</option>
+                <option value="neo-brutalist">Neo-Brutalist 新野兽派（纯黑粗框 · 硬边阴影 · 直角 · 高对比撞色）</option>
+                <option value="retro-vintage">Retro Vintage 复古怀旧（羊皮纸 · 粗棕框 · 衬线大写 · 角花）</option>
+                <option value="sketch-style">铅笔手绘风（纸张纹理 · 虚线铅笔框 · 涂黑反白）</option>
+                <option value="soft-utility">Soft Utility 柔和工具（暖灰画布 · 深青主色 · 发丝线 · 小圆角 · 薄荷状态）</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label>默认主题（深浅模式）</label>
+              <select class="select" id="s_default_theme">
+                <option value="dark">🌙 深色</option>
+                <option value="light">🌞 浅色</option>
+                <option value="system">🖥️ 跟随系统</option>
+              </select>
+              <div class="form-hint" id="s_default_theme_note"></div>
+            </div>
+            <div class="form-item">
+              <label>卡片样式</label>
+              <select class="select" id="s_card_style">
+                <option value="nav">导航栏（分组标签切换）</option>
+                <option value="navapp">导航栏·应用（标签切换 + 小图标标题）</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label>默认显示分组</label>
+              <select class="select" id="s_default_group">
+                <option value="">自动（第一个有内容的分组）</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="sub-group-head">
+            <h4 class="sub-group-title">📐 布局标尺</h4>
+            <button class="btn btn-primary btn-sm group-save" type="button" data-keys="content_maxwidth,content_pad_lr,content_pad_top,content_pad_bottom,card_opacity">保存</button>
+          </div>
+          <div class="form-row aligned cols-5">
+            <div class="form-item">
+              <label>最大宽度：<span class="range-val" id="v_content_maxwidth">1200</span> px</label>
+              <input type="range" class="range" id="s_content_maxwidth" min="300" max="4000" step="10" value="1200">
+            </div>
+            <div class="form-item">
+              <label>两侧边距：<span class="range-val" id="v_content_pad_lr">20</span> px</label>
+              <input type="range" class="range" id="s_content_pad_lr" min="0" max="300" step="2" value="20">
+            </div>
+            <div class="form-item">
+              <label>顶部边距：<span class="range-val" id="v_content_pad_top">0</span> px</label>
+              <input type="range" class="range" id="s_content_pad_top" min="0" max="300" step="2" value="0">
+            </div>
+            <div class="form-item">
+              <label>底部边距：<span class="range-val" id="v_content_pad_bottom">40</span> px</label>
+              <input type="range" class="range" id="s_content_pad_bottom" min="0" max="300" step="2" value="40">
+            </div>
+            <div class="form-item">
+              <label>卡片背景透明度：<span class="range-val" id="v_card_opacity">100</span>%</label>
+              <input type="range" class="range" id="s_card_opacity" min="0" max="100" step="5" value="100">
+            </div>
+          </div>
+          <div class="form-hint">布局控制主页卡片区域的宽度与边距；卡片背景透明度仅调整卡片底色，文字与图标不受影响（Tab标签页主题不支持）。保存后刷新主页生效，若未生效可强制刷新（Ctrl+F5）。</div>
+
+          <div class="form-row aligned cols-2 font-cols">
+            <div class="form-item">
+              <div class="sub-group-head">
+                <h4 class="sub-group-title">🔤 页面字体</h4>
+                <button class="btn btn-primary btn-sm group-save" type="button" data-keys="page_font">保存</button>
+              </div>
+              <label>整体页面字体（12 款免费设计字体）</label>
+              <select class="select" id="s_page_font"></select>
+              <div class="form-hint">作用于主页正文、卡片标题与描述、顶栏等；中文字体按需加载字形子集，首次切换稍慢；离线时回退系统字体。时钟 / 天气的专用字体在「时钟与天气」中设置。</div>
+              <div class="font-preview" id="pageFontPreview">SolarPanel 导航 · 12:30 · 晴 24°C · 今天也要加油呀</div>
+            </div>
+            <div class="form-item">
+              <div class="sub-group-head">
+                <h4 class="sub-group-title">🕒 时钟与天气</h4>
+                <button class="btn btn-primary btn-sm group-save" type="button" data-keys="clock_font,clock_show,weather_show,weather_city">保存</button>
+              </div>
+              <div class="form-row aligned cols-3 cw-cols">
+                <div class="form-item">
+                  <label>显示时钟</label>
+                  <select class="select" id="s_clock_show">
+                    <option value="1">显示</option>
+                    <option value="lunar">显示（含农历）</option>
+                    <option value="0">隐藏</option>
+                  </select>
+                </div>
+                <div class="form-item">
+                  <label>天气显示</label>
+                  <select class="select" id="s_weather_show">
+                    <option value="1">显示（与时间横向并排）</option>
+                    <option value="0">隐藏</option>
+                  </select>
+                </div>
+                <div class="form-item">
+                  <label>天气城市：留空 = 按访客 IP 自动定位</label>
+                  <input class="input" id="s_weather_city" type="text" placeholder="如：北京 / Shanghai">
+                </div>
+              </div>
+              <div class="form-item">
+                <label>时钟 / 天气字体（12 款免费设计字体）留空时继承「页面字体」；中文字体按需加载，离线回退系统字体</label>
+                <select class="select" id="s_clock_font"></select>
+                <div class="font-preview" id="clockFontPreview">12:30 <span>晴 24°C · 10月24日 周六</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sub-group-head">
+            <h4 class="sub-group-title">🖼️ 壁纸设置</h4>
+            <button class="btn btn-primary btn-sm group-save" type="button" data-keys="wallpaper,mask_opacity,wallpaper_blur,wallpaper_source">保存</button>
+          </div>
+          <div class="form-row aligned cols-2 wp-cols">
+            <div class="form-item">
+              <label>主页壁纸（填写地址或点击「图库」选择，上传的壁纸自动进入图库）</label>
+              <div class="wallpaper-pick">
+                <img class="setting-preview" id="p_wallpaper" alt="">
+                <div class="upload-row">
+                  <input class="input" id="s_wallpaper" type="text" placeholder="壁纸地址，留空使用默认渐变背景">
+                  <button class="btn" type="button" data-upload="s_wallpaper">上传壁纸</button>
+                  <button class="btn" type="button" id="openGalleryBtn">🖼️ 图库</button>
+                  <button class="btn btn-danger btn-sm" type="button" id="clearWallpaperBtn">清空</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-item">
+              <label>每日壁纸源（开启后主页静态壁纸将被每日自动更新的壁纸覆盖；留空 = 禁用）</label>
+              <div class="upload-row">
+                <select class="select" id="s_wallpaper_source">
+                  <option value="">禁用（使用上方静态壁纸）</option>
+                  <option value="bing_cn">🇨🇳 Bing 中文（zh-CN，默认）</option>
+                  <option value="picsum">📷 Lorem Picsum（每日一张固定精选风景）</option>
+                </select>
+                <button class="btn" type="button" id="dailyPreviewBtn">🔍 预览 / 切换</button>
+              </div>
+              <div class="form-hint">切换源后下一次访问会重新抓取新源并各自缓存。旧值 bing / bing_en / bing_jp 自动归一化为 bing_cn。</div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-item">
+              <label>壁纸遮罩透明度：<span class="range-val" id="v_mask_opacity">0.35</span>（0~1，越大越暗）</label>
+              <input type="range" class="range" id="s_mask_opacity" min="0" max="1" step="0.05" value="0.35">
+            </div>
+            <div class="form-item">
+              <label>壁纸模糊：<span class="range-val" id="v_wallpaper_blur">6</span> px（0~30，0 = 不模糊）</label>
+              <input type="range" class="range" id="s_wallpaper_blur" min="0" max="30" step="1" value="6">
+              <div class="form-hint">保存后刷新主页生效</div>
+            </div>
+          </div>
+          </div><!-- /appearance -->
+
+        </form>
+      </div>
+
+      <!-- 导航与搜索 -->
+      <div class="settings-section">
+        <div class="section-head">
+          <h3>🧭 导航与搜索</h3>
+          <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-search">保存</button>
+        </div>
+        <form id="sf-search" data-section="search" autocomplete="off">
+          <h4 class="sub-group-title">🧭 搜索栏</h4>
+          <div class="form-row aligned cols-3">
+            <div class="form-item">
+              <label>搜索引擎搜索栏</label>
+              <select class="select" id="s_search_bar_enabled">
+                <option value="1">显示（主页顶部）</option>
+                <option value="0">隐藏</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label>默认搜索引擎</label>
+              <select class="select" id="s_search_default"></select>
+            </div>
+            <div class="form-item">
+              <label>搜索栏宽度（滑块调整，单位 px）</label>
+              <input type="range" class="range" id="s_search_width" min="360" max="1200" step="10" value="640">
+              <div class="form-hint">当前：<span class="range-val" id="v_search_width">640</span> px（默认 640，保存后刷新主页生效）</div>
+            </div>
+          </div>
+          <div class="form-item">
+            <label>搜索引擎列表（主页搜索框按此显示）</label>
+            <div id="engineRows"></div>
+            <button class="btn btn-sm" type="button" id="addEngineBtn">＋ 添加引擎</button>
+            <div class="form-hint">搜索地址中使用 %s 作为关键词占位符，例如：https://www.baidu.com/s?wd=%s</div>
+          </div>
+        </form>
+      </div>
+
       <!-- 热点新闻 -->
       <div class="settings-section">
         <div class="section-head">
@@ -583,31 +577,22 @@
         </div>
         <form id="sf-news" data-section="news" autocomplete="off">
           <h4 class="sub-group-title">📰 新闻视图</h4>
-          <div class="form-item">
-            <label>热点新闻</label>
-            <select class="select" id="s_news_show">
-              <option value="1">开启（主页新闻视图展示）</option>
-              <option value="0">关闭（主页导航与视图入口全部隐藏）</option>
-            </select>
-            <div class="form-hint">关闭后主页「📰 热点新闻」入口和新闻视图均不显示，方便暂时停用热点功能。</div>
-          </div>
-          <div class="form-item">
-            <label>后台自动刷新</label>
-            <select class="select" id="s_news_auto_refresh">
-              <option value="0">关闭（仅有人访问新闻视图时才更新）</option>
-              <option value="1">开启（按各源更新间隔在后台定时刷新）</option>
-            </select>
-            <div class="form-hint">关闭时后台不做定时抓取，数据只在有人打开新闻视图时按需更新，避免对上游站点和本机造成额外压力（默认关闭）。</div>
-          </div>
-          <h4 class="sub-group-title">📊 数据源</h4>
-          <div class="form-item">
-            <label>数据源（勾选主页新闻视图展示的热榜；未勾选任何数据源时主页入口自动隐藏；拖动行首 ⠿ 或用「上移/下移」调整主页显示顺序，保存后生效）</label>
-            <div style="display:flex;gap:8px;margin:4px 0 10px">
-              <button class="btn btn-sm" type="button" id="newsSelectAll">全选</button>
-              <button class="btn btn-sm" type="button" id="newsSelectInvert">反选</button>
+          <div class="form-row aligned cols-2">
+            <div class="form-item">
+              <label>热点新闻</label>
+              <select class="select" id="s_news_show">
+                <option value="1">开启（主页新闻视图展示）</option>
+                <option value="0">关闭（主页导航与视图入口全部隐藏）</option>
+              </select>
+              <div class="form-hint">关闭后主页「📰 热点新闻」入口和新闻视图均不显示，方便暂时停用热点功能。</div>
             </div>
-            <div id="newsSourceRows" class="news-source-wrap">
-              <div class="form-hint">数据源加载中…</div>
+            <div class="form-item">
+              <label>后台自动刷新</label>
+              <select class="select" id="s_news_auto_refresh">
+                <option value="0">关闭（仅有人访问新闻视图时才更新）</option>
+                <option value="1">开启（按各源更新间隔在后台定时刷新）</option>
+              </select>
+              <div class="form-hint">关闭时后台不做定时抓取，数据只在有人打开新闻视图时按需更新，避免对上游站点和本机造成额外压力（默认关闭）。</div>
             </div>
           </div>
           <h4 class="sub-group-title">📌 自定义 RSS / Atom 源</h4>
@@ -632,6 +617,17 @@
               <tbody id="feedsTbody"></tbody>
             </table>
           </div>
+          <h4 class="sub-group-title">📊 数据源</h4>
+          <div class="form-item">
+            <label>数据源（勾选主页新闻视图展示的热榜；未勾选任何数据源时主页入口自动隐藏；拖动行首 ⠿ 或用「上移/下移」调整主页显示顺序，保存后生效）</label>
+            <div style="display:flex;gap:8px;margin:4px 0 10px">
+              <button class="btn btn-sm" type="button" id="newsSelectAll">全选</button>
+              <button class="btn btn-sm" type="button" id="newsSelectInvert">反选</button>
+            </div>
+            <div id="newsSourceRows" class="news-source-wrap">
+              <div class="form-hint">数据源加载中…</div>
+            </div>
+          </div>
         </form>
       </div>
 
@@ -643,7 +639,7 @@
         </div>
         <form id="sf-nas" data-section="nas" autocomplete="off">
           <h4 class="sub-group-title">🖥️ 面板开关与位置</h4>
-          <div class="form-row">
+          <div class="form-row aligned cols-4">
             <div class="form-item">
               <label>NAS 信息面板</label>
               <select class="select" id="s_nas_show">
@@ -662,8 +658,6 @@
               </select>
               <div class="form-hint">悬浮模式可点击箭头收起为竖条；状态条模式固定在卡片区下方，点击「查看详情」打开完整弹窗。移动端（≤768px）统一自动使用状态条，悬浮模式不生效。</div>
             </div>
-          </div>
-          <div class="form-row">
             <div class="form-item">
               <label>刷新间隔（秒）</label>
               <input class="input" id="s_nas_refresh" type="number" min="2" max="60" step="1">
@@ -678,12 +672,6 @@
               <div class="form-hint">面板含主机名、存储路径等信息，公网部署建议保持关闭。</div>
             </div>
           </div>
-          <h4 class="sub-group-title">💾 存储池</h4>
-          <div class="form-item">
-            <label>自定义存储挂载点（可选，逗号分隔）</label>
-            <input class="input" id="s_nas_disk_paths" type="text" placeholder="留空自动识别；如需固定可填 /volume1,/share/CACHEDEV1_DATA">
-            <div class="form-hint">自动识别覆盖群晖 /volume*、绿联 /volume*、飞牛 /vol*、威联通 /share/CACHEDEV*_DATA、极空间 /volume*、OpenWrt 系 /overlay 与 /mnt/* 等常见路径。</div>
-          </div>
           <h4 class="sub-group-title">🪟 详情弹窗外观</h4>
           <div class="form-row">
             <div class="form-item">
@@ -691,6 +679,12 @@
               <input class="range" id="s_nas_modal_alpha" type="range" min="40" max="100" step="1" value="100">
               <div class="form-hint">调低可透出壁纸，调高文字对比更强；建议 80%~100%。</div>
             </div>
+          </div>
+          <h4 class="sub-group-title">💾 存储池</h4>
+          <div class="form-item">
+            <label>自定义存储挂载点（可选，逗号分隔）</label>
+            <input class="input" id="s_nas_disk_paths" type="text" placeholder="留空自动识别；如需固定可填 /volume1,/share/CACHEDEV1_DATA">
+            <div class="form-hint">自动识别覆盖群晖 /volume*、绿联 /volume*、飞牛 /vol*、威联通 /share/CACHEDEV*_DATA、极空间 /volume*、OpenWrt 系 /overlay 与 /mnt/* 等常见路径。</div>
           </div>
           <h4 class="sub-group-title">🔔 告警通知</h4>
           <div class="form-row">
@@ -1533,9 +1527,9 @@
   </div>
 
   <script src="assets/js/qrcode.min.js"></script>
-  <script src="assets/js/api.js?v=0440aa68"></script>
-  <script src="assets/js/admin.js?v=fc7be8d6"></script>
-  <script src="assets/js/admin-console.js?v=32128de1"></script>
+  <script src="assets/js/api.js?v=da09acca"></script>
+  <script src="assets/js/admin.js?v=9ab8efbc"></script>
+  <script src="assets/js/admin-console.js?v=c53ed290"></script>
   <script src="assets/js/admin-ui.js?v=0218fafc"></script>
 </body>
 </html>

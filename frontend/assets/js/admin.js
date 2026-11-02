@@ -43,7 +43,7 @@ const state = {
   movingItemIDs: [],        // 「移动分组」弹窗当前要移动的卡片 id
 };
 
-const ITEM_PAGE_SIZE = 10; // 卡片管理每页条数
+const ITEM_PAGE_SIZE = 18; // 卡片管理每页条数
 
 const ROLE_LABEL = { admin: '管理员', editor: '编辑者', viewer: '只读' };
 
@@ -935,7 +935,7 @@ function renderItemsTable() {
   updateFilterInfo(list.length);
   if (!list.length) {
     const hasFilter = !!(state.currentGroup || state.currentParent || state.itemKeyword);
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">' +
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">' +
       (hasFilter ? '没有匹配的卡片，试试调整筛选或清空搜索' : '暂无卡片，点击右上角「添加卡片」创建') + '</td></tr>';
     renderItemsPager(0);
     syncBulkBar();
@@ -954,8 +954,9 @@ function renderItemsTable() {
     tr.innerHTML =
       '<td><input type="checkbox" class="item-check" data-id="' + item.id + '"' + (state.selectedItems.has(item.id) ? ' checked' : '') + '></td>' +
       '<td><span class="icon-preview" style="width:34px;height:34px;font-size:14px;border-radius:8px" data-cell="icon"></span></td>' +
-      '<td><div>' + esc(item.title) + (isHidden ? ' <span class="vis-badge" style="background:var(--color-warn)">隐藏</span>' : '') + '</div></td>' +
-      '<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)">' + esc(item.url || item.lan_url) + '</td>' +
+      '<td class="item-title"><div title="' + esc(item.title) + '">' + esc(item.title) + (isHidden ? ' <span class="vis-badge" style="background:var(--color-warn)">隐藏</span>' : '') + '</div></td>' +
+      '<td class="item-url" title="' + esc(item.url || item.lan_url || '') + '">' + esc(item.url || item.lan_url) + '</td>' +
+      '<td class="item-desc" title="' + esc(item.description || '') + '">' + esc(item.description || '—') + '</td>' +
       '<td style="white-space:nowrap"><button type="button" class="item-group-tag" data-gid="' + item.group_id + '" title="只看该分组">' + esc(groupName(item.group_id)) + '</button></td>' +
       '<td>' + (OPEN_TEXT[item.open_method] || '新窗口') + '</td>' +
       '<td><div class="actions">' +
@@ -1729,7 +1730,7 @@ function fillSettingsForm(s) {
   document.getElementById('s_lan_hostnames').value = s.lan_hostnames || '';
   document.getElementById('s_site_url').value = s.site_url || '';
   document.getElementById('s_footer').value = s.footer || '';
-  document.getElementById('s_clock_show').value = s.clock_show === '0' ? '0' : '1';
+  document.getElementById('s_clock_show').value = ['0', '1', 'lunar'].includes(s.clock_show) ? s.clock_show : '1';
   document.getElementById('s_weather_show').value = s.weather_show === '0' ? '0' : '1';
   document.getElementById('s_weather_city').value = s.weather_city || '';
   ensurePageFontOptions();
@@ -2388,12 +2389,11 @@ function refreshEngineDefaults() {
 }
 
 /* 分区定义：每个分区独立保存，只提交自己的设置项（后端白名单兼容部分提交）
-   分区顺序与站点设置的二级导航一一对应：站点信息 → 外观与卡片 → 导航与搜索 → 访问控制 → 热点新闻 → NAS 监控 */
+   分区顺序与站点设置的二级导航一一对应：站点信息（含访问控制）→ 外观与卡片 → 导航与搜索 → 热点新闻 → NAS 监控 */
 const SETTING_SECTIONS = {
-  basic:  { label: '站点信息', keys: ['site_title', 'site_url', 'footer', 'site_logo', 'icp_show', 'icp_number', 'icp_link', 'police_show', 'police_number', 'police_link', 'default_lan_mode', 'lan_hostnames'] },
+  basic:  { label: '站点信息', keys: ['site_title', 'site_url', 'footer', 'site_logo', 'icp_show', 'icp_number', 'icp_link', 'police_show', 'police_number', 'police_link', 'default_lan_mode', 'lan_hostnames', 'guest_access_enabled', 'guest_password_hash'] },
   theme:  { label: '外观与卡片', keys: ['default_theme', 'theme_style', 'card_style', 'card_opacity', 'default_group', 'content_maxwidth', 'content_pad_lr', 'content_pad_top', 'content_pad_bottom', 'page_font', 'clock_font', 'clock_show', 'weather_show', 'weather_city', 'wallpaper', 'mask_opacity', 'wallpaper_blur', 'wallpaper_source'] },
   search: { label: '导航与搜索', keys: ['search_bar_enabled', 'search_engines', 'search_default', 'search_width'] },
-  access: { label: '访问控制', keys: ['guest_access_enabled', 'guest_password_hash'] },
   news:   { label: '热点新闻', keys: ['news_show', 'news_auto_refresh', 'news_sources', 'news_order'] },
   nas:    { label: 'NAS 监控', keys: ['nas_show', 'nas_layout', 'nas_refresh', 'nas_guest', 'nas_disk_paths', 'nas_modal_alpha', 'nas_alert_enable', 'nas_alert_disk', 'nas_alert_temp', 'nas_alert_webhook'] },
   clip:   { label: '剪藏与接入', keys: ['clip_enabled', 'clip_default_group', 'clip_default_capture'] },
@@ -2542,18 +2542,13 @@ function bindPaneNav(navId, formSel, storageKey) {
   show(saved);
 }
 
-function bindThemeSubnav() {
-  bindPaneNav('themeSubnav', '#sf-theme', 'sp_theme_pane');
-}
-
 function bindClipSubnav() {
   // 剪藏与接入：基础设置 / 摘要与图片 / 快照检索 / 令牌与地址 / 各端接入
   bindPaneNav('clipSubnav', '#tab-clip', 'sp_clip_pane');
 }
 
 function bindSettings() {
-  // 外观与卡片内部二级导航（主题 / 布局 / 字体 / 时钟 / 壁纸）
-  bindThemeSubnav();
+  // 外观与卡片已合并为单页，不再需要内部二级导航
   // 剪藏与接入内部二级导航
   bindClipSubnav();
   // 字体下拉：整页 + 时钟，填充 12 款字体并绑定预览
@@ -2655,21 +2650,53 @@ function bindSettings() {
       }
     });
   });
+
+  // 外观分组独立保存：每个分组标题旁的「保存」只提交自己那一组设置项
+  document.querySelectorAll('#tab-settings .group-save').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const keys = String(btn.dataset.keys || '').split(',').filter(Boolean);
+      if (!keys.length) return;
+      const oldText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '保存中…';
+      try {
+        const payload = {};
+        keys.forEach(k => {
+          const v = collectSetting(k);
+          if (v !== undefined) payload[k] = v;
+        });
+        await API.post(API_BASE + 'settings.php?action=save', payload);
+        if (keys.indexOf('default_theme') >= 0 || keys.indexOf('theme_style') >= 0) {
+          applyTheme({
+            default_theme: document.getElementById('s_default_theme').value,
+            theme_style: document.getElementById('s_theme_style').value,
+          });
+        }
+        toast('已保存，部分设置需刷新主页生效', 'success');
+        try { localStorage.setItem('sp_settings_updated', Date.now().toString()); } catch (e) {}
+      } catch (err) {
+        toast(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = oldText;
+      }
+    });
+  });
 }
 
 /* ================= 站点设置：二级导航分区切换 ================= */
 function bindSettingsSubnav() {
   const nav = document.getElementById('settingsSubnav');
   if (!nav) return;
-  // 分区卡片与导航按钮按文档顺序一一对应（basic/theme/media/clock/search/news）
+  // 分区卡片通过 form[data-section] 与导航 data-panel 对应，避免调整分区顺序后错位
   const sections = Array.from(document.querySelectorAll('#tab-settings .settings-section'));
   const tabs = Array.from(nav.querySelectorAll('.subtab'));
 
   function show(panel) {
-    tabs.forEach((t, i) => {
-      const on = t.dataset.panel === panel;
-      t.classList.toggle('active', on);
-      if (sections[i]) sections[i].hidden = !on;
+    tabs.forEach(t => t.classList.toggle('active', t.dataset.panel === panel));
+    sections.forEach(sec => {
+      const form = sec.querySelector('form[data-section]');
+      sec.hidden = !(form && form.dataset.section === panel);
     });
     try { localStorage.setItem('sp_settings_panel', panel); } catch (e) { /* 隐私模式忽略 */ }
   }

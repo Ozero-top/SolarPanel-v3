@@ -231,6 +231,7 @@ func main() {
 	uploadHandler := handler.NewUploadHandler(cfg)
 	galleryHandler := handler.NewGalleryHandler(cfg)
 	weatherHandler := handler.NewWeatherHandler(cfg)
+	lunarHandler := handler.NewLunarHandler()
 	publicHandler := handler.NewPublicHandler(cfg)
 	newsHandler := &handler.NewsHandler{}
 	settingsHandler := &handler.SettingsHandler{}
@@ -275,6 +276,8 @@ func main() {
 		api.Get("/install.php", installHandler.Status)
 		api.Post("/install.php", installHandler.Setup)
 		api.With(rateLimitMW("weather", 30, 60)).Get("/weather.php", weatherHandler.Get)
+		// 农历与宜忌：本地计算，按日缓存
+		api.With(rateLimitMW("lunar", 60, 60)).Get("/lunar.php", lunarHandler.Get)
 		// 新闻：首屏 = 1 次 all + 每个过期源 1 次 source，24 个源一轮就接近旧上限 30，
 		// 稍有重试/切换视图就会 429；放宽到 120 次/分
 		api.With(rateLimitMW("news", 120, 60)).Post("/news.php", newsHandler.Dispatch)

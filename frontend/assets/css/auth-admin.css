@@ -1844,7 +1844,7 @@ tr.drag-over-bottom td {
 /* ================= 旧后台移动端适配（仅 body.admin-classic 生效） ================= */
 /* 平板 / 窄桌面：操作列不再被压窄，6 个按钮单行排列 */
 @media (min-width: 641px) and (max-width: 1100px) {
-  body.admin-classic #tab-items .table td:nth-child(7),
+  body.admin-classic #tab-items .table td:nth-child(8),
   body.admin-classic #tab-groups .table td:nth-child(6) {
     width: 1%;
     white-space: nowrap;
@@ -1896,6 +1896,7 @@ tr.drag-over-bottom td {
     grid-template-areas:
       "chk ico title title"
       "url url url url"
+      "desc desc desc desc"
       "grp grp open open"
       "act act act act";
     align-items: center;
@@ -1914,7 +1915,7 @@ tr.drag-over-bottom td {
   body.admin-classic #tab-items .table td[colspan] { grid-column: 1 / -1; text-align: center; }
   body.admin-classic #tab-items .table td:nth-child(1) { grid-area: chk; }
   body.admin-classic #tab-items .table td:nth-child(2) { grid-area: ico; }
-  body.admin-classic #tab-items .table td:nth-child(3) { grid-area: title; min-width: 0; font-weight: 600; }
+  body.admin-classic #tab-items .table td:nth-child(3) { grid-area: title; min-width: 0; max-width: none; font-weight: 600; }
   body.admin-classic #tab-items .table td:nth-child(3) > div {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1926,15 +1927,22 @@ tr.drag-over-bottom td {
     font-size: 12px;
     color: var(--text-muted);
   }
-  body.admin-classic #tab-items .table td:nth-child(5) { grid-area: grp; }
-  body.admin-classic #tab-items .table td:nth-child(6) {
+  body.admin-classic #tab-items .table td:nth-child(5) {
+    grid-area: desc;
+    max-width: none;
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: normal;
+  }
+  body.admin-classic #tab-items .table td:nth-child(6) { grid-area: grp; }
+  body.admin-classic #tab-items .table td:nth-child(7) {
     grid-area: open;
     text-align: right;
     font-size: 12px;
     color: var(--text-muted);
     white-space: nowrap;
   }
-  body.admin-classic #tab-items .table td:nth-child(7) { grid-area: act; }
+  body.admin-classic #tab-items .table td:nth-child(8) { grid-area: act; }
   body.admin-classic #tab-items .table .actions { flex-wrap: wrap; gap: 6px; }
   body.admin-classic #tab-items .table .actions .btn {
     flex: 1 1 72px;

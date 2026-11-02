@@ -4,7 +4,7 @@
 
 <h1 align=center>SolarPanel V3 - 轻量自托管导航页面板</h1>
 
-[![Version](https://img.shields.io/badge/Version-v3.7.5-5B8DEF?logo=semanticrelease)](#)
+[![Version](https://img.shields.io/badge/Version-v3.7.6-5B8DEF?logo=semanticrelease)](#)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev)
 [![Architecture](https://img.shields.io/badge/Architecture-chi%2Bsqlite-50C878)](https://github.com/go-chi/chi)
 [![Multi-Arch](https://img.shields.io/badge/Arch-amd64__arm64__armv7-7A51F5)](https://hub.docker.com/r/ovitor/solarpanel-v3)
@@ -247,6 +247,7 @@ SolarPanel/
 | GET | `/api/public.php` | 主页数据：设置 + 分组 + 卡片 + 站点信息（60/min） |
 | GET / POST | `/api/install.php` | 安装状态 / 默认管理员提示 |
 | GET | `/api/weather.php` | 天气数据（30/min） |
+| GET | `/api/lunar.php` | 农历与宜忌（本地计算，按日缓存，60/min） |
 | GET / POST | `/api/news.php` · `/api/news/meta` · `/api/news/all` · `/api/news/source` | 新闻聚合与源数据（30/min） |
 | GET / POST | `/api/wallpaper.php` | 每日壁纸调度（`daily` / `preview` / `pin` / `unpin`，30/min） |
 | GET / POST | `/api/auth.php` | 登录 / 双因子 / 访客登录 / 登出 / 受信设备 |

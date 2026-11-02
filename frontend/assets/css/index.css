@@ -386,6 +386,33 @@ body::-webkit-scrollbar {
 .weather .w-sep {
   opacity: 0.5;
 }
+/* 农历 + 宜忌：后台「显示时钟」选择「显示（含农历）」时，接在时钟 / 天气下方 */
+.lunar-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  /* 农历跟随整页字体，而不是时钟 / 天气专用字体 */
+  font-family: var(--page-font, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif);
+}
+.lunar-line[hidden] { display: none; }
+.lunar-line .lunar-date { font-weight: 600; color: var(--text); }
+.lunar-line .lunar-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  opacity: 0.45;
+}
+.lunar-line .yi-text { color: #2b7d5f; font-weight: 600; }
+.lunar-line .ji-text { color: #b34d57; font-weight: 600; }
+:root[data-theme='dark'] .lunar-line .yi-text { color: #6ec7a1; }
+:root[data-theme='dark'] .lunar-line .ji-text { color: #e08d96; }
 @media (max-width: 640px) {
   .clock-area .cw-row { gap: 16px; }
   .clock-time { font-size: 48px; letter-spacing: 2px; }
@@ -394,6 +421,7 @@ body::-webkit-scrollbar {
   .weather .w-desc { font-size: 15px; }
   .weather .w-temp { font-size: 18px; }
   .weather .w-sub { font-size: 11px; }
+  .lunar-line { font-size: 11.5px; gap: 8px; padding: 0 8px; }
 }
 
 /* ---------- 搜索托盘（内凹胶囊） ---------- */
@@ -1608,6 +1636,18 @@ body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
     line-height: 1.9;
     padding: 16px 8px 6px;
   }
+}
+
+/* 超窄屏（≤420px）：搜索托盘放不下「引擎名 + 搜索 + 热点新闻」时，
+   压缩按钮内边距与字号，保证输入框仍有可读宽度（原 390px 下仅剩 45px） */
+@media (max-width: 420px) {
+  .search-box { gap: 6px; padding: 6px 6px 6px 10px; }
+  .engine-btn { gap: 4px; padding: 6px 2px; font-size: 13px; }
+  .engine-btn .engine-logo { width: 16px; height: 16px; }
+  .search-box .divider { height: 20px; }
+  .search-box input { font-size: 14px; padding: 8px 4px; }
+  .search-box .search-btn { padding: 9px 10px; font-size: 13px; }
+  .search-box .hotnews-btn { padding: 0 8px; font-size: 13px; }
 }
 
 /* 超窄屏（≤360px）：双列卡片再收紧，保证文字区留有可读宽度 */

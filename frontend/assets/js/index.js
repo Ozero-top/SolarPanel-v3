@@ -395,7 +395,9 @@ function renderBase() {
   footer.hidden = false;
 
   // 时钟 / 天气显隐与并排；搜索栏宽度
-  const clockOn = s.clock_show !== '0';
+  const clockMode = String(s.clock_show || '1');
+  const clockOn = clockMode !== '0';
+  const lunarOn = clockMode === 'lunar';
   const weatherOn = s.weather_show !== '0';
   document.getElementById('clockTime').hidden = !clockOn;
   document.getElementById('clockDate').hidden = !clockOn;
@@ -404,6 +406,9 @@ function renderBase() {
   const sw = parseInt(s.search_width, 10);
   if (!isNaN(sw) && sw > 200) document.getElementById('searchBox').style.maxWidth = sw + 'px';
   if (weatherOn) renderWeather(s.weather_city || '');
+  // 「显示（含农历）」：在时钟 / 天气下方展示农历日期与宜忌
+  if (lunarOn && (clockOn || weatherOn)) renderLunar();
+  else document.getElementById('lunarLine').hidden = true;
 
   // 地址模式：手动切换（按域名 + 24 小时记忆）优先，否则用后台默认（缺省视为自动识别）
   try { localStorage.removeItem('sp_lan_mode'); } catch (_) { /* 清理旧版永久记忆 */ }
@@ -425,6 +430,43 @@ function renderBase() {
       link.title = '管理后台（' + (state.user.name || state.user.username) + '）';
     }
   }
+}
+
+/* ---------- 农历与宜忌 ---------- */
+const LUNAR_CACHE_KEY = 'sp_lunar_today';
+
+/** 本地时区的 YYYY-MM-DD（与后端按自然日缓存的口径一致，避免 UTC 跨天错位） */
+function localDayStr() {
+  const t = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return t.getFullYear() + '-' + p(t.getMonth() + 1) + '-' + p(t.getDate());
+}
+
+function paintLunar(d) {
+  const el = document.getElementById('lunarLine');
+  if (!el || !d || !d.lunar) return false;
+  const yi = (d.yi || []).slice(0, 3).join(' · ');
+  const ji = (d.ji || []).slice(0, 3).join(' · ');
+  el.innerHTML =
+    '<span class="lunar-date">农历' + esc(d.lunar) + ' · ' + esc(d.yearGanZhi) + '年</span>' +
+    (yi ? '<span class="lunar-dot"></span><span><span class="yi-text">宜</span> ' + esc(yi) + '</span>' : '') +
+    (ji ? '<span class="lunar-dot"></span><span><span class="ji-text">忌</span> ' + esc(ji) + '</span>' : '');
+  el.hidden = false;
+  return true;
+}
+
+/** 农历与宜忌：先渲染当日缓存，再向后端取最新（后端本地计算，按日缓存） */
+async function renderLunar() {
+  const day = localDayStr();
+  try {
+    const c = JSON.parse(localStorage.getItem(LUNAR_CACHE_KEY) || 'null');
+    if (c && c.day === day && c.data) paintLunar(c.data);
+  } catch (e) { /* 隐私模式忽略 */ }
+  try {
+    const d = await API.get(API_BASE + 'lunar.php');
+    if (!paintLunar(d)) return;
+    try { localStorage.setItem(LUNAR_CACHE_KEY, JSON.stringify({ day: day, data: d })); } catch (e) {}
+  } catch (e) { /* 取不到时保留缓存内容 */ }
 }
 
 /* ---------- 天气 ---------- */

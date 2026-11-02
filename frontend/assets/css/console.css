@@ -691,6 +691,7 @@ body.admin-console .settings-section {
 body.admin-console .section-head h3 { font-size: 16px; letter-spacing: -0.2px; }
 body.admin-console .sub-group-title { color: var(--text-muted); }
 
+
 body.admin-console .account-card {
   background: var(--surface-2);
   border: 1px solid var(--edge);
@@ -898,11 +899,64 @@ body.admin-console .toast {
 .legend {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
+  /* 两列纵向流：先填满左列再填右列，保持「父组 → 子组」的先后顺序 */
+  column-count: 2;
+  column-gap: 22px;
 }
-.legend-row { display: flex; align-items: center; gap: 9px; font-size: 12.5px; min-width: 0; }
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  min-width: 0;
+  margin-bottom: 8px;
+  break-inside: avoid;
+}
+/* 分组分布与「打开方式」「最近添加」并列成三卡：环形图与图例改为上下排列 */
+.group-card .donut-row { flex-direction: column; align-items: stretch; gap: 12px; }
+.group-card .donut-wrap { align-self: center; flex: 0 0 176px; width: 176px; height: 176px; }
+.group-card .donut-wrap canvas { width: 176px; height: 176px; }
+.group-card .donut-center b { font-size: 24px; }
+.group-card .legend { column-gap: 16px; }
+.group-card .legend-row { font-size: 11.5px; gap: 6px; }
+
+/* 审计日志预览 */
+.audit-preview { display: flex; flex-direction: column; }
+.audit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--edge-weak);
+  min-width: 0;
+}
+.audit-row:last-child { border-bottom: 0; }
+.audit-cat {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--edge);
+  background: var(--surface-2);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.audit-main {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.audit-main b { font-weight: 600; }
+.audit-main span { margin-left: 6px; color: var(--text-muted); }
+.audit-main .audit-fail { color: var(--danger); }
+.audit-time {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
 .legend-dot { flex: 0 0 9px; width: 9px; height: 9px; border-radius: 3px; }
 .legend-name {
   flex: 1;
@@ -1131,7 +1185,7 @@ body.admin-console .toast {
   .cs-clock { display: none; }
   .donut-row { flex-direction: column; align-items: stretch; gap: 14px; }
   .donut-wrap { align-self: center; }
-  .legend { width: 100%; }
+  .legend { width: 100%; column-count: 1; }
   .quick-grid { grid-template-columns: 1fr; }
   .dash-head h2 { font-size: 20px; }
   body.admin-console .admin-panel { padding: 14px 12px; border-radius: 16px; }
@@ -1196,6 +1250,7 @@ body.admin-console .table-scroll::-webkit-scrollbar-thumb { background: var(--ed
     grid-template-areas:
       "chk ico title title"
       "url url url url"
+      "desc desc desc desc"
       "grp grp open open"
       "act act act act";
     align-items: center;
@@ -1214,7 +1269,7 @@ body.admin-console .table-scroll::-webkit-scrollbar-thumb { background: var(--ed
   body.admin-console #tab-items .table td[colspan] { grid-column: 1 / -1; text-align: center; }
   body.admin-console #tab-items .table td:nth-child(1) { grid-area: chk; }
   body.admin-console #tab-items .table td:nth-child(2) { grid-area: ico; }
-  body.admin-console #tab-items .table td:nth-child(3) { grid-area: title; min-width: 0; font-weight: 600; }
+  body.admin-console #tab-items .table td:nth-child(3) { grid-area: title; min-width: 0; max-width: none; font-weight: 600; }
   body.admin-console #tab-items .table td:nth-child(3) > div {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1226,15 +1281,22 @@ body.admin-console .table-scroll::-webkit-scrollbar-thumb { background: var(--ed
     font-size: 12px;
     color: var(--text-muted);
   }
-  body.admin-console #tab-items .table td:nth-child(5) { grid-area: grp; }
-  body.admin-console #tab-items .table td:nth-child(6) {
+  body.admin-console #tab-items .table td:nth-child(5) {
+    grid-area: desc;
+    max-width: none;
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: normal;
+  }
+  body.admin-console #tab-items .table td:nth-child(6) { grid-area: grp; }
+  body.admin-console #tab-items .table td:nth-child(7) {
     grid-area: open;
     text-align: right;
     font-size: 12px;
     color: var(--text-muted);
     white-space: nowrap;
   }
-  body.admin-console #tab-items .table td:nth-child(7) { grid-area: act; }
+  body.admin-console #tab-items .table td:nth-child(8) { grid-area: act; }
   body.admin-console #tab-items .table .actions { flex-wrap: wrap; gap: 6px; }
   body.admin-console #tab-items .table .actions .btn {
     flex: 1 1 72px;
@@ -1323,7 +1385,7 @@ body.admin-console .table-scroll::-webkit-scrollbar-thumb { background: var(--ed
 
 /* ---------- 平板 / 窄桌面：操作列不再被压窄（否则 6 个按钮竖排把行高撑到 200+） ---------- */
 @media (min-width: 641px) and (max-width: 1100px) {
-  body.admin-console #tab-items .table td:nth-child(7),
+  body.admin-console #tab-items .table td:nth-child(8),
   body.admin-console #tab-groups .table td:nth-child(6) {
     width: 1%;
     white-space: nowrap;

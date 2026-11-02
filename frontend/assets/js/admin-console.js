@@ -210,21 +210,53 @@
   }
 
   function buildGroupData(items, groups) {
-    var nameById = {};
-    groups.forEach(function (g) { nameById[String(g.id)] = g.title || '未命名分组'; });
     var counts = {};
     items.forEach(function (it) {
       var key = String(it.group_id || 0);
       counts[key] = (counts[key] || 0) + 1;
     });
-    var list = Object.keys(counts).map(function (key) {
-      var gid = Number(key);
-      return {
-        name: nameById[key] || (gid === 0 ? '未分组' : '分组 ' + key),
-        count: counts[key]
-      };
+    function cnt(g) { return counts[String(g.id)] || 0; }
+    function byCount(a, b) { return cnt(b) - cnt(a); }
+
+    // 按分组结构排序：父组在前，二级分组紧随其后，名称显示为「父组-子组」
+    var idSet = {};
+    var tops = [];
+    var subsByParent = {};
+    groups.forEach(function (g) {
+      idSet[String(g.id)] = true;
+      var pid = Number(g.parent_id || 0);
+      if (pid) (subsByParent[pid] = subsByParent[pid] || []).push(g);
+      else tops.push(g);
     });
-    list.sort(function (a, b) { return b.count - a.count; });
+    tops.sort(byCount);
+    Object.keys(subsByParent).forEach(function (pid) { subsByParent[pid].sort(byCount); });
+
+    var seen = {};
+    var list = [];
+    tops.forEach(function (g) {
+      seen[String(g.id)] = true;
+      list.push({ name: g.title || '未命名分组', count: cnt(g) });
+      (subsByParent[g.id] || []).forEach(function (sub) {
+        seen[String(sub.id)] = true;
+        list.push({
+          name: (g.title || '未命名分组') + '-' + (sub.title || '未命名分组'),
+          count: cnt(sub)
+        });
+      });
+    });
+    // 父组缺失的二级分组、未在列表中的分组、未分组，统一兜底展示
+    groups.forEach(function (g) {
+      var key = String(g.id);
+      var pid = Number(g.parent_id || 0);
+      if (seen[key] || (pid && idSet[String(pid)])) return;
+      seen[key] = true;
+      list.push({ name: g.title || '未命名分组', count: cnt(g) });
+    });
+    Object.keys(counts).forEach(function (key) {
+      if (seen[key] || key === '0') return;
+      list.push({ name: '分组 ' + key, count: counts[key] });
+    });
+    if (counts['0']) list.push({ name: '未分组', count: counts['0'] });
     return list;
   }
 
@@ -278,7 +310,7 @@
       }
 
       var angle = start;
-      var gap = list.length > 1 ? 0.03 : 0;
+      var gap = list.length > 1 ? (list.length > 10 ? 0.015 : 0.03) : 0;
       for (var i = 0; i < list.length; i++) {
         var seg = list[i];
         var sweep = (seg.count / total) * Math.PI * 2 * eased;
@@ -301,12 +333,11 @@
   function renderDonut(items, groups) {
     var all = buildGroupData(items, groups);
     var colors = palette();
-    var top = all.slice(0, 6);
-    var rest = all.slice(6).reduce(function (sum, seg) { return sum + seg.count; }, 0);
-    var list = top.map(function (seg, i) { return { name: seg.name, count: seg.count, color: colors[i] }; });
-    if (rest > 0) {
-      list.push({ name: '其他分组', count: rest, color: cssVar('--text-muted') || '#8b93a3' });
-    }
+    var list = all.map(function (seg, i) {
+      // 超过 6 个分组时按色相均匀生成颜色，避免大色块重复
+      var color = colors[i] || 'hsl(' + Math.round(i * 360 / all.length) + ', 62%, 58%)';
+      return { name: seg.name, count: seg.count, color: color };
+    });
 
     var total = items.length;
     lastDonut = { list: list, total: total };
@@ -374,7 +405,7 @@
       ['权限组', ROLE_NAME[(st && st.role) || 'admin'] || '—'],
       ['站点地址', (st && st.siteUrl) ? st.siteUrl : '未设置'],
       ['隐藏卡片', String(hidden)],
-      ['当前版本', 'v' + appVersion()]
+      ['当前版本', appVersion()]
     ];
     var html = '';
     rows.forEach(function (row) {
@@ -411,6 +442,63 @@
         '</div>';
     });
     box.innerHTML = html;
+  }
+
+  /* —— 审计日志预览（仅管理员，放在原「最近添加」的位置） —— */
+  var auditPreviewAt = 0;
+  var AUDIT_CATS = [
+    ['auth', '登录'], ['2fa', '验证'], ['guest', '访客'], ['item', '卡片'],
+    ['group', '分组'], ['clip', '剪藏'], ['feed', '订阅'], ['settings', '设置'],
+    ['backup', '备份'], ['user', '用户'], ['nas', 'NAS'], ['audit', '日志']
+  ];
+
+  function auditCat(action) {
+    var a = String(action || '');
+    for (var i = 0; i < AUDIT_CATS.length; i++) {
+      if (a.indexOf(AUDIT_CATS[i][0]) === 0) return AUDIT_CATS[i][1];
+    }
+    return '系统';
+  }
+
+  function auditTime(s) {
+    var v = String(s || '').replace('T', ' ');
+    return v.length >= 16 ? v.slice(5, 16) : v;
+  }
+
+  function renderAuditPreview() {
+    var card = $('dashAuditCard');
+    var box = $('auditPreviewList');
+    if (!card || !box) return;
+    var st = getState();
+    if (!st || st.role !== 'admin') { card.hidden = true; return; }
+    card.hidden = false;
+    var now = Date.now();
+    if (box.dataset.loaded === '1' && now - auditPreviewAt < 20000) return;
+    if (typeof API === 'undefined' || typeof API.get !== 'function') return;
+    auditPreviewAt = now;
+    box.dataset.loaded = '1';
+    box.innerHTML = '<div class="dash-empty">正在读取审计日志…</div>';
+    API.get(API_BASE + 'audit.php?action=list&page=1&pagesize=6').then(function (data) {
+      var list = (data && data.list) || [];
+      if (!list.length) {
+        box.innerHTML = '<div class="dash-empty">暂无审计记录</div>';
+        return;
+      }
+      box.innerHTML = list.map(function (r) {
+        var fail = r.result && r.result !== 'success';
+        return '<div class="audit-row">' +
+          '<span class="audit-cat">' + escapeHtml(auditCat(r.action)) + '</span>' +
+          '<div class="audit-main"><b>' + escapeHtml(r.actor || '系统') + '</b>' +
+          '<span>' + escapeHtml(r.action || '') +
+          (r.target ? ' · ' + escapeHtml(r.target) : '') + '</span>' +
+          (fail ? '<span class="audit-fail">失败</span>' : '') + '</div>' +
+          '<span class="audit-time">' + escapeHtml(auditTime(r.created_at)) + '</span>' +
+          '</div>';
+      }).join('');
+    }).catch(function (e) {
+      box.innerHTML = '<div class="dash-empty">审计日志读取失败：' +
+        escapeHtml((e && e.message) || '未知错误') + '</div>';
+    });
   }
 
   function greeting(items, groups) {
@@ -471,6 +559,7 @@
     renderOpenMethods(items);
     renderOverview(items, groups, hidden);
     renderRecent(items, groups);
+    renderAuditPreview();
   }
 
   /* ================= 数据加载钩子 ================= */
@@ -505,6 +594,7 @@
   }
 
   function reloadData() {
+    auditPreviewAt = 0;
     if (typeof loadGroups === 'function') loadGroups();
     if (typeof loadItems === 'function') loadItems();
     setTimeout(refreshDashboard, 80);
@@ -517,6 +607,9 @@
 
     var gotoItems = $('dashGotoItems');
     if (gotoItems) gotoItems.addEventListener('click', function () { goTab('items'); });
+
+    var gotoAudit = $('dashGotoAudit');
+    if (gotoAudit) gotoAudit.addEventListener('click', function () { goTab('audit'); });
 
     var quicks = document.querySelectorAll('.quick-btn');
     for (var i = 0; i < quicks.length; i++) {

@@ -353,6 +353,111 @@ a:hover {
 .form-row > .form-item {
   flex: 1;
 }
+
+/* ---------- 设置项并列齐平：多列时标签等高，控件从同一条基线开始 ---------- */
+.form-row.aligned > .form-item { min-width: 0; }
+.form-row.aligned > .form-item > label,
+.form-row.aligned > .form-item > .form-row > .form-item > label {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+}
+.form-row.aligned .select,
+.form-row.aligned .input { min-width: 0; }
+/* 分组标题 + 独立保存按钮 */
+.sub-group-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 10px;
+}
+.sub-group-head > .sub-group-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.font-cols .sub-group-head { margin-top: 0; }
+/* 卡片管理表格：地址收窄、描述放宽，列间距略收紧 */
+#tab-items .table th,
+#tab-items .table td {
+  padding: 9px 8px;
+}
+/* 标题列：收窄到 140px，单行省略，悬浮显示完整标题 */
+.item-title {
+  max-width: 140px;
+}
+.item-title > div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 地址列：单行省略，悬浮显示完整链接 */
+.item-url {
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+/* 描述列：占用剩余宽度，最多两行，悬浮显示全文 */
+.item-desc {
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.font-cols > .form-item > .form-row { margin-bottom: 6px; }
+/* 时钟与天气三列：标签内联说明可折行，统一标签高度保证控件齐平 */
+.form-row.aligned.cw-cols > .form-item > label {
+  min-height: 42px;
+  align-items: flex-start;
+}
+/* 壁纸设置双列：两列标签等高；半宽容器内预览图与输入行允许换行 */
+.form-row.aligned.wp-cols > .form-item > label {
+  min-height: 42px;
+  align-items: flex-start;
+}
+.wp-cols .wallpaper-pick { flex-wrap: wrap; }
+/* 基本信息四列：长标签折行时，统一标签高度保证控件齐平 */
+.form-row.aligned.basic-cols > .form-item > label {
+  min-height: 42px;
+  align-items: flex-start;
+}
+/* 备案信息六列：桌面一行六项，标签等高；窄屏逐级换行 */
+.form-row.aligned.cols-6 > .form-item > label {
+  min-height: 42px;
+  align-items: flex-start;
+}
+
+@media (max-width: 1440px) {
+  .form-row.cols-6 { flex-wrap: wrap; }
+  .form-row.cols-6 > .form-item { flex: 1 1 calc(33.333% - 10px); }
+}
+@media (max-width: 1180px) {
+  .form-row.cols-5,
+  .form-row.cols-3 { flex-wrap: wrap; }
+  .form-row.cols-5 > .form-item { flex: 1 1 calc(33.333% - 10px); }
+  .form-row.cols-3 > .form-item { flex: 1 1 calc(50% - 10px); }
+}
+@media (max-width: 900px) {
+  .form-row.cols-4,
+  .form-row.cols-2 { flex-wrap: wrap; }
+  .form-row.cols-4 > .form-item,
+  .form-row.cols-2 > .form-item { flex: 1 1 calc(50% - 10px); }
+  .form-row.cols-6 > .form-item { flex: 1 1 calc(50% - 10px); }
+  /* 时钟与天气嵌在半宽列内，三列各约 150px 会让「显示（与时间横向并排）」被截断，窄屏改单列 */
+  .form-row.aligned.cols-3.cw-cols > .form-item { flex: 1 1 100%; }
+  /* 壁纸双列在半宽列内容不下「预览图 + 地址输入 + 3 个按钮」，窄屏改为上下两组 */
+  .form-row.aligned.wp-cols > .form-item { flex: 1 1 100%; }
+}
+@media (max-width: 560px) {
+  .form-row.cols-4 > .form-item,
+  .form-row.cols-5 > .form-item,
+  .form-row.cols-6 > .form-item,
+  .form-row.cols-3 > .form-item,
+  .form-row.cols-2 > .form-item { flex: 1 1 100%; }
+}
 .form-hint {
   font-size: 12px;
   color: var(--text-muted);

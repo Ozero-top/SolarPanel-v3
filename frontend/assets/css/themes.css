@@ -3354,7 +3354,32 @@ body.has-wallpaper .style-fx {
 
 :root[data-style='wetab'] .page { max-width: var(--wetab-content-width, var(--content-max, 1200px)); margin: 0 auto; padding: 0 28px 168px; }
 
-:root[data-style='wetab'] #heroWrap { display: block; position: sticky; top: 0; z-index: 24; padding: 10px 0 18px; }
+:root[data-style='wetab'] #heroWrap {
+  display: block;
+  position: sticky;
+  top: 0;
+  z-index: 24;
+  padding: 10px 0 46px;
+  background: radial-gradient(110% 80% at 12% 8%, #2b3f7a 0%, transparent 58%), radial-gradient(110% 80% at 92% 16%, #6a3f8f 0%, transparent 60%), radial-gradient(120% 90% at 50% 112%, #12352f 0%, transparent 58%), linear-gradient(160deg, #0f1424 0%, #0a0d18 100%);
+  background-attachment: fixed;
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent 100%);
+}
+
+:root[data-theme='light'][data-style='wetab'] #heroWrap {
+  background: radial-gradient(110% 80% at 12% 8%, #e6dcff 0%, transparent 58%), radial-gradient(110% 80% at 92% 16%, #ffe3f2 0%, transparent 60%), radial-gradient(120% 90% at 50% 112%, #dcecff 0%, transparent 58%), linear-gradient(160deg, #f7f3ff 0%, #eef4ff 55%, #fff0f8 100%);
+  background-attachment: fixed;
+}
+
+:root[data-wp='1'][data-style='wetab'] #heroWrap {
+  background-image: linear-gradient(var(--wp-mask, transparent), var(--wp-mask, transparent)), var(--wp-bg);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
 
 :root[data-style='wetab'] #heroWrap .clock-area { margin-bottom: 12px; }
 
@@ -3641,7 +3666,7 @@ body.has-wallpaper .style-fx {
 
 @media (max-width: 1024px) { :root[data-style='wetab'] .navbar-tabs { display: none !important; } :root[data-style='wetab'] .wetab-rail-handle { display: none !important; } :root[data-style='wetab'] .page { padding: 0 16px 128px; } :root[data-style='wetab'] .float-tools { bottom: 108px; } :root[data-style='wetab'] .wetab-dock { bottom: 10px; max-width: 94vw; } }
 
-@media (max-width: 720px) { :root[data-style='wetab'] #heroWrap { position: static; padding: 0; } }
+@media (max-width: 720px) { :root[data-style='wetab'] #heroWrap { position: static; padding: 0; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; -webkit-mask-image: none; mask-image: none; } }
 
 @media (max-width: 640px) { :root[data-style='wetab'] .cards,
 :root[data-style='wetab'] .cards.style-app { grid-template-columns: repeat(auto-fill, minmax(var(--wetab-card-width, 96px), 1fr)); row-gap: var(--wetab-row-gap, 10px); column-gap: var(--wetab-col-gap, 10px); } :root[data-style='wetab'] body .card { padding: 12px 6px 10px; } :root[data-style='wetab'] .card .icon { width: 46px; height: 46px; border-radius: 14px; } :root[data-style='wetab'] body .wetab-dock .dock-card { width: 62px; } :root[data-style='wetab'] .wetab-prefs-btn,
