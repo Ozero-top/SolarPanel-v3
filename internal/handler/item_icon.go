@@ -20,12 +20,16 @@ import (
 // Sun-Panel 同款站点图标链路：
 //   1. GET 站点页面，解析 <link rel="...icon..."> 得到候选列表（只解析，不下载）；
 //   2. 下载用户选中的图标时先 HEAD 校验，超过 1MB 直接失败，再 GET 原图落盘。
-// 与 Sun-Panel 一致：使用默认 http.Client（不设超时）、原图直存、不做格式转换。
+// 与 Sun-Panel 一致：原图直存、不做格式转换；但客户端必须设超时，
+// 否则慢站会长期占住后台迁移 worker（Sun-Panel 原始实现无超时，是已知缺陷）。
 
 const faviconMaxBytes = 0x100000 // 1MB
 
-// siteFaviconClient 默认 http.Client，无超时（与 Sun-Panel 一致）
-var siteFaviconClient = &http.Client{}
+// siteFaviconTimeout 单次页面/图标请求的超时
+const siteFaviconTimeout = 10 * time.Second
+
+// siteFaviconClient 带超时的 http.Client
+var siteFaviconClient = &http.Client{Timeout: siteFaviconTimeout}
 
 // siteFaviconCandidates 返回站点的图标候选地址。
 func siteFaviconCandidates(rawURL string) ([]string, error) {

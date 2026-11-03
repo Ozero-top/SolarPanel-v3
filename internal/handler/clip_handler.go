@@ -279,13 +279,16 @@ func (h *ClipHandler) createClip(w http.ResponseWriter, r *http.Request, p *clip
 		desc = page.Desc
 	}
 
-	iconType, iconValue, coverPath := "favicon", "", ""
+	// 默认文字图标：抓不到封面/图标时不再留 favicon 类型（否则每次重启都会被后台迁移重试）
+	iconType, iconValue, coverPath := "text", "", ""
 	if page.FetchError == "" {
 		coverPath = saveClipCover(h.cfg, key, page.CoverURL)
 		if coverPath != "" {
 			iconType, iconValue = "image", coverPath
 		} else if host != "" {
-			iconValue = trySaveIconFromCandidates(h.cfg, host, clipIconCandidates(page, host))
+			if saved := trySaveIconFromCandidates(h.cfg, host, clipIconCandidates(page, host)); saved != "" {
+				iconType, iconValue = "image", saved
+			}
 		}
 	}
 

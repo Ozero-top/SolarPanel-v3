@@ -318,7 +318,18 @@ func fetchPageHTML(rawURL string) (string, *url.URL, error) {
 	return string(body), final, nil
 }
 
+// iconFetchSem 全局图标抓取并发闸门：单次选优最多 12 个候选，
+// 批量剪藏/后台迁移可能同时发起多组，若无全局限流会把出站连接打满。
+var iconFetchSem = make(chan struct{}, 4)
+
 func fetchIconBytes(ctx context.Context, rawURL string, timeout time.Duration) ([]byte, string, error) {
+	// 全局限流：等待名额，或上下文取消（候选聚合到期）时立即退出
+	select {
+	case iconFetchSem <- struct{}{}:
+		defer func() { <-iconFetchSem }()
+	case <-ctx.Done():
+		return nil, "", ctx.Err()
+	}
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, "", err

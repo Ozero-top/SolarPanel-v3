@@ -226,7 +226,8 @@ func (h *ImportHandler) ImportBookmarks(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer groupStmt.Close()
-	itemStmt, err := tx.Prepare("INSERT INTO items (group_id, title, url, icon_type, icon_value, open_method, sort, url_key) VALUES (?, ?, ?, 'favicon', '', 2, ?, ?)")
+	// 导入不再自动抓取图标：默认文字图标，管理员需要时手动"获取站点图标"
+	itemStmt, err := tx.Prepare("INSERT INTO items (group_id, title, url, icon_type, icon_value, open_method, sort, url_key) VALUES (?, ?, ?, 'text', '', 2, ?, ?)")
 	if err != nil {
 		Err(w, http.StatusInternalServerError, 1, "导入失败")
 		return

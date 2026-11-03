@@ -170,8 +170,9 @@ func (c *Collector) collectContainers() []ContainerInfo {
 		}
 	}
 
-	// stats 单次约 1s（daemon 需要两个采样点），并发拉取避免串行放大耗时
-	sem := make(chan struct{}, 8)
+	// stats 单次约 1s（daemon 需要两个采样点）。这里刻意串行：
+	// dockerd 是所有 Docker API 的单点，并发拉取会直接拖慢同机的宝塔容器页。
+	sem := make(chan struct{}, 1)
 	var wg sync.WaitGroup
 	for i := range items {
 		if items[i].State != "running" {
@@ -202,6 +203,19 @@ func (c *Collector) collectContainers() []ContainerInfo {
 	c.ctPrev = alive
 	c.ctMu.Unlock()
 
+	// 同步清理 stats 缓存中已消失/已过期的条目
+	present := make(map[string]bool, len(items))
+	for _, it := range items {
+		present[it.ID] = true
+	}
+	c.statsMu.Lock()
+	for id, e := range c.statsCache {
+		if !present[id] || time.Since(e.at) > containerStatsTTL {
+			delete(c.statsCache, id)
+		}
+	}
+	c.statsMu.Unlock()
+
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].State != items[j].State {
 			return items[i].State == "running"
@@ -212,6 +226,23 @@ func (c *Collector) collectContainers() []ContainerInfo {
 }
 
 func (c *Collector) fillContainerStats(ctx context.Context, it *ContainerInfo) {
+	// 命中短缓存直接复用，避免频繁轮询反复阻塞 dockerd
+	c.statsMu.Lock()
+	if e, ok := c.statsCache[it.ID]; ok && time.Since(e.at) < containerStatsTTL && e.info.State == it.State {
+		cached := e.info
+		c.statsMu.Unlock()
+		it.CPUPct = cached.CPUPct
+		it.MemUsed = cached.MemUsed
+		it.MemLimit = cached.MemLimit
+		it.RxBps = cached.RxBps
+		it.TxBps = cached.TxBps
+		it.RestartCount = cached.RestartCount
+		it.Health = cached.Health
+		it.Uptime = cached.Uptime
+		return
+	}
+	c.statsMu.Unlock()
+
 	// inspect 先拿真实启动时间（容器重启后 Created 不变）、重启次数与健康状态
 	if body, err := c.dockerGet(ctx, dockerAPIPrefix+"/containers/"+it.ID+"/json"); err == nil {
 		var ins dockerInspect
@@ -289,4 +320,9 @@ func (c *Collector) fillContainerStats(ctx context.Context, it *ContainerInfo) {
 	c.ctMu.Lock()
 	c.ctPrev[it.ID] = ctSample{rx: rx, tx: tx, cpuTotal: curCPU, sysCPU: curSys, at: now}
 	c.ctMu.Unlock()
+
+	// 写入短缓存，后续 5 秒内的轮询直接复用
+	c.statsMu.Lock()
+	c.statsCache[it.ID] = statsCacheEntry{info: *it, at: now}
+	c.statsMu.Unlock()
 }

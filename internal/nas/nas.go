@@ -150,6 +150,15 @@ type ctSample struct {
 	at               time.Time
 }
 
+// containerStatsTTL 容器 stats 结果缓存时长；dockerd 单次 stats 需要约 1s，短缓存可显著降低压力
+const containerStatsTTL = 5 * time.Second
+
+// statsCacheEntry 单个容器的 stats 结果快照
+type statsCacheEntry struct {
+	info ContainerInfo
+	at   time.Time
+}
+
 // diskstatSample /proc/diskstats 累计值快照（不含分区与 dm/md/loop/ram）
 type diskstatSample struct {
 	reads, writes               uint64
@@ -200,6 +209,11 @@ type Collector struct {
 	ctMu   sync.Mutex
 	ctPrev map[string]ctSample
 
+	// statsMu 保护 statsCache：容器 stats 单次约 1s 且会阻塞 docker daemon，
+	// 短缓存避免频繁轮询时把 daemon（宝塔 Docker 页共用）拖慢
+	statsMu    sync.Mutex
+	statsCache map[string]statsCacheEntry
+
 	// diskPrev 只在 Collect（受 mu 串行）中读写
 	diskPrev map[string]diskstatSample
 
@@ -221,6 +235,7 @@ func NewCollector(hostRoot, dockerSocket, stateDir string) *Collector {
 		dockerSocket: dockerSocket,
 		stateDir:     stateDir,
 		ctPrev:       make(map[string]ctSample),
+		statsCache:   make(map[string]statsCacheEntry),
 		diskPrev:     make(map[string]diskstatSample),
 		hist10:       histTier{step: 5, max: 120},
 		hist60:       histTier{step: 30, max: 120},

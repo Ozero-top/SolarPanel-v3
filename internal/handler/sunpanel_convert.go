@@ -152,8 +152,9 @@ func sunPanelIconFields(node sunPanelNode) (string, string, string) {
 	if text != "" {
 		return "text", text, bg
 	}
+	// 不再产生 favicon 类型：无图标时回落文字图标，避免导入后触发后台抓取
 	if strings.TrimSpace(node.URL) != "" || strings.TrimSpace(node.LanURL) != "" {
-		return "favicon", "", bg
+		return "text", "", bg
 	}
 	title := strings.TrimSpace(node.Title)
 	if title != "" {
