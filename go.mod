@@ -10,7 +10,6 @@ require (
 	github.com/go-chi/chi/v5 v5.4.0
 	github.com/ledongthuc/pdf v0.0.0-20261020125853-5e46805f718e
 	golang.org/x/crypto v0.52.0
-	golang.org/x/net v0.55.0
 	modernc.org/sqlite v1.34.5
 )
 
@@ -26,6 +25,7 @@ require (
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	modernc.org/libc v1.55.3 // indirect

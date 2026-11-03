@@ -44,7 +44,11 @@ type ItemRow struct {
 	Description string   `json:"description"`
 	IconType    string   `json:"icon_type"`
 	IconValue   string   `json:"icon_value"`
-	IconBG      string   `json:"icon_bg"`
+	// IconVer 本地图标文件 mtime（秒），用于前端拼 ?v= 破缓存
+	IconVer int64 `json:"icon_ver,omitempty"`
+	// IconData 首屏前 N 张图标的 data URL（仅 /api/public.php 输出时填充）
+	IconData string `json:"icon_data,omitempty"`
+	IconBG   string `json:"icon_bg"`
 	OpenMethod  int      `json:"open_method"`
 	Sort        int      `json:"sort"`
 	IsHidden    int      `json:"is_hidden"`
@@ -576,6 +580,12 @@ func (h *ItemsHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
 		h.FaviconCandidates(w, r)
 	case "favicon_save":
 		h.FaviconSave(w, r)
+	case "favicon_batch_start":
+		h.FaviconBatchStart(w, r)
+	case "favicon_batch_status":
+		h.FaviconBatchStatus(w, r)
+	case "favicon_batch_cancel":
+		h.FaviconBatchCancel(w, r)
 	case "fetch_meta":
 		h.FetchMeta(w, r)
 	default:
@@ -655,6 +665,7 @@ func (h *ItemsHandler) FaviconSave(w http.ResponseWriter, r *http.Request) {
 type metaCacheEntry struct {
 	title string
 	desc  string
+	icon  string // 自动选优后的本地图标路径（为空表示本站没抓到）
 	ok    bool
 	at    time.Time
 }
@@ -705,7 +716,9 @@ func (h *ItemsHandler) FetchMeta(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := map[string]any{"title": "", "description": "", "warn": ""}
+	resp := map[string]any{"title": "", "description": "", "warn": "", "icon": ""}
+	// icon=1 时顺带自动选优站点图标（标题/描述与图标一次请求返回，避免前端再发一次抓取）
+	wantIcon := r.URL.Query().Get("icon") == "1"
 
 	key := metaCacheKey(u)
 	var entry metaCacheEntry
@@ -728,11 +741,29 @@ func (h *ItemsHandler) FetchMeta(w http.ResponseWriter, r *http.Request) {
 		if !entry.ok {
 			resp["warn"] = "站点暂时无法访问，已使用缓存结果"
 		}
+		if wantIcon {
+			resp["icon"] = entry.icon
+			// 上次没抓到图标（超时/反爬）时补抓一次，避免命中缓存后永远拿不到图
+			if entry.icon == "" {
+				if p, ierr := autoPickFaviconFromURL(h.cfg, rawURL); ierr == nil {
+					entry.icon = p
+					resp["icon"] = p
+					metaCache.Store(key, entry)
+				}
+			}
+		}
 	} else {
 		html, base, ferr := fetchPageHTML(rawURL)
 		entry = metaCacheEntry{at: time.Now()}
 		if ferr != nil {
 			resp["warn"] = "无法访问目标站点：" + ferr.Error()
+			// 页面抓不到（反爬/超时）时仍尝试默认路径与公共图标源
+			if wantIcon {
+				if p, ierr := autoPickFavicon(h.cfg, host, u, ""); ierr == nil {
+					entry.icon = p
+					resp["icon"] = p
+				}
+			}
 		} else {
 			entry.ok = true
 			if base != nil {
@@ -745,6 +776,13 @@ func (h *ItemsHandler) FetchMeta(w http.ResponseWriter, r *http.Request) {
 			}
 			resp["title"] = entry.title
 			resp["description"] = entry.desc
+			if wantIcon {
+				// 复用已抓到的 HTML，避免为图标再请求一次页面
+				if p, ierr := autoPickFavicon(h.cfg, host, base, html); ierr == nil {
+					entry.icon = p
+					resp["icon"] = p
+				}
+			}
 		}
 		metaCache.Store(key, entry)
 	}

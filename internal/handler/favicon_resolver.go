@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -186,6 +187,34 @@ func rootIconCandidates(base *url.URL) []iconCandidate {
 		{URL: origin + "/apple-touch-icon-precomposed.png", Score: 52},
 		{URL: origin + "/favicon.png", Score: 26},
 	}
+}
+
+// iconCandidatesFromHTML 把页面 HTML + 最终 URL 转成候选集合：
+// 声明图标（含 apple-touch-icon / svg / sizes，按质量打分）→ manifest 图标 → 常见默认路径 → /favicon.ico。
+// html 为空（页面 4xx/反爬/超时）时仍返回默认路径候选，保证「页面抓不到但 favicon.ico 可访问」的站点也能补上图。
+func iconCandidatesFromHTML(html string, base *url.URL) []iconCandidate {
+	if base == nil {
+		return nil
+	}
+	var out []iconCandidate
+	if strings.TrimSpace(html) != "" {
+		out = append(out, extractIconCandidates(html, base)...)
+		out = append(out, manifestIconCandidates(html, base)...)
+	}
+	out = append(out, rootIconCandidates(base)...)
+	out = append(out, iconCandidate{URL: base.Scheme + "://" + base.Host + "/favicon.ico", Score: 24})
+
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Score > out[j].Score })
+	seen := make(map[string]bool, len(out))
+	list := make([]iconCandidate, 0, len(out))
+	for _, c := range out {
+		if c.URL == "" || seen[c.URL] {
+			continue
+		}
+		seen[c.URL] = true
+		list = append(list, c)
+	}
+	return list
 }
 
 // fetchSmallText 抓取小型文本资源（manifest 等），限制大小与超时

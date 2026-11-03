@@ -9,6 +9,9 @@ solarpanel-v3.exe
 # 运行时数据
 data/
 
+# 本地 Docker 桌面版测试数据（含 sqlite 库与 uploads，勿入库）
+/.docker-test-data/
+
 # Go 构建
 *.test
 *.out

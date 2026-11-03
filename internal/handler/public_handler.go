@@ -2,9 +2,12 @@ package handler
 
 import (
 	"compress/gzip"
+	"encoding/base64"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -187,6 +190,9 @@ func (h *PublicHandler) Public(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// 本地图标：补齐 mtime 版本号（前端拼 ?v= 破缓存），并把前 N 张小图内联成 data URL
+	h.decorateLocalIcons(items)
+
 	// 先按分组归档卡片，避免分组 × 卡片的双重遍历
 	itemsByGroup := make(map[int][]ItemRow, len(groups))
 	for _, it := range items {
@@ -238,4 +244,70 @@ func (h *PublicHandler) Public(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Write(body)
+}
+
+/* ================= 首屏图标：版本号 + 前 N 张内联 ================= */
+
+const (
+	// publicInlineIconLimit 首屏直接内联的图标数量（只取前几张，避免 public.php 变大）
+	publicInlineIconLimit = 8
+	// publicInlineIconBudget 内联总字节上限（base64 前），超出则改为静态引用
+	publicInlineIconBudget = 24 * 1024
+	uploadsIconPrefix      = "/frontend/uploads/"
+)
+
+// decorateLocalIcons 为本地图标补 mtime 版本号，并把前 N 张小图内联成 data URL。
+// 版本号用于前端拼 ?v=，解决按 host 覆盖写导致的缓存不更新问题。
+func (h *PublicHandler) decorateLocalIcons(items []ItemRow) {
+	if len(items) == 0 || h.cfg == nil {
+		return
+	}
+	inlined := 0
+	budget := publicInlineIconBudget
+	for i := range items {
+		it := &items[i]
+		if it.IconType != "image" || !strings.HasPrefix(it.IconValue, uploadsIconPrefix) {
+			continue
+		}
+		rel := strings.TrimPrefix(it.IconValue, uploadsIconPrefix)
+		full := filepath.Join(h.cfg.UploadDir, filepath.FromSlash(rel))
+		info, err := os.Stat(full)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		it.IconVer = info.ModTime().Unix()
+
+		if inlined >= publicInlineIconLimit || info.Size() <= 0 || info.Size() > int64(budget) {
+			continue
+		}
+		mime := iconMimeByExt(filepath.Ext(full))
+		if mime == "" {
+			continue
+		}
+		data, err := os.ReadFile(full)
+		if err != nil || len(data) == 0 || len(data) > budget {
+			continue
+		}
+		it.IconData = "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data)
+		budget -= len(data)
+		inlined++
+	}
+}
+
+func iconMimeByExt(ext string) string {
+	switch strings.ToLower(ext) {
+	case ".webp":
+		return "image/webp"
+	case ".png":
+		return "image/png"
+	case ".svg":
+		return "image/svg+xml"
+	case ".ico":
+		return "image/x-icon"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	}
+	return ""
 }

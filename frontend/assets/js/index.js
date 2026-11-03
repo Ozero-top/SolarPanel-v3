@@ -2596,7 +2596,11 @@ function buildCard(item, styleApp) {
     img.onload = () => showWhenDecoded(img, icon, iconState);
     icon.classList.add('icon-loading'); // 加载中显示骨架微光，解码完成淡入
     icon.appendChild(img);
-    armCardIcon(icon, () => { img.src = assetUrl(item.icon_value); });
+    // 首屏前 N 张由服务端内联成 data URL（省掉一次请求）；其余走静态文件 + mtime 版本号破缓存
+    const iconSrc = item.icon_data
+      ? item.icon_data
+      : assetUrl(item.icon_value) + (item.icon_ver ? (assetUrl(item.icon_value).includes('?') ? '&' : '?') + 'v=' + item.icon_ver : '');
+    armCardIcon(icon, () => { img.src = iconSrc; });
   } else {
     // 迁移完成后不应再有 favicon 类型；兜底一律用文字图标
     useTextIcon();
@@ -4207,9 +4211,15 @@ function isFetchableUrl(s) {
   }
 }
 
-/** fetch_meta — 自动填充 title/description（图标由用户显式抓取，不在此处下载） */
+/** fetch_meta — 自动填充 title/description，并在图标为空时自动抓取站点图标 */
 let qaLastMetaUrl = ''; // 自动模式去重：同一地址只抓一次
 let qaMetaBusy = false;
+// 自动抓取图标：仅在「图标为空且不是文字图标」时附带请求，避免覆盖用户已选/已上传的图标
+function qaNeedAutoIcon() {
+  if (document.getElementById('qa_icon').value.trim()) return false;
+  const checked = document.querySelector('#qa_itype input:checked');
+  return !checked || checked.value !== 'text';
+}
 async function fetchQAMeta(auto, overrideUrl) {
   auto = auto === true;
   if (qaMetaBusy) return;
@@ -4225,10 +4235,11 @@ async function fetchQAMeta(auto, overrideUrl) {
   // 自动模式：标题已有内容或该地址已抓过 → 跳过，避免失焦/粘贴重复请求
   if (auto && (!document.getElementById('qa_title').value.trim() || url === qaLastMetaUrl)) return;
   const btn = document.getElementById('qa_fetchMeta');
+  const wantIcon = qaNeedAutoIcon();
   qaMetaBusy = true;
   btn.disabled = true; btn.textContent = '获取中…';
   try {
-    const res = await API.get(API_BASE + 'items.php?action=fetch_meta&url=' + encodeURIComponent(url));
+    const res = await API.get(API_BASE + 'items.php?action=fetch_meta&url=' + encodeURIComponent(url) + '&icon=' + (wantIcon ? '1' : '0'));
     qaLastMetaUrl = url;
 
     const got = [];
@@ -4237,6 +4248,13 @@ async function fetchQAMeta(auto, overrideUrl) {
 
     if (res.title && emptyTitle) { document.getElementById('qa_title').value = res.title; got.push('标题'); }
     if (res.description && emptyDesc) { document.getElementById('qa_desc').value = res.description; got.push('描述'); }
+    // 站点图标自动落盘并回填（恢复「输入地址即自动获取图标」的体验）
+    if (res.icon && wantIcon && !document.getElementById('qa_icon').value.trim()) {
+      document.querySelector('#qa_itype input[value="image"]').checked = true;
+      document.getElementById('qa_icon').value = res.icon;
+      if (typeof onQAIconTypeChange === 'function') onQAIconTypeChange();
+      got.push('图标');
+    }
     updateQAIconPreview();
 
     const warnTxt = res.warn ? '（' + res.warn + '）' : '';

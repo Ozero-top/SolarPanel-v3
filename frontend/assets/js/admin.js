@@ -126,7 +126,7 @@ function applyRoleUI() {
     const clipTab = document.querySelector('.admin-tabs .tab[data-tab="clip"]');
     if (clipTab) clipTab.style.display = 'none';
     // 书签导入、2FA 开关（viewer 只读，访客也无权修改）
-    document.querySelectorAll('#openBookmarksBtn, #twofaSetupBtn, #twofaEnableBtn, #twofaDisableBtn').forEach(el => {
+    document.querySelectorAll('#openBookmarksBtn, #twofaSetupBtn, #twofaEnableBtn, #twofaDisableBtn, #iconBatchBtn').forEach(el => {
       el.disabled = true;
       el.style.opacity = '0.5';
       el.style.pointerEvents = 'none';
@@ -1425,8 +1425,46 @@ function isSiblingContiguous(list) {
   return true;
 }
 
+/* 批量补图：启动后台任务并轮询进度（并发 4，失败只计数，可随时取消） */
+async function startIconBatch() {
+  const btn = document.getElementById('iconBatchBtn');
+  if (!btn || btn.disabled) return;
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '启动中…';
+  try {
+    await API.get(API_BASE + 'items.php?action=favicon_batch_start');
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = label;
+    toast(e.message || '启动失败', 'error');
+    return;
+  }
+  toast('已开始补图，进度显示在按钮上', 'success');
+  const timer = setInterval(async () => {
+    try {
+      const st = await API.get(API_BASE + 'items.php?action=favicon_batch_status');
+      if (st.running) {
+        btn.textContent = `补图中 ${st.ok + st.failed}/${st.total}`;
+        return;
+      }
+      clearInterval(timer);
+      btn.disabled = false;
+      btn.textContent = label;
+      toast(`补图完成：成功 ${st.ok}，失败 ${st.failed}`, st.failed ? 'error' : 'success');
+      await loadItems();
+    } catch (e) {
+      clearInterval(timer);
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  }, 1000);
+}
+
 function bindItems() {
   document.getElementById('addItemBtn').onclick = () => openItemModal(null);
+  const iconBatchBtn = document.getElementById('iconBatchBtn');
+  if (iconBatchBtn) iconBatchBtn.onclick = startIconBatch;
   bindItemsBulk();
 
   // ============ 事件绑定 ============
@@ -1457,9 +1495,15 @@ function bindItems() {
     });
   });
 
-  // ============ fetchMeta（自动填充标题/描述；图标由用户显式抓取）============
+  // ============ fetchMeta（自动填充标题/描述，并在图标为空时自动抓取站点图标）============
   let metaBusy = false;
   let lastMetaUrl = ''; // 自动模式去重：同一地址只抓一次
+  // 自动抓取图标：仅在「图标为空且不是文字图标」时附带请求，避免覆盖用户已选/已上传的图标
+  const needAutoIcon = () => {
+    if (document.getElementById('i_icon').value.trim()) return false;
+    const checked = document.querySelector('#i_itype input:checked');
+    return !checked || checked.value !== 'text';
+  };
   const fetchMeta = async (auto, overrideUrl) => {
     if (metaBusy) return;
     const url = normalizeFetchUrl(overrideUrl || document.getElementById('i_url').value || '');
@@ -1472,12 +1516,13 @@ function bindItems() {
       return;
     }
     if (auto && url === lastMetaUrl) return;
+    const wantIcon = needAutoIcon();
     const btn = document.getElementById('i_fetchMeta');
     metaBusy = true;
     btn.disabled = true;
     btn.textContent = '获取中…';
     try {
-      const res = await API.get(API_BASE + 'items.php?action=fetch_meta&url=' + encodeURIComponent(url));
+      const res = await API.get(API_BASE + 'items.php?action=fetch_meta&url=' + encodeURIComponent(url) + '&icon=' + (wantIcon ? '1' : '0'));
       lastMetaUrl = url;
       const got = [];
       const emptyTitle = !document.getElementById('i_title').value.trim();
@@ -1490,6 +1535,12 @@ function bindItems() {
       if (res.description && emptyDesc) {
         document.getElementById('i_desc').value = res.description;
         got.push('描述');
+      }
+      // 站点图标自动落盘并回填（恢复「输入地址即自动获取图标」的体验）
+      if (res.icon && wantIcon && !document.getElementById('i_icon').value.trim()) {
+        document.querySelector('#i_itype input[value="image"]').checked = true;
+        document.getElementById('i_icon').value = res.icon;
+        got.push('图标');
       }
 
       updateIconPreview();
