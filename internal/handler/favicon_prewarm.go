@@ -135,10 +135,12 @@ func repairFaviconItemPaths(cfg *config.Config) int {
 	return len(fixes)
 }
 
-// StartFaviconPrewarm 异步预热全部 favicon 类型卡片（并发 2，逐个错开，避免打满出网连接）
+// StartFaviconPrewarm 异步预热全部 favicon 类型卡片。
+// 启动后延迟 45s 再跑：首访阶段（页面加载 + 按需抓图标 + WebP 编码）不与预热抢 NAS 的 CPU 和出网带宽；
+// 预热本身并发 1、逐个间隔 500ms，避免同一时刻对几十个站点发起多候选抓取。
 func StartFaviconPrewarm(cfg *config.Config) {
 	go func() {
-		time.Sleep(5 * time.Second) // 等 HTTP 服务与数据库就绪
+		time.Sleep(45 * time.Second) // 等首访高峰过去，再开始后台抓取与历史图标重编码
 		optimizeCachedFavicons(cfg)
 		repairFaviconItemPaths(cfg)
 		clearFaviconDataCache()
@@ -146,7 +148,7 @@ func StartFaviconPrewarm(cfg *config.Config) {
 		if len(hosts) == 0 {
 			return
 		}
-		warmFaviconHosts(cfg, hosts, false)
+		warmFaviconHosts(cfg, hosts, false, 1, 500*time.Millisecond)
 		log.Printf("[favicon] 预热结束，共 %d 个站点", len(hosts))
 	}()
 }
@@ -183,9 +185,12 @@ func faviconHostsFromItems() []string {
 	return hosts
 }
 
-// warmFaviconHosts 抓取缺失图标（并发 2、逐个错开）。ignoreNegative=true 时忽略失败冷却。
-func warmFaviconHosts(cfg *config.Config, hosts []string, ignoreNegative bool) (saved, failed int) {
-	sem := make(chan struct{}, 2)
+// warmFaviconHosts 抓取缺失图标（conc 并发、每个 host 前 gap 错开）。ignoreNegative=true 时忽略失败冷却。
+func warmFaviconHosts(cfg *config.Config, hosts []string, ignoreNegative bool, conc int, gap time.Duration) (saved, failed int) {
+	if conc < 1 {
+		conc = 1
+	}
+	sem := make(chan struct{}, conc)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	for _, host := range hosts {
@@ -204,7 +209,9 @@ func warmFaviconHosts(cfg *config.Config, hosts []string, ignoreNegative bool) (
 					}
 				}
 			}
-			time.Sleep(300 * time.Millisecond)
+			if gap > 0 {
+				time.Sleep(gap)
+			}
 			if s := trySaveIcon(cfg, "https://"+h); s != "" {
 				log.Printf("[favicon] 预热完成 %s → %s", h, s)
 				mu.Lock()
@@ -262,7 +269,7 @@ func StartFaviconSweep(cfg *config.Config) (FaviconSweepStatus, bool) {
 		for _, h := range hosts {
 			faviconNegative.Delete(h)
 		}
-		res.Refetched, res.Failed = warmFaviconHosts(cfg, hosts, true)
+		res.Refetched, res.Failed = warmFaviconHosts(cfg, hosts, true, 2, 300*time.Millisecond)
 		res.Running = false
 		res.FinishedAt = time.Now().Format("15:04:05")
 		sweepMu.Lock()

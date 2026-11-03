@@ -273,6 +273,10 @@ func main() {
 	// 不启用 middleware.RealIP：它会无条件信任 X-Forwarded-For，
 	// 客户端可伪造 IP 绕过限流；由 auth.ClientIP 只在前置代理为内网时采信转发头
 	r.Use(middleware.Timeout(60 * time.Second))
+	// 响应压缩：静态资源（HTML/CSS/JS 约 580KB）压到约 140KB。
+	// chi 的 Compress 只处理 text/*、application/json 等白名单类型，图片/zip 不动；
+	// 已在 handler 内手工设置 Content-Encoding 的响应（public.php）会自动跳过，不会二次压缩。
+	r.Use(middleware.Compress(5))
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			h := w.Header()
