@@ -18,9 +18,9 @@ if(w&&w.url&&(!w.src||w.day===today)){rs.setProperty('--wp-bg','url("'+String(w.
   <link rel="manifest" href="manifest.json?v=6ae6884d">
   <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
   <title>SolarPanel</title>
-  <link rel="stylesheet" href="assets/css/common.css?v=09e63b5c">
-  <link rel="stylesheet" href="assets/css/index.css?v=74fc3b59">
-  <link rel="stylesheet" href="assets/css/themes.css?v=c41f9617">
+  <link rel="stylesheet" href="assets/css/common.css?v=dc014ca6">
+  <link rel="stylesheet" href="assets/css/index.css?v=d0b881a3">
+  <link rel="stylesheet" href="assets/css/themes.css?v=29b1e8c0">
 </head>
 <body>
   <div class="bg-layer" id="bgLayer"></div>
@@ -147,31 +147,11 @@ if(w&&w.url&&(!w.src||w.day===today)){rs.setProperty('--wp-bg','url("'+String(w.
 
     <!-- 分组与卡片（全部由后端数据渲染） -->
     <main id="groupsWrap">
-      <!-- 骨架屏：HTML 首帧即显示，renderGroups() 做 wrap.innerHTML='' 时自动清除 -->
-      <div class="skel-wrap" aria-hidden="true">
-        <div class="skel-group">
-          <div class="skel-line skel-title"></div>
-          <div class="skel-cards">
-            <div class="skel-card"><div class="skel-icon"></div><div class="skel-text skel-t1"></div><div class="skel-text skel-t2"></div></div>
-            <div class="skel-card"><div class="skel-icon"></div><div class="skel-text skel-t1"></div><div class="skel-text skel-t2"></div></div>
-            <div class="skel-card"><div class="skel-icon"></div><div class="skel-text skel-t1"></div><div class="skel-text skel-t2"></div></div>
-            <div class="skel-card"><div class="skel-icon"></div><div class="skel-text skel-t1"></div><div class="skel-text skel-t2"></div></div>
-            <div class="skel-card"><div class="skel-icon"></div><div class="skel-text skel-t1"></div><div class="skel-text skel-t2"></div></div>
-            <div class="skel-card"><div class="skel-icon"></div><div class="skel-text skel-t1"></div><div class="skel-text skel-t2"></div></div>
-            <div class="skel-card"><div class="skel-icon"></div><div class="skel-text skel-t1"></div><div class="skel-text skel-t2"></div></div>
-            <div class="skel-card"><div class="skel-icon"></div><div class="skel-text skel-t1"></div><div class="skel-text skel-t2"></div></div>
-          </div>
-        </div>
-        <div class="skel-group">
-          <div class="skel-line skel-title"></div>
-          <div class="skel-cards">
-            <div class="skel-card"><div class="skel-icon"></div><div class="skel-text skel-t1"></div><div class="skel-text skel-t2"></div></div>
-            <div class="skel-card"><div class="skel-icon"></div><div class="skel-text skel-t1"></div><div class="skel-text skel-t2"></div></div>
-            <div class="skel-card"><div class="skel-icon"></div><div class="skel-text skel-t1"></div><div class="skel-text skel-t2"></div></div>
-            <div class="skel-card"><div class="skel-icon"></div><div class="skel-text skel-t1"></div><div class="skel-text skel-t2"></div></div>
-            <div class="skel-card"><div class="skel-icon"></div><div class="skel-text skel-t1"></div><div class="skel-text skel-t2"></div></div>
-            <div class="skel-card"><div class="skel-icon"></div><div class="skel-text skel-t1"></div><div class="skel-text skel-t2"></div></div>
-          </div>
+      <!-- 启动加载屏（方案「信号灯堆叠」）：三根细条依次点亮，数据就绪后淡出移除 -->
+      <div class="boot-loader" aria-hidden="true">
+        <div class="boot-beacon">
+          <div class="bars"><i></i><i></i><i></i></div>
+          <span>正在加载面板</span>
         </div>
       </div>
     </main>
@@ -309,6 +289,6 @@ if(w&&w.url&&(!w.src||w.day===today)){rs.setProperty('--wp-bg','url("'+String(w.
 
   <script defer src="assets/vendor/sortable.min.js?v=18a2566c"></script>
   <script defer src="assets/js/api.js?v=45b2efb7"></script>
-  <script defer src="assets/js/index.js?v=b49cc9dd"></script>
+  <script defer src="assets/js/index.js?v=cbbcb5a1"></script>
 </body>
 </html>

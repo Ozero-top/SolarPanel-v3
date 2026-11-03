@@ -210,6 +210,25 @@ body::-webkit-scrollbar {
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22);
 }
 
+/* 导航栏标签入场：与卡片共用同一套淡入语言（切组重绘时同样生效）。
+   用 backwards 填充，动画结束后不残留 translate，避免影响后续定位与合成层。 */
+@keyframes nav-in {
+  from { opacity: 0; translate: 0 6px; }
+  to   { opacity: 1; translate: 0 0; }
+}
+.ntab-btn,
+.nm-item {
+  animation: nav-in .32s var(--sp-ease-out) backwards;
+}
+.ntab-btn:nth-child(2), .nm-item:nth-child(2) { animation-delay: 20ms; }
+.ntab-btn:nth-child(3), .nm-item:nth-child(3) { animation-delay: 40ms; }
+.ntab-btn:nth-child(4), .nm-item:nth-child(4) { animation-delay: 60ms; }
+.ntab-btn:nth-child(5), .nm-item:nth-child(5) { animation-delay: 80ms; }
+.ntab-btn:nth-child(n+6), .nm-item:nth-child(n+6) { animation-delay: 96ms; }
+@media (prefers-reduced-motion: reduce) {
+  .ntab-btn, .nm-item { animation: none; }
+}
+
 @media (max-width: 640px) {
   /* PC 标签栏在移动端隐藏，由圆形图标滑动条接管 */
   .navbar-tabs { display: none; }
@@ -1204,37 +1223,27 @@ body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
   transition-timing-function: var(--sp-ease-in);
 }
 
-/* 卡片入场：只做位移 + 缩放，不再淡入。
-   原因：透明度过场会让带 backdrop-filter 的主题卡片在首屏瞬间变成全透明
-   （opacity < 1 会形成 backdrop root，卡片取不到壁纸背景），与后台设置值不一致。
-   --sk-base 由分组渲染时写入（分组序号 × 40ms，封顶 120ms），与组入场错开，
-   整体封顶约 0.6s，避免原先组 960ms + 卡片 220ms 的机械长排队 */
-@keyframes scale-in {
-  from {
-    transform: translateY(10px) scale(0.96);
-  }
-  to {
-    transform: translateY(0) scale(1);
-  }
+/* 卡片入场：统一交给「进入视口淡入」（IntersectionObserver）。
+   旧实现这里是 scale-in / cardRise 两套纯位移动画（刻意不做透明度，怕 backdrop-filter
+   主题在首帧取不到壁纸背景）；现在卡片一律由 JS 打 .reveal，IO 交会时加 .card-in，
+   用 420ms 淡入 + 14px 上移收尾。首屏、切组、导航栏切换、滚动都是同一套节奏，
+   --rv-delay 由 JS 按卡片序号写入（18ms/张，封顶 160ms），保留原来的逐张错峰观感。
+   这里用 translate 属性而不是 transform，避免盖掉各主题给 .card:hover 的位移。 */
+.card.reveal {
+  opacity: 0;
+  translate: 0 14px;
 }
-
-.scale-in {
-  --sk-duration: 320ms;
-  --sk-delay: 0ms;
-  --sk-ease: var(--sp-ease-out);
-  animation: scale-in var(--sk-duration) var(--sk-ease) calc(var(--sk-base, 80ms) + var(--sk-delay)) backwards;
+.card.reveal.card-in {
+  opacity: 1;
+  translate: 0 0;
+  transition:
+    opacity var(--rv-dur, 420ms) var(--sp-ease-out) var(--rv-delay, 0ms),
+    translate var(--rv-dur, 420ms) var(--sp-ease-out) var(--rv-delay, 0ms);
 }
-
-.cards > .scale-in:nth-child(1) { --sk-delay: 0ms; }
-.cards > .scale-in:nth-child(2) { --sk-delay: 12ms; }
-.cards > .scale-in:nth-child(3) { --sk-delay: 24ms; }
-.cards > .scale-in:nth-child(4) { --sk-delay: 36ms; }
-.cards > .scale-in:nth-child(5) { --sk-delay: 48ms; }
-.cards > .scale-in:nth-child(6) { --sk-delay: 60ms; }
-.cards > .scale-in:nth-child(7) { --sk-delay: 72ms; }
-.cards > .scale-in:nth-child(8) { --sk-delay: 84ms; }
-.cards > .scale-in:nth-child(9) { --sk-delay: 96ms; }
-.cards > .scale-in:nth-child(n+10) { --sk-delay: 96ms; }
+@media (prefers-reduced-motion: reduce) {
+  .card.reveal { opacity: 1; translate: none; }
+  .card.reveal.card-in { transition: none; }
+}
 
 /* 切组/搜索等重绘：不再整屏卡片弹入，改为整块轻微滑入（由 JS 给 section 加 class） */
 @keyframes swap-in {
@@ -1249,21 +1258,8 @@ body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
   animation: swap-in var(--sp-dur-md) var(--sp-ease-out) backwards;
 }
 
-/* 切组入场：切换标签/分组时分组本身不再整块滑入，卡片自上而下逐个错峰浮现。
-   所有主题共用同一套节奏，避免部分主题有入场动效、部分主题直接闪现。
-   --sk-base 由 JS 按分组顺序写入，与下方 nth-child 的逐卡延迟叠加。 */
-@keyframes cardRise {
-  from {
-    transform: translateY(10px) scale(0.97);
-  }
-  to {
-    transform: translateY(0) scale(1);
-  }
-}
-.group.cards-stagger .card {
-  animation: cardRise 280ms var(--sp-ease-out) backwards;
-  animation-delay: calc(var(--sk-base, 0ms) + var(--sk-delay, 0ms));
-}
+/* 切组/导航栏切换：卡片入场同样走 .reveal（见上方），这里只保留 section 级滑入。
+   原 cardRise 位移动画已移除，避免与淡入叠加造成「先弹出再淡入」的二次动效。 */
 .cards > .card:nth-child(1) { --sk-delay: 0ms; }
 .cards > .card:nth-child(2) { --sk-delay: 16ms; }
 .cards > .card:nth-child(3) { --sk-delay: 32ms; }
@@ -1276,15 +1272,7 @@ body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
 .cards > .card:nth-child(n+10) { --sk-delay: 128ms; }
 
 @media (prefers-reduced-motion: reduce) {
-  .scale-in {
-    animation: none;
-    opacity: 1;
-    transform: none;
-  }
   .group.swap-in {
-    animation: none;
-  }
-  .group.cards-stagger .card {
     animation: none;
   }
   .card-bg::before {
@@ -1314,20 +1302,22 @@ body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
   opacity: 1;
   transition: opacity 240ms var(--ease, ease);
 }
-/* 图片图标加载骨架：等待网络与解码期间显示微光占位，就绪后图片淡入，消除空白闪烁 */
+/* 图片图标加载占位：等待网络与解码期间用主题强调色的半透明底做呼吸，
+   就绪后图片淡入。
+   注意不能用 --surface 做扫光：浅色主题下 --surface 接近白色（#e8ecf6），
+   会在图标出现前闪一下白底；这里改成强调色半透明，任何主题都不会出现白块。 */
 :root body .card .icon.icon-loading {
-  background: linear-gradient(100deg, var(--surface-2, #e9e9ee) 25%, var(--surface, #fff) 37%, var(--surface-2, #e9e9ee) 63%) !important;
-  background-size: 200% 100% !important;
+  background: var(--accent-soft) !important;
   box-shadow: none !important;
-  animation: iconShimmer 1.2s ease-in-out infinite;
+  animation: iconPulse 1.5s ease-in-out infinite;
 }
 .card .icon.icon-loading img { opacity: 0; }
-@keyframes iconShimmer {
-  0% { background-position: 150% 0; }
-  100% { background-position: -50% 0; }
+@keyframes iconPulse {
+  0%, 100% { opacity: .5; }
+  50%      { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .card .icon.icon-loading { animation: none; }
+  .card .icon.icon-loading { animation: none; opacity: .75; }
 }
 /* 图标背景透明度为 0：文字图标改用主色文字并去掉投影，避免白字透明底看不清
    （提升特异度 + !important，压过各主题给 .card .icon 设的文字色） */

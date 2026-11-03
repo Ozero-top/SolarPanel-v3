@@ -146,8 +146,9 @@ async function boot() {
   try {
     data = await API.get(API_BASE + 'public.php');
   } catch (e) {
-    document.getElementById('groupsWrap').innerHTML =
-      '<div class="empty-tip glass">数据加载失败：' + esc(e.message) + '</div>';
+    const wrap = document.getElementById('groupsWrap');
+    clearGroupContent(wrap); // 先淡出启动加载屏，再显示错误提示
+    wrap.insertAdjacentHTML('beforeend', '<div class="empty-tip glass">数据加载失败：' + esc(e.message) + '</div>');
     return;
   }
 
@@ -157,8 +158,8 @@ async function boot() {
     state.theme = applyTheme(state.settings);
     applyWetabPrefs(wetabPrefs());
     updateThemeBtn();
-    // 清掉 groupsWrap 里的骨架屏，锁屏模态框下面不应漏出卡片占位
-    document.getElementById('groupsWrap').innerHTML = '';
+    // 清掉启动加载屏，锁屏模态框下面不应漏出占位卡片
+    clearGroupContent(document.getElementById('groupsWrap'));
     renderBase();
     startClock();
     renderGuestLock();
@@ -943,21 +944,21 @@ function toggleGroupCards(gid) {
   renderGroups();
 }
 
-// 骨架屏：首屏占位以覆盖层形式压在 groupsWrap 上，真实内容渲染到下方后淡出移除
-function dismissSkeleton(wrap) {
-  const sk = wrap && wrap.querySelector('.skel-wrap');
-  if (!sk || sk.dataset.fading) return;
-  sk.dataset.fading = '1';
-  sk.classList.add('skcl-fadeout');
-  setTimeout(() => sk.remove(), 220);
+// 启动加载屏：首屏占位以覆盖层形式压在 groupsWrap 上，真实内容渲染到下方后淡出移除
+function dismissBootLoader(wrap) {
+  const loader = wrap && wrap.querySelector('.boot-loader');
+  if (!loader || loader.dataset.fading) return;
+  loader.dataset.fading = '1';
+  loader.classList.add('boot-fadeout');
+  setTimeout(() => loader.remove(), 220);
 }
 
-// 清空分组内容（保留正在淡出的骨架屏，避免它随 innerHTML='' 瞬间消失造成硬闪）
+// 清空分组内容（保留正在淡出的加载屏，避免它随 innerHTML='' 瞬间消失造成硬闪）
 function clearGroupContent(wrap) {
   if (!wrap) return;
-  dismissSkeleton(wrap);
+  dismissBootLoader(wrap);
   Array.from(wrap.children).forEach(el => {
-    if (!el.classList.contains('skel-wrap')) el.remove();
+    if (!el.classList.contains('boot-loader')) el.remove();
   });
 }
 
@@ -2526,6 +2527,55 @@ function armCardIcon(el, start) {
   });
 }
 
+/* ---------- 卡片滚动进入视口淡入（IntersectionObserver） ---------- */
+let cardRevealIO = null;
+
+function ensureCardRevealIO() {
+  if (cardRevealIO) return cardRevealIO;
+  if (!('IntersectionObserver' in window)) return null;
+  cardRevealIO = new IntersectionObserver(entries => {
+    for (const en of entries) {
+      if (!en.isIntersecting) continue;
+      en.target.classList.add('card-in');
+      cardRevealIO.unobserve(en.target);
+    }
+  }, { root: null, rootMargin: '0px 0px -6% 0px', threshold: 0.01 });
+  return cardRevealIO;
+}
+
+/**
+ * 所有卡片（含导航栏模式）统一走「进入视口淡入」：
+ * 构建后先加 .reveal（透明 + 下移 14px），IO 判定进入视口时加 .card-in 过渡到正常态。
+ * 同一容器内按文档顺序错峰 18ms/张（封顶 160ms），保留原先逐张浮现的观感。
+ */
+function armCardReveal(el) {
+  queueMicrotask(() => {
+    if (!el.isConnected) return;
+    // 弱动效偏好：直接显示，不做淡入
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // 搜索/排序这类高频重绘不做淡入，否则每敲一个字整屏闪一次
+    if (state.searchKeyword || state.sortingGroupId !== null) return;
+    const io = ensureCardRevealIO();
+    if (!io) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.height === 0) return;            // 所在分组未激活（display:none），可见时不再补动效
+    const parent = el.parentElement;
+    const idx = parent ? Array.prototype.indexOf.call(parent.children, el) : 0;
+    el.style.setProperty('--rv-delay', Math.min(Math.max(idx, 0) * 18, 160) + 'ms');
+    el.classList.add('reveal');
+    io.observe(el);
+    // 兜底：万一首次回调被跳过而卡片其实已在视口内，别让它一直透明
+    setTimeout(() => {
+      if (el.classList.contains('card-in') || !el.classList.contains('reveal')) return;
+      const r = el.getBoundingClientRect();
+      if (r.height > 0 && r.top < window.innerHeight) {
+        el.classList.add('card-in');
+        io.unobserve(el);
+      }
+    }, 900);
+  });
+}
+
 /** img 解码完成后再显示，避免大图解码造成卡片区掉帧；解码失败也照常显示 */
 function showWhenDecoded(img, icon, iconDoneRef) {
   const finish = () => {
@@ -2542,8 +2592,8 @@ function showWhenDecoded(img, icon, iconDoneRef) {
 function buildCard(item, styleApp) {
   const a = document.createElement('a');
   const isHidden = item.is_hidden === 1;
-  // 首屏才挂 .scale-in 逐卡错峰；切组时由外层 section 的 .cards-stagger 统一驱动，搜索/排序等重绘只走 section 整块 swap-in
-  a.className = 'card' + (state.cardsIntroDone ? '' : ' scale-in') + (styleApp ? ' app-card' : '') + (isHidden ? ' card-hidden' : '');
+  // 卡片入场统一由 armCardReveal() 处理（进入视口淡入 + 逐张错峰），这里不再挂入场 class
+  a.className = 'card' + (styleApp ? ' app-card' : '') + (isHidden ? ' card-hidden' : '');
   a.href = '#';
   a.dataset.id = item.id; // 排序模式拖拽落位后按 data-id 收集顺序
   // 筛选/最近常用依赖的 data-* 属性
@@ -2646,6 +2696,8 @@ function buildCard(item, styleApp) {
     if (state.sortingGroupId !== null) return;
     openPage(item);
   };
+  // 视口外的卡片在滚动到附近时淡入（见 armCardReveal）
+  armCardReveal(a);
   return a;
 }
 

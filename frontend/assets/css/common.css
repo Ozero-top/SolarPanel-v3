@@ -640,92 +640,73 @@ body .toast.success {
 }
 
 /* ============================================================
-   骨架屏（Skeleton Screen）
-   HTML 首帧即在 groupsWrap 内；首次渲染时由 clearGroupContent() 淡出移除。
-   shimmer 渐变基于 --surface / --surface-2，明暗主题自动适配。
+   启动加载屏（Loading Screen）· 方案「信号灯堆叠」
+   HTML 首帧即在 groupsWrap 内；数据就绪后由 clearGroupContent() 淡出移除。
+   三根细横条依次点亮 + 一行字距拉开的提示语，最克制、弱网久等也不烦；
+   只用主题变量（--accent / --accent-soft / --accent-glow / --text-muted），明暗自适应。
    ============================================================ */
-/* 骨架屏覆盖层：固定铺满视口并水平居中，不再跟随 groupsWrap 的布局。
-   早期实现是绝对定位在 groupsWrap 内，但主题/卡片宽度等设置要等 public.php 返回后才应用，
-   在此之前容器宽度会缩水，骨架被挤到左上角且只有一列窄卡片，观感很差。 */
-#groupsWrap { position: relative; }
-.skel-wrap {
+.boot-loader {
   position: fixed;
   inset: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  box-sizing: border-box;
-  padding: 36px 24px 0;
+  justify-content: center;
   z-index: 1;
-  pointer-events: none;
+  pointer-events: none;      /* 加载期间不拦截任何点击 */
   opacity: 0;
-  /* 220ms 后才出现：数据更快返回时不显示骨架，避免一闪而过 */
-  animation: skel-fadein .18s ease-out .22s forwards;
+  /* 220ms 后才出现：数据更快返回就完全不显示，避免一闪而过 */
+  animation: boot-fadein .18s ease-out .22s forwards;
 }
-@keyframes skel-fadein {
+@keyframes boot-fadein {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-.skel-group { width: min(1180px, 100%); margin-bottom: 36px; }
-.skel-title { width: 160px; height: 22px; margin: 0 0 15px 0; }
 
-.skel-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 14px;
-}
-.skel-card {
+.boot-beacon {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 13px 15px;
-  border-radius: 18px;
-  border: 1px solid var(--edge);
-  background: var(--surface);
-  box-shadow: var(--raised-sm);
-  overflow: hidden;
+  gap: 13px;
 }
-.skel-icon {
-  width: 42px; height: 42px;
-  flex-shrink: 0;
-  border-radius: 12px;
+.boot-beacon .bars {
+  display: flex;
+  gap: 7px;
 }
-.skel-text {
-  height: 14px;
-  border-radius: 6px;
-  margin-bottom: 6px;
+.boot-beacon .bars i {
+  width: 44px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent-soft);
+  animation: boot-bar 1.5s ease-in-out infinite;
 }
-.skel-t1 { width: 72%; }
-.skel-t2 { width: 40%; height: 11px; opacity: 0.6; }
-
-/* 小屏（≤640px）单列，避免骨架撑破 */
-@media (max-width: 640px) {
-  .skel-cards { grid-template-columns: 1fr; }
-  .skel-title { width: 120px; height: 18px; }
-  .skel-icon { width: 36px; height: 36px; border-radius: 10px; }
+.boot-beacon .bars i:nth-child(2) { animation-delay: .18s; }
+.boot-beacon .bars i:nth-child(3) { animation-delay: .36s; }
+.boot-beacon span {
+  font-size: 10.5px;
+  letter-spacing: .26em;
+  color: var(--text-muted);
+}
+@keyframes boot-bar {
+  0%, 100% { background: var(--accent-soft); box-shadow: none; }
+  35%      { background: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
 }
 
-/* shimmer 动画：明暗主题共用同一渐变方向，色值取自 --surface / --surface-2 */
-.skel-line, .skel-icon, .skel-text {
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(
-    90deg,
-    var(--surface-2) 0%,
-    var(--surface)    40%,
-    var(--surface-2)  80%
-  );
-  background-size: 200% 100%;
-  animation: skel-shimmer 1.4s ease-in-out infinite;
-}
-@keyframes skel-shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+/* 弱动效偏好：不循环，但仍要可见（否则加载期间是一片空壁纸） */
+@media (prefers-reduced-motion: reduce) {
+  .boot-loader {
+    opacity: 1;
+    animation: none;
+  }
+  .boot-beacon .bars i {
+    animation: none;
+    background: var(--accent);
+    opacity: .55;
+  }
 }
 
-/* 真实内容渲染后的淡出（dismissSkeleton() 添加此类，220ms 后移除节点） */
-.skel-wrap.skcl-fadeout { animation: skel-fadeout .2s ease-out forwards; }
-@keyframes skel-fadeout {
+/* 数据就绪后的淡出（dismissBootLoader() 添加此类，220ms 后移除节点） */
+.boot-loader.boot-fadeout { animation: boot-fadeout .2s ease-out forwards; }
+@keyframes boot-fadeout {
   from { opacity: 1; }
   to   { opacity: 0; }
 }
