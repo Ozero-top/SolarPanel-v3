@@ -1345,6 +1345,7 @@ body.admin-console .table-scroll::-webkit-scrollbar-thumb { background: var(--ed
     overflow: hidden;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
   }
   body.admin-console #tab-groups .table td:nth-child(4) {

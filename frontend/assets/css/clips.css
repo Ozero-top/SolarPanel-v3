@@ -374,6 +374,7 @@ a { color: inherit; }
 .cl-title {
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   color: var(--cl-text);
@@ -388,6 +389,7 @@ a { color: inherit; }
 .cl-excerpt {
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   margin: 0;
@@ -453,7 +455,7 @@ a { color: inherit; }
 
 .cl-list.list .cl-main { flex: 1 1 auto; }
 
-.cl-list.list .cl-excerpt { -webkit-line-clamp: 1; min-height: 0; }
+.cl-list.list .cl-excerpt { -webkit-line-clamp: 1; line-clamp: 1; min-height: 0; }
 
 /* 空态 / 加载 */
 .cl-empty {

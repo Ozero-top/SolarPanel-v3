@@ -1990,6 +1990,7 @@ tr.drag-over-bottom td {
     overflow: hidden;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
   }
   body.admin-classic #tab-groups .table td:nth-child(4) {
