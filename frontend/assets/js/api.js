@@ -337,33 +337,84 @@ function assetUrl(u) {
   return u;
 }
 
-/** 本站卡片图标的服务端代理基址（Go 版路由挂在 /api/；与 index.js 的 API_BASE 同值） */
-const FAVICON_PROXY_BASE = '/api/';
-
 /**
- * 站点图标候选源（客户端按序回退）：
- * 首位走本站服务端代理（命中本地缓存秒回、一年强缓存，未命中由服务端抓取后缓存），
- * 代理不可用时再由现有 onerror 链串行回退到公共图标服务。
+ * 选择站点图标（Sun-Panel 同款流程）：
+ *   1. items.php?action=favicon 取候选列表；
+ *   2. 弹窗展示候选缩略图，用户点击后才下载并落盘；
+ *   3. 返回保存后的本地静态路径；取消返回 null。
  */
-function faviconSources(url) {
-  try {
-    const host = new URL(url).hostname;
-    // 首选本站代理（命中本地缓存秒回），失败后只保留两个国内可达的兜底源
-    return [
-      FAVICON_PROXY_BASE + 'favicon.php?host=' + encodeURIComponent(host),
-      'https://favicon.cccyun.cc/' + host,
-      'https://favicon.im/' + host + '?larger=true',
-    ];
-  } catch (e) {
-    return [];
-  }
-}
+window.pickSiteFavicon = async function (url) {
+  const data = await API.get('/api/items.php?action=favicon&url=' + encodeURIComponent(url));
+  const list = (data && data.list) || [];
+  if (!list.length) throw new Error('未找到可用的站点图标');
 
-/** 根据网址获取站点 favicon 地址（首选源） */
-function faviconUrl(url) {
-  const s = faviconSources(url);
-  return s.length ? s[0] : '';
-}
+  return new Promise(resolve => {
+    const m = document.createElement('div');
+    m.className = 'modal show';
+    m.innerHTML = `
+      <div class="modal-box glass-strong" style="max-width:560px">
+        <div class="modal-head">
+          <h3>选择站点图标</h3>
+          <button class="btn btn-sm" type="button" data-picker-close>✕</button>
+        </div>
+        <div id="favPickerGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:10px;padding:16px 20px"></div>
+        <div id="favPickerStatus" style="padding:0 20px 10px;font-size:12px;color:var(--text-muted);min-height:18px"></div>
+        <div class="modal-foot">
+          <button class="btn" type="button" data-picker-close>取消</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    const grid = m.querySelector('#favPickerGrid');
+    const status = m.querySelector('#favPickerStatus');
+    let done = false;
+    const close = result => {
+      if (done) return;
+      done = true;
+      document.removeEventListener('keydown', onKey);
+      m.remove();
+      resolve(result);
+    };
+    const onKey = e => { if (e.key === 'Escape') close(null); };
+    document.addEventListener('keydown', onKey);
+    m.querySelectorAll('[data-picker-close]').forEach(b => { b.onclick = () => close(null); });
+    m.addEventListener('click', e => { if (e.target === m) close(null); });
+
+    list.forEach((src, i) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.title = src;
+      btn.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;color:var(--text-muted);font-size:10px';
+      const box = document.createElement('span');
+      box.style.cssText = 'width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden';
+      const img = document.createElement('img');
+      img.src = src;
+      img.alt = '';
+      img.loading = 'lazy';
+      img.referrerPolicy = 'no-referrer';
+      img.style.cssText = 'max-width:44px;max-height:44px;object-fit:contain';
+      img.onerror = () => { box.textContent = '🌐'; };
+      box.appendChild(img);
+      const label = document.createElement('span');
+      label.textContent = '图标 ' + (i + 1);
+      label.style.cssText = 'width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      btn.appendChild(box);
+      btn.appendChild(label);
+      btn.onclick = async () => {
+        if (done) return;
+        btn.disabled = true;
+        status.textContent = '正在保存图标…';
+        try {
+          const saved = await API.get('/api/items.php?action=favicon_save&url=' + encodeURIComponent(src));
+          close((saved && saved.url) || null);
+        } catch (e) {
+          btn.disabled = false;
+          status.textContent = e.message || '保存失败';
+        }
+      };
+      grid.appendChild(btn);
+    });
+  });
+};
 
 /* ================= 文字图标工具（卡片 icon_type=text 专用） ================= */
 

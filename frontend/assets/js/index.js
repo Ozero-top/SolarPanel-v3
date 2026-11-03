@@ -194,7 +194,6 @@ async function boot() {
   initNewsSwitch();
   initNASPanel();
   initUpdateNotice();
-  scheduleIconPrefetch();
   maybeWarnWetabChildGroups();
 }
 
@@ -563,9 +562,8 @@ function startClock() {
 }
 
 /* ---------- 搜索 ---------- */
-/* 搜索引擎 logo：首位走本站服务端代理（缓存秒回），失败再串行回退公共图标服务，全部失败则隐藏只显示文字 */
+/* 搜索引擎 logo：公共图标服务串行回退，全部失败则隐藏只显示文字 */
 const ENGINE_ICON_SOURCES = [
-  host => FAVICON_PROXY_BASE + 'favicon.php?host=' + encodeURIComponent(host),
   host => 'https://favicon.im/' + host + '?larger=true',
   host => 'https://favicon.cccyun.cc/' + host,
   host => 'https://www.google.com/s2/favicons?domain=' + host + '&sz=64',
@@ -581,132 +579,6 @@ function setEngineLogo(img, engineUrl) {
   };
   if (host) img.src = ENGINE_ICON_SOURCES[idx++](host);
   else img.hidden = true;
-}
-
-/* ---------- 图标 IndexedDB 缓存 ----------
-   二次访问或切换分组时图标直接从本地读，秒出；首屏渲染完成后在空闲时后台补齐全部图标。 */
-const ICON_DB_NAME = 'sp-icon-cache';
-const ICON_DB_STORE = 'icons';
-let iconDBPromise;
-
-function iconDBOpen() {
-  if (iconDBPromise !== undefined) return iconDBPromise;
-  if (!('indexedDB' in window)) {
-    iconDBPromise = Promise.resolve(null);
-    return iconDBPromise;
-  }
-  iconDBPromise = new Promise(resolve => {
-    try {
-      const req = indexedDB.open(ICON_DB_NAME, 1);
-      req.onupgradeneeded = () => { req.result.createObjectStore(ICON_DB_STORE); };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => resolve(null);
-      req.onblocked = () => resolve(null);
-    } catch (_) { resolve(null); }
-  });
-  return iconDBPromise;
-}
-
-function iconDBSend(mode, fn) {
-  return iconDBOpen().then(db => {
-    if (!db) return null;
-    return new Promise(resolve => {
-      try {
-        const tx = db.transaction(ICON_DB_STORE, mode);
-        const req = fn(tx.objectStore(ICON_DB_STORE));
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => resolve(null);
-      } catch (_) { resolve(null); }
-    });
-  });
-}
-
-const iconCacheGet = host => iconDBSend('readonly', s => s.get(host));
-const iconCachePut = (host, dataUrl) => iconDBSend('readwrite', s => s.put(dataUrl, host));
-
-/* ---------- 图标批量拉取 ----------
-   首屏可见卡片往往几十张，逐卡请求 favicon.php 在弱网上行下要排好几轮；
-   把 80ms 内出现的域名合并成一次 hosts=... 请求（服务端只读磁盘缓存），一轮取回。 */
-const iconBatchQueue = new Set();
-const iconBatchWaiters = new Map();
-let iconBatchTimer = 0;
-const ICON_BATCH_SIZE = 48;
-
-/** 批量接口：hosts → { host: dataURL }，失败/无缓存返回 null */
-function fetchIconBatch(hosts) {
-  if (!hosts.length) return Promise.resolve(null);
-  return fetch(FAVICON_PROXY_BASE + 'favicon.php?hosts=' + encodeURIComponent(hosts.join(',')), { credentials: 'same-origin' })
-    .then(res => (res.ok ? res.json() : null))
-    .then(j => (j && j.data && j.data.icons) || null)
-    .catch(() => null);
-}
-
-/** 单个域名合并到下一批；返回 Promise<dataURL|null> */
-function iconBatchGet(host) {
-  if (!host) return Promise.resolve(null);
-  return new Promise(resolve => {
-    const waiters = iconBatchWaiters.get(host);
-    if (waiters) waiters.push(resolve);
-    else iconBatchWaiters.set(host, [resolve]);
-    iconBatchQueue.add(host);
-    clearTimeout(iconBatchTimer);
-    iconBatchTimer = setTimeout(flushIconBatch, 80);
-  });
-}
-
-function flushIconBatch() {
-  const hosts = Array.from(iconBatchQueue).slice(0, ICON_BATCH_SIZE);
-  if (!hosts.length) return;
-  hosts.forEach(h => iconBatchQueue.delete(h));
-
-  const finish = map => {
-    hosts.forEach(h => {
-      const waiters = iconBatchWaiters.get(h) || [];
-      iconBatchWaiters.delete(h);
-      const url = map ? map[h] : null;
-      if (url) iconCachePut(h, url);
-      waiters.forEach(fn => fn(url || null));
-    });
-  };
-  // 2.5s 兜底：批量接口不通时立刻回落逐卡代理，不能让图标一直空着
-  const guard = setTimeout(() => finish(null), 2500);
-  fetchIconBatch(hosts).then(map => { clearTimeout(guard); finish(map); });
-  if (iconBatchQueue.size) setTimeout(flushIconBatch, 120);
-}
-
-/** 后台预取全部分组的 favicon：按批 40 个 + 间隔 900ms（接口限流 300 次/分钟），不抢占首屏带宽 */
-async function prefetchAllIcons() {
-  if (!navigator.onLine || !('indexedDB' in window)) return;
-  const hosts = [];
-  const seen = new Set();
-  (state.groups || []).forEach(g => (g.items || []).forEach(it => {
-    if (it.icon_type !== 'favicon' || !it.url || it.icon_data) return;
-    let host = '';
-    try { host = new URL(it.url).hostname.toLowerCase(); } catch (_) { return; }
-    if (!host || seen.has(host)) return;
-    seen.add(host);
-    hosts.push(host);
-  }));
-  if (!hosts.length) return;
-
-  // 先剔除本地已有缓存的域名，只补缺的
-  const pending = [];
-  for (const host of hosts) {
-    if (!(await iconCacheGet(host))) pending.push(host);
-  }
-  for (let i = 0; i < pending.length; i += 40) {
-    if (!navigator.onLine) break;
-    const map = await fetchIconBatch(pending.slice(i, i + 40));
-    if (map) {
-      for (const [h, url] of Object.entries(map)) await iconCachePut(h, url);
-    }
-    await new Promise(r => setTimeout(r, 900));
-  }
-}
-
-function scheduleIconPrefetch() {
-  const idle = window.requestIdleCallback || (fn => setTimeout(fn, 1200));
-  try { idle(() => prefetchAllIcons(), { timeout: 3000 }); } catch (_) { setTimeout(prefetchAllIcons, 1200); }
 }
 
 function renderSearch() {
@@ -1097,7 +969,6 @@ function renderGroups() {
   syncWetabRailHandle(); // wetab 左侧导航把手显隐与当前主题/卡片样式同步
   syncWetabPrefsBtn();   // wetab 界面设置入口显隐
   syncWetabTextTone();   // wetab 卡片文字颜色随壁纸明暗自适应
-  cardIconEagerLeft = CARD_ICON_EAGER_LIMIT; // 每次重绘重置首屏图标直载预算
 
   // 导航栏模式：由 renderGroupsNavbar 统一渲染（入口）
   if (isNavbarStyle()) {
@@ -2625,12 +2496,8 @@ function searchFilterRender() {
  */
 function renderNewsNav() {}
 
-/* ---------- 卡片图标加载：直出本站代理图 → onerror 逐级回退 → 文字图标 ---------- */
+/* ---------- 卡片图标：image 直接读本地静态路径，失败/无图回退文字图标 ---------- */
 
-const CARD_ICON_EAGER_LIMIT = 10; // 首屏前 10 个图标高优先级直载，其余懒加载
-let cardIconEagerLeft = CARD_ICON_EAGER_LIMIT;
-// host -> 已确认可用的源下标；'fail' 表示整条链都失败，同 host 直接走文字图标
-const faviconHostBest = new Map();
 let cardIconIO = null;
 const iconStarters = new WeakMap();
 
@@ -2730,71 +2597,8 @@ function buildCard(item, styleApp) {
     icon.classList.add('icon-loading'); // 加载中显示骨架微光，解码完成淡入
     icon.appendChild(img);
     armCardIcon(icon, () => { img.src = assetUrl(item.icon_value); });
-  } else if (item.icon_type === 'favicon' && item.url) {
-    // 直出本站代理图标；失败后按 onerror 逐级回退公共源，全部失败再兜底文字图标
-    let host = '';
-    try { host = new URL(item.url).hostname.toLowerCase(); } catch (e) { /* ignore */ }
-    const proxySrcs = faviconSources(item.url);
-    const known = host ? faviconHostBest.get(host) : undefined;
-    if (!proxySrcs.length || known === 'fail') {
-      useTextIcon();
-    } else {
-      const img = document.createElement('img');
-      img.alt = '';
-      img.decoding = 'async';
-      img.referrerPolicy = 'no-referrer';
-      // 首屏图标高优先级直载，其余交给浏览器懒加载
-      if (cardIconEagerLeft > 0) {
-        cardIconEagerLeft--;
-        img.loading = 'eager';
-        img.fetchPriority = 'high';
-      } else {
-        img.loading = 'lazy';
-        img.fetchPriority = 'low';
-      }
-      // 服务端首屏内联：data URL 直接显示，失败再走代理回退链
-      let srcs = item.icon_data ? [item.icon_data].concat(proxySrcs) : proxySrcs;
-      let idx = item.icon_data ? 0 : (typeof known === 'number' ? known : 0);
-      let picked = false;
-      const pick = (list, i) => {
-        srcs = list;
-        idx = i;
-        picked = true;
-        img.src = srcs[idx];
-      };
-      img.onerror = () => {
-        idx++;
-        if (idx >= srcs.length) {
-          if (host) faviconHostBest.set(host, 'fail');
-          useTextIcon();
-          return;
-        }
-        img.src = srcs[idx];
-      };
-      img.onload = () => {
-        if (host) faviconHostBest.set(host, idx);
-        showWhenDecoded(img, icon, iconState);
-      };
-      icon.classList.add('icon-loading'); // 加载中显示骨架微光，解码完成淡入
-      icon.appendChild(img);
-      if (item.icon_data) {
-        pick(srcs, 0);
-      } else {
-        // 先查 IndexedDB（毫秒级命中免网络），未命中并入批量请求，缺失再走逐卡代理
-        armCardIcon(icon, () => {
-          iconCacheGet(host).then(dataUrl => {
-            if (picked || iconState.done) return;
-            if (dataUrl) { pick([dataUrl].concat(proxySrcs), 0); return; }
-            iconBatchGet(host).then(batchUrl => {
-              if (picked || iconState.done) return;
-              if (batchUrl) pick([batchUrl].concat(proxySrcs), 0);
-              else pick(srcs, idx);
-            });
-          }).catch(() => { if (!picked) pick(srcs, idx); });
-        });
-      }
-    }
   } else {
+    // 迁移完成后不应再有 favicon 类型；兜底一律用文字图标
     useTextIcon();
   }
 
@@ -4053,7 +3857,6 @@ function openQuickAddCard(groupId, item) {
     document.getElementById('qa_alphaLabel').textContent = '0%';
   }
 
-  window.__qaMetaIcon = '';
   onQAIconTypeChange();
   m.classList.add('show');
 
@@ -4181,7 +3984,6 @@ function ensureQuickAddModal() {
   });
   document.getElementById('qa_icon').addEventListener('input', updateQAIconPreview);
   document.getElementById('qa_url').addEventListener('input', () => {
-    window.__qaMetaIcon = ''; // 地址变了，之前抓到的图标不再对应
     updateQAIconPreview();
   });
 
@@ -4303,7 +4105,7 @@ function ensureQuickAddModal() {
     }
   });
 
-  // 获取站点图标按钮（仅 image 类型显示）
+  // 获取站点图标按钮（文字类型时隐藏）
   document.getElementById('qa_useFavicon').addEventListener('click', fetchQAFavicon);
 }
 
@@ -4312,7 +4114,8 @@ function onQAIconTypeChange() {
   const type = document.querySelector('#qa_itype input:checked').value;
   document.getElementById('qa_textWrap').style.display = type === 'text' ? '' : 'none';
   document.getElementById('qa_bgWrap').style.display = (type === 'text' || type === 'image') ? '' : 'none';
-  document.getElementById('qa_useFavicon').hidden = type !== 'image';
+  // 站点图标按需获取：favicon / image 类型都显示按钮，点击后走候选选择流程
+  document.getElementById('qa_useFavicon').hidden = type === 'text';
   updateQAIconPreview();
 }
 
@@ -4328,24 +4131,16 @@ function updateQAIconPreview() {
   if (type === 'image') {
     preview.style.background = bg || '#0969da';
     preview.innerHTML = icon ? '<img src="' + esc(assetUrl(icon)) + '" alt="" onerror="this.parentElement.innerHTML=\'<span>🖼</span>\'">' : '<span>🖼</span>';
-  } else if (type === 'favicon') {
-    preview.style.background = '';
-    const metaIcon = (window.__qaMetaIcon || '').trim();
-    const urls = metaIcon ? [metaIcon] : faviconSources(url);
-    if (urls.length) {
-      // 用 data-srcs 存候选源，onerror 调 window.__qaFavFallback(idx)
-      const key = '__qaFav_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-      window[key] = urls;
-      preview.innerHTML = '<img src="' + esc(urls[0]) + '" alt="" referrerpolicy="no-referrer" onerror="window.__qaFavFallback(this,\'' + key + '\',1)">';
-    } else {
-      preview.innerHTML = '<span>?</span>';
-    }
-  } else {
+  } else if (type === 'text') {
     // 文字型：手动输入最多 2 个字符，否则取标题（英文只取大写首字母）
     preview.style.background = bg || '#0969da';
     const typed = document.getElementById('qa_iconText').value.trim();
     const raw = typed || (title || '?');
     renderTextIcon(preview, smartIconText(raw, typed ? 2 : 1, !typed), 18);
+  } else {
+    // favicon 类型迁移后不再使用，预览按首页兜底的文字图标显示
+    preview.style.background = bg || '#0969da';
+    renderTextIcon(preview, smartIconText(title || '?', 1, true), 18);
   }
 }
 
@@ -4412,7 +4207,7 @@ function isFetchableUrl(s) {
   }
 }
 
-/** fetch_meta — 自动填充 title/description；favicon 无图标时交给站点图标代理 */
+/** fetch_meta — 自动填充 title/description（图标由用户显式抓取，不在此处下载） */
 let qaLastMetaUrl = ''; // 自动模式去重：同一地址只抓一次
 let qaMetaBusy = false;
 async function fetchQAMeta(auto, overrideUrl) {
@@ -4439,29 +4234,9 @@ async function fetchQAMeta(auto, overrideUrl) {
     const got = [];
     const emptyTitle = !document.getElementById('qa_title').value.trim();
     const emptyDesc  = !document.getElementById('qa_desc').value.trim();
-    const checked = document.querySelector('#qa_itype input:checked');
-    const curType = checked ? checked.value : 'favicon';
 
     if (res.title && emptyTitle) { document.getElementById('qa_title').value = res.title; got.push('标题'); }
     if (res.description && emptyDesc) { document.getElementById('qa_desc').value = res.description; got.push('描述'); }
-
-    // 图标处理：与 admin.js 对齐的三态分支
-    if (curType === 'favicon') {
-      if (res.icon && !res.fallback_icon) {
-        window.__qaMetaIcon = res.icon; // 本地缓存图标，预览直接使用
-        got.push('图标');
-      } else if (res.fallback_icon) {
-        // 服务端没抓到图标时保留 favicon 模式，由 /api/favicon.php 代理兜底
-        window.__qaMetaIcon = '';
-        got.push('图标(站点图标代理)');
-      } else if (!res.icon) {
-        // 确实没有可用图标 → 自动降级为文字图标
-        document.querySelector('#qa_itype input[value="text"]').checked = true;
-        document.getElementById('qa_iconText').value = smartIconText(res.title || url);
-        onQAIconTypeChange();
-        got.push('图标(自动降级为文字)');
-      }
-    }
     updateQAIconPreview();
 
     const warnTxt = res.warn ? '（' + res.warn + '）' : '';
@@ -4482,45 +4257,26 @@ async function fetchQAMeta(auto, overrideUrl) {
   }
 }
 
-/** 获取站点图标（items.php?action=favicon）—— 写入 qa_icon 并自动切到 image 类型 */
+/** 获取站点图标：先取候选列表，用户在弹窗中选择后下载落盘，再写入 qa_icon */
 async function fetchQAFavicon() {
   const url = normalizeFetchUrl(document.getElementById('qa_url').value || document.getElementById('qa_lan').value);
   if (!url) { toast('请先填写卡片地址或内网地址', 'error'); return; }
   const btn = document.getElementById('qa_useFavicon');
   btn.disabled = true; btn.textContent = '获取中…';
   try {
-    const res = await API.get(API_BASE + 'items.php?action=favicon&url=' + encodeURIComponent(url));
-    if (res.fallback) {
-      // 服务器拿不到可缓存图标 → 保留 favicon 模式，由站点图标代理兜底
-      document.querySelector('#qa_itype input[value="favicon"]').checked = true;
-      window.__qaMetaIcon = '';
-      onQAIconTypeChange();
-      toast('服务器未能缓存图标，已改用站点图标代理加载', 'info');
-      return;
-    }
+    const saved = await pickSiteFavicon(url);
+    if (!saved) return; // 用户取消
     document.querySelector('#qa_itype input[value="image"]').checked = true;
-    document.getElementById('qa_icon').value = res.url;
+    document.getElementById('qa_icon').value = saved;
     onQAIconTypeChange();
     updateQAIconPreview();
-    toast(res.cached ? '已获取（本地缓存）' : '获取成功', 'success');
+    toast('图标已保存', 'success');
   } catch (e) {
     toast(e.message, 'error');
   } finally {
     btn.disabled = false; btn.textContent = '获取站点图标';
   }
 }
-
-/** favicon onerror 回退函数 —— 挂在 window 上让 innerHTML 里的 onerror 属性能调到 */
-window.__qaFavFallback = function(imgEl, key, nextIdx) {
-  const arr = window[key];
-  if (!arr) { imgEl.parentElement.innerHTML = '<span>🌐</span>'; return; }
-  if (nextIdx < arr.length) {
-    imgEl.src = arr[nextIdx];
-  } else {
-    imgEl.parentElement.innerHTML = '<span>🌐</span>';
-    try { delete window[key]; } catch(e) { window[key] = null; }
-  }
-};
 
 /* ================= NAS 运行状态面板（右侧 / 左侧 / 双侧悬浮，可折叠） ================= */
 const nasState = { timer: null, inflight: false, refresh: 3, fail: 0, histRx: [], histTx: [], histCpu: [], snap: null, layout: 'right' };

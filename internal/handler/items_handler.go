@@ -51,8 +51,6 @@ type ItemRow struct {
 	UserID      int      `json:"user_id"`
 	CreatedAt   string   `json:"created_at"`
 	Tags        []string `json:"tags,omitempty"`
-	// IconData 仅公开接口首屏少量卡片使用：本地已缓存图标的 data URL，免一次网络请求
-	IconData string `json:"icon_data,omitempty"`
 }
 
 func isValidURL(s string) bool {
@@ -370,24 +368,6 @@ func fetchIconBytes(ctx context.Context, rawURL string, timeout time.Duration) (
 
 var faviconExts = []string{".png", ".ico", ".svg", ".jpg", ".gif", ".webp"}
 
-func checkFaviconCache(cfg *config.Config, host string) string {
-	md5h := md5Hex(host)
-	dir := filepath.Join(cfg.UploadDir, "favicon")
-	for _, ext := range faviconExts {
-		p := filepath.Join(dir, md5h+ext)
-		info, err := os.Stat(p)
-		if err != nil {
-			continue
-		}
-		if time.Since(info.ModTime()) > 90*24*time.Hour {
-			os.Remove(p)
-			continue
-		}
-		return "/frontend/uploads/favicon/" + md5h + ext
-	}
-	return ""
-}
-
 func saveFavicon(cfg *config.Config, host, ext string, data []byte) string {
 	md5h := md5Hex(host)
 	dir := filepath.Join(cfg.UploadDir, "favicon")
@@ -420,7 +400,7 @@ func saveFavicon(cfg *config.Config, host, ext string, data []byte) string {
 	if err := os.WriteFile(p, data, 0644); err != nil {
 		return ""
 	}
-	// 同 host 的旧扩展名文件（如旧 256px .ico）不再需要，避免 faviconCachePath 命中旧图
+	// 同 host 的旧扩展名文件（如旧 256px .ico）不再需要，避免读到旧图
 	for _, e := range faviconExts {
 		if e == ext {
 			continue
@@ -432,7 +412,6 @@ func saveFavicon(cfg *config.Config, host, ext string, data []byte) string {
 		os.Remove(p)
 		return ""
 	}
-	invalidateFaviconDataURL(host)
 	return "/frontend/uploads/favicon/" + md5h + ext
 }
 
@@ -497,59 +476,12 @@ func trySaveIconFromCandidates(cfg *config.Config, host string, candidates []str
 	return fetchBestIcon(cfg, host, cands)
 }
 
-func trySaveIcon(cfg *config.Config, rawURL string) string {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return ""
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return ""
-	}
-	host := u.Hostname()
-	if isPrivateHost(host) {
-		return ""
-	}
-	if cached := checkFaviconCache(cfg, host); cached != "" {
-		return cached
-	}
-
-	// 第一轮：站点自身声明的图标（<link rel=icon> / manifest / 默认路径）
-	var cands []iconCandidate
-	html, base, err := fetchPageHTML(rawURL)
-	if err == nil && base != nil {
-		host = base.Hostname()
-		cands = append(cands, extractIconCandidates(html, base)...)
-		cands = append(cands, manifestIconCandidates(html, base)...)
-		cands = append(cands, rootIconCandidates(base)...)
-	} else {
-		cands = append(cands, iconCandidate{URL: u.Scheme + "://" + u.Host + "/favicon.ico", Score: 15})
-	}
-	if saved := fetchBestIcon(cfg, host, cands); saved != "" {
-		return saved
-	}
-
-	// 第二轮：站点自身候选全部失败才用公共图标服务，避免通用图顶掉真实 logo
-	// 公共源可能是字母占位 SVG（对未知域名），故只接受位图
-	fb := make([]iconCandidate, 0, len(faviconFallbackServices))
-	for i, tmpl := range faviconFallbackServices {
-		fb = append(fb, iconCandidate{URL: fmt.Sprintf(tmpl, host), Score: 10 - i, RasterOnly: true})
-	}
-	return fetchBestIcon(cfg, host, fb)
-}
-
 func isPrivateHostMustParse(rawURL string) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return true
 	}
 	return isPrivateHost(u.Hostname())
-}
-
-func fallbackFaviconURL(host string) string {
-	for _, tmpl := range faviconFallbackServices {
-		return fmt.Sprintf(tmpl, host)
-	}
-	return ""
 }
 
 func firstMetaContent(html string, patterns ...*regexp.Regexp) string {
@@ -630,7 +562,9 @@ func (h *ItemsHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
 	case "toggle_hidden":
 		h.ToggleHidden(w, r)
 	case "favicon":
-		h.Favicon(w, r)
+		h.FaviconCandidates(w, r)
+	case "favicon_save":
+		h.FaviconSave(w, r)
 	case "fetch_meta":
 		h.FetchMeta(w, r)
 	default:
@@ -653,8 +587,32 @@ func scanItem(row *sql.Row) (*ItemRow, error) {
 	return &it, nil
 }
 
-func (h *ItemsHandler) Favicon(w http.ResponseWriter, r *http.Request) {
-	// 会触发服务端外网抓取与落盘，仅编辑者及以上可用
+// FaviconCandidates 返回站点图标候选列表（只解析页面，不下载、不落盘）
+func (h *ItemsHandler) FaviconCandidates(w http.ResponseWriter, r *http.Request) {
+	// 会触发服务端外网请求，仅编辑者及以上可用
+	if s := auth.GetSessionFromRequest(r); s == nil || (s.Role != "admin" && s.Role != "editor") {
+		Err(w, http.StatusForbidden, 1, "无操作权限")
+		return
+	}
+	rawURL := r.URL.Query().Get("url")
+	if rawURL == "" {
+		Fail(w, "url 不能为空")
+		return
+	}
+	if !isValidURL(rawURL) {
+		Fail(w, "URL 必须以 http:// 或 https:// 开头")
+		return
+	}
+	list, err := siteFaviconCandidates(rawURL)
+	if err != nil {
+		Fail(w, "获取站点图标列表失败："+err.Error())
+		return
+	}
+	OK(w, map[string]any{"list": list, "count": len(list)})
+}
+
+// FaviconSave 下载用户选中的图标并落盘，返回可访问的静态路径
+func (h *ItemsHandler) FaviconSave(w http.ResponseWriter, r *http.Request) {
 	if s := auth.GetSessionFromRequest(r); s == nil || (s.Role != "admin" && s.Role != "editor") {
 		Err(w, http.StatusForbidden, 1, "无操作权限")
 		return
@@ -672,49 +630,27 @@ func (h *ItemsHandler) Favicon(w http.ResponseWriter, r *http.Request) {
 		Fail(w, "handler 未初始化")
 		return
 	}
-	u, err := url.Parse(rawURL)
+	saved, err := downloadFavicon(h.cfg, rawURL)
 	if err != nil {
-		Fail(w, "URL 解析失败")
+		Fail(w, "保存图标失败："+err.Error())
 		return
 	}
-	host := u.Hostname()
-	if isPrivateHost(host) {
-		Fail(w, "禁止访问内网地址")
-		return
-	}
-	cached := checkFaviconCache(h.cfg, host)
-	if cached != "" {
-		OK(w, map[string]any{"url": cached, "cached": true, "fallback": false})
-		return
-	}
-	result := trySaveIcon(h.cfg, rawURL)
-	if result != "" {
-		OK(w, map[string]any{"url": result, "cached": strings.HasPrefix(result, "/frontend/uploads/"), "fallback": false})
-		return
-	}
-	fallbackURL := fallbackFaviconURL(host)
-	OK(w, map[string]any{"url": fallbackURL, "cached": false, "fallback": true, "diag": "无法抓取目标站点图标，已改用公共图标服务"})
+	OK(w, map[string]any{"url": saved})
 }
 
 // metaCacheEntry 页面元信息内存缓存：重复点击「自动获取」不再重新抓页面
 type metaCacheEntry struct {
-	title      string
-	desc       string
-	host       string // 跟随重定向后的最终域名（图标按该域名落盘）
-	candidates []string
-	ok         bool
-	at         time.Time
+	title string
+	desc  string
+	ok    bool
+	at    time.Time
 }
 
-var (
-	metaCache     sync.Map // key -> metaCacheEntry
-	iconFailCache sync.Map // host -> time.Time（图标全部失败的冷却，避免反复请求公共源）
-)
+var metaCache sync.Map // key -> metaCacheEntry
 
 const (
 	metaCacheTTL     = 30 * time.Minute
 	metaCacheFailTTL = 2 * time.Minute
-	iconFailTTL      = 10 * time.Minute
 )
 
 func metaCacheKey(u *url.URL) string {
@@ -725,20 +661,8 @@ func metaCacheKey(u *url.URL) string {
 	return strings.ToLower(u.Scheme + "://" + u.Host + p)
 }
 
-func iconFetchFailedRecently(host string) bool {
-	v, ok := iconFailCache.Load(host)
-	if !ok {
-		return false
-	}
-	if time.Since(v.(time.Time)) < iconFailTTL {
-		return true
-	}
-	iconFailCache.Delete(host)
-	return false
-}
-
 func (h *ItemsHandler) FetchMeta(w http.ResponseWriter, r *http.Request) {
-	// 会触发服务端外网抓取与落盘，仅编辑者及以上可用
+	// 会触发服务端外网请求，仅编辑者及以上可用
 	if s := auth.GetSessionFromRequest(r); s == nil || (s.Role != "admin" && s.Role != "editor") {
 		Err(w, http.StatusForbidden, 1, "无操作权限")
 		return
@@ -768,10 +692,7 @@ func (h *ItemsHandler) FetchMeta(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := map[string]any{"title": "", "description": "", "icon": "", "fallback_icon": false, "warn": ""}
-	if cached := checkFaviconCache(h.cfg, host); cached != "" {
-		resp["icon"] = cached
-	}
+	resp := map[string]any{"title": "", "description": "", "warn": ""}
 
 	key := metaCacheKey(u)
 	var entry metaCacheEntry
@@ -787,76 +708,32 @@ func (h *ItemsHandler) FetchMeta(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var candidates []string
 	if hit {
 		resp["title"] = entry.title
 		resp["description"] = entry.desc
 		resp["cached"] = true
-		candidates = entry.candidates
-		if entry.host != "" {
-			host = entry.host
-			if resp["icon"] == "" {
-				if c := checkFaviconCache(h.cfg, host); c != "" {
-					resp["icon"] = c
-				}
-			}
-		}
 		if !entry.ok {
 			resp["warn"] = "站点暂时无法访问，已使用缓存结果"
 		}
 	} else {
 		html, base, ferr := fetchPageHTML(rawURL)
-		entry = metaCacheEntry{at: time.Now(), host: host}
+		entry = metaCacheEntry{at: time.Now()}
 		if ferr != nil {
 			resp["warn"] = "无法访问目标站点：" + ferr.Error()
 		} else {
 			entry.ok = true
 			if base != nil {
 				host = strings.ToLower(base.Hostname())
-				entry.host = host
-				candidates = extractIconLinks(html, base)
 			}
 			entry.title, entry.desc = extractMeta(html)
 			if entry.title == "" {
 				// 连 title 都没有的站点，用域名兜底，保证标题框一定有值
 				entry.title = strings.TrimPrefix(host, "www.")
 			}
-			entry.candidates = candidates
 			resp["title"] = entry.title
 			resp["description"] = entry.desc
 		}
 		metaCache.Store(key, entry)
-	}
-
-	if resp["icon"] == "" {
-		if iconFetchFailedRecently(host) {
-			resp["fallback_icon"] = true
-		} else {
-			cands := append([]string{}, candidates...)
-			ico := "https://" + host + "/favicon.ico"
-			exists := false
-			for _, c := range cands {
-				if strings.Contains(c, "/favicon.ico") {
-					exists = true
-					break
-				}
-			}
-			if !exists {
-				cands = append(cands, ico)
-			}
-			for _, tmpl := range faviconFallbackServices {
-				cands = append(cands, fmt.Sprintf(tmpl, host))
-			}
-			if saved := trySaveIconFromCandidates(h.cfg, host, cands); saved != "" {
-				resp["icon"] = saved
-				iconFailCache.Delete(host)
-			} else {
-				// 不再回退成第三方图片外链：前端保留 favicon 模式，
-				// 由 /api/favicon.php 代理兜底（本地缓存 → 公共源 → 首字母 SVG）
-				iconFailCache.Store(host, time.Now())
-				resp["fallback_icon"] = true
-			}
-		}
 	}
 	OK(w, resp)
 }

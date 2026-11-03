@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -206,10 +205,6 @@ func (h *PublicHandler) Public(w http.ResponseWriter, r *http.Request) {
 		grouped = append(grouped, gw)
 	}
 
-	// 首屏图标内联：只给第一个顶级分组（含其子分组）的前 8 张 favicon 卡片附带 data URL，
-	// 其余图标交给批量接口 + 前端 IndexedDB 缓存，避免 public 接口被图标撑大。
-	h.inlineFirstScreenIcons(grouped)
-
 	body, err := json.Marshal(map[string]any{
 		"code": 0,
 		"data": map[string]any{
@@ -243,82 +238,4 @@ func (h *PublicHandler) Public(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Write(body)
-}
-
-// inlineIconLimit 首屏内联图标数量：首屏只直出 8 张，其余走批量接口
-const inlineIconLimit = 8
-
-// inlineIconMaxBytes 内联 data URL 总长兜底，避免个别未压缩大图把卡片接口撑大
-const inlineIconMaxBytes = 24 << 10
-
-// inlineFirstScreenIcons 给首个顶级分组链路（自身 + 子分组）的前几张 favicon 卡片填 IconData。
-// 卡片按渲染顺序取：先本分组卡片，再子分组卡片。
-func (h *PublicHandler) inlineFirstScreenIcons(groups []GroupWithItems) {
-	if h.cfg == nil || len(groups) == 0 {
-		return
-	}
-	byID := make(map[int]*GroupWithItems, len(groups))
-	children := make(map[int][]int, len(groups))
-	firstTop := -1
-	for i := range groups {
-		g := &groups[i]
-		byID[g.ID] = g
-		if g.ParentID == 0 {
-			if firstTop < 0 {
-				firstTop = g.ID
-			}
-		} else {
-			children[g.ParentID] = append(children[g.ParentID], g.ID)
-		}
-	}
-	if firstTop < 0 {
-		return
-	}
-
-	count, total := 0, 0
-	var walk func(id int)
-	walk = func(id int) {
-		if count >= inlineIconLimit || total >= inlineIconMaxBytes {
-			return
-		}
-		g := byID[id]
-		if g == nil {
-			return
-		}
-		for i := range g.Items {
-			if count >= inlineIconLimit || total >= inlineIconMaxBytes {
-				return
-			}
-			it := &g.Items[i]
-			if it.IconType != "favicon" || it.URL == "" {
-				continue
-			}
-			if data := cachedFaviconDataURL(h.cfg, it.URL); data != "" {
-				it.IconData = data
-				count++
-				total += len(data)
-			}
-		}
-		for _, cid := range children[id] {
-			walk(cid)
-		}
-	}
-	walk(firstTop)
-}
-
-// cachedFaviconDataURL 只读磁盘缓存，命中则转 data URL；未命中返回空（由前端走代理）。
-func cachedFaviconDataURL(cfg *config.Config, rawURL string) string {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return ""
-	}
-	host := strings.ToLower(u.Hostname())
-	if host == "" {
-		return ""
-	}
-	e, ok := faviconDataURL(cfg, host)
-	if !ok {
-		return ""
-	}
-	return e.url
 }

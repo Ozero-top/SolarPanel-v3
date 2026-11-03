@@ -1076,10 +1076,6 @@ function iconFor(item) {
   if (item.icon_type === 'image' && item.icon_value) {
     return '<img src="' + esc(assetUrl(item.icon_value)) + '" alt="">';
   }
-  if (item.icon_type === 'favicon' && (item.url || item.lan_url)) {
-    const fu = faviconUrl(item.url || item.lan_url);
-    if (fu) return '<img src="' + esc(fu) + '" alt="" referrerpolicy="no-referrer">';
-  }
 
   // 文字型：手动文字优先（最多 2 个字符）→ 空则回退标题（英文只取大写首字母）
   const manual = !!(item.icon_type === 'text' && item.icon_value && !isImageUrlLike(item.icon_value));
@@ -1281,7 +1277,6 @@ function updateIconPreview() {
   const type = document.querySelector('#i_itype input:checked').value;
   const icon = document.getElementById('i_icon').value.trim();
   const title = document.getElementById('i_title').value.trim();
-  const url = document.getElementById('i_url').value.trim();
   const bg = document.getElementById('i_bg').value.trim();
   const preview = document.getElementById('i_preview');
   const faviconBtn = document.getElementById('i_useFavicon');
@@ -1289,21 +1284,22 @@ function updateIconPreview() {
   // 显隐：文字输入框仅 text 类型显示；颜色面板 text/image 显示，favicon 隐藏
   document.getElementById('i_textWrap').style.display = type === 'text' ? '' : 'none';
   document.getElementById('i_bgWrap').style.display = (type === 'text' || type === 'image') ? '' : 'none';
-  faviconBtn.hidden = type !== 'image';
+  // 站点图标按需获取：favicon / image 类型都显示按钮，点击后走候选选择流程
+  faviconBtn.hidden = type === 'text';
 
   if (type === 'image') {
     preview.style.background = bg || '#0969da';
     preview.innerHTML = icon ? '<img src="' + esc(assetUrl(icon)) + '" alt="">' : '';
-  } else if (type === 'favicon') {
-    preview.style.background = '';
-    const fu = faviconUrl(url);
-    preview.innerHTML = fu ? '<img src="' + esc(fu) + '" alt="" referrerpolicy="no-referrer">' : '<span>?</span>';
-  } else {
+  } else if (type === 'text') {
     // 文字型：输入了手动文字时最多 2 个字符，否则取标题（英文只取大写首字母）
     preview.style.background = bg || '#0969da';
     const typed = document.getElementById('i_iconText').value.trim();
     const raw = typed || (title || '?');
     renderTextIcon(preview, smartIconText(raw, typed ? 2 : 1, !typed), 18);
+  } else {
+    // favicon 类型迁移后不再使用，预览按首页兜底的文字图标显示
+    preview.style.background = bg || '#0969da';
+    renderTextIcon(preview, smartIconText(title || '?', 1, true), 18);
   }
 }
 
@@ -1461,7 +1457,7 @@ function bindItems() {
     });
   });
 
-  // ============ fetchMeta（三态分支 + 自动降级 text）============
+  // ============ fetchMeta（自动填充标题/描述；图标由用户显式抓取）============
   let metaBusy = false;
   let lastMetaUrl = ''; // 自动模式去重：同一地址只抓一次
   const fetchMeta = async (auto, overrideUrl) => {
@@ -1484,8 +1480,6 @@ function bindItems() {
       const res = await API.get(API_BASE + 'items.php?action=fetch_meta&url=' + encodeURIComponent(url));
       lastMetaUrl = url;
       const got = [];
-      const checked = document.querySelector('#i_itype input:checked');
-      const curType = checked ? checked.value : 'favicon';
       const emptyTitle = !document.getElementById('i_title').value.trim();
       const emptyDesc  = !document.getElementById('i_desc').value.trim();
 
@@ -1496,24 +1490,6 @@ function bindItems() {
       if (res.description && emptyDesc) {
         document.getElementById('i_desc').value = res.description;
         got.push('描述');
-      }
-
-      // 图标处理：三态分支
-      if (curType === 'favicon') {
-        if (res.icon && !res.fallback_icon) {
-          // 站点图标已缓存到本地，favicon 模式直接可用
-          got.push('图标');
-        } else if (res.fallback_icon) {
-          // 服务端抓不到图标时保留 favicon 模式，由 /api/favicon.php 代理兜底，
-          // 不再改成第三方图片外链（外链易失效且可能被浏览器拦截）
-          got.push('图标(站点图标代理)');
-        } else if (!res.icon) {
-          // 确实没有可用图标 → 自动降级为文字图标
-          document.querySelector('#i_itype input[value="text"]').checked = true;
-          document.getElementById('i_iconText').value = smartIconText(res.title || document.getElementById('i_title').value);
-          window.__iconTextManual = false;
-          got.push('图标(自动降级为文字)');
-        }
       }
 
       updateIconPreview();
@@ -1588,18 +1564,12 @@ function bindItems() {
     btn.disabled = true;
     btn.textContent = '获取中…';
     try {
-      const res = await API.get(API_BASE + 'items.php?action=favicon&url=' + encodeURIComponent(url));
-      if (res.fallback) {
-        // 拿不到可缓存的图标 → 保留 favicon 模式，交给站点图标代理兜底
-        document.querySelector('#i_itype input[value="favicon"]').checked = true;
-        updateIconPreview();
-        toast('服务器未能缓存图标，已改用站点图标代理加载', 'info');
-        return;
-      }
+      const saved = await pickSiteFavicon(url);
+      if (!saved) return; // 用户取消
       document.querySelector('#i_itype input[value="image"]').checked = true;
-      document.getElementById('i_icon').value = res.url;
+      document.getElementById('i_icon').value = saved;
       updateIconPreview();
-      toast(res.cached ? '已获取（本地缓存）' : '获取成功', 'success');
+      toast('图标已保存', 'success');
     } catch (e) {
       toast(e.message, 'error');
     } finally {
