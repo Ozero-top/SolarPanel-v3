@@ -639,10 +639,25 @@ body .toast.success {
 
 /* ============================================================
    骨架屏（Skeleton Screen）
-   HTML 首帧即显示在 groupsWrap 内；renderGroups() 做 wrap.innerHTML='' 自动清除。
+   HTML 首帧即在 groupsWrap 内；首次渲染时由 clearGroupContent() 淡出移除。
    shimmer 渐变基于 --surface / --surface-2，明暗主题自动适配。
    ============================================================ */
-.skel-wrap { padding: 0 2px; }
+/* 骨架屏覆盖层：绝对定位压在 groupsWrap 上，真实内容渲染后淡出，避免布局跳动与硬闪 */
+#groupsWrap { position: relative; }
+.skel-wrap {
+  padding: 0 2px;
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  /* 220ms 后才出现：数据更快返回时不显示骨架，避免一闪而过 */
+  animation: skel-fadein .18s ease-out .22s forwards;
+}
+@keyframes skel-fadein {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
 .skel-group { margin-bottom: 36px; }
 .skel-title { width: 160px; height: 22px; margin: 0 0 15px 0; }
 
@@ -700,8 +715,8 @@ body .toast.success {
   100% { background-position: -200% 0; }
 }
 
-/* renderGroups() 清理骨架屏前的淡出过渡 */
-.skel-wrap.skcl-fadeout { animation: skel-fadeout .18s ease-out forwards; }
+/* 真实内容渲染后的淡出（dismissSkeleton() 添加此类，220ms 后移除节点） */
+.skel-wrap.skcl-fadeout { animation: skel-fadeout .2s ease-out forwards; }
 @keyframes skel-fadeout {
   from { opacity: 1; }
   to   { opacity: 0; }

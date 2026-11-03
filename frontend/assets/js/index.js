@@ -1071,6 +1071,24 @@ function toggleGroupCards(gid) {
   renderGroups();
 }
 
+// 骨架屏：首屏占位以覆盖层形式压在 groupsWrap 上，真实内容渲染到下方后淡出移除
+function dismissSkeleton(wrap) {
+  const sk = wrap && wrap.querySelector('.skel-wrap');
+  if (!sk || sk.dataset.fading) return;
+  sk.dataset.fading = '1';
+  sk.classList.add('skcl-fadeout');
+  setTimeout(() => sk.remove(), 220);
+}
+
+// 清空分组内容（保留正在淡出的骨架屏，避免它随 innerHTML='' 瞬间消失造成硬闪）
+function clearGroupContent(wrap) {
+  if (!wrap) return;
+  dismissSkeleton(wrap);
+  Array.from(wrap.children).forEach(el => {
+    if (!el.classList.contains('skel-wrap')) el.remove();
+  });
+}
+
 function renderGroups() {
   const wrap = document.getElementById('groupsWrap');
   const styleApp = isAppCardStyle();
@@ -1087,7 +1105,7 @@ function renderGroups() {
     return;
   }
 
-  wrap.innerHTML = '';
+  clearGroupContent(wrap);
 
   // 确保 topGroups/childrenMap 已准备好
   if (!state.topGroups) {
@@ -1549,7 +1567,7 @@ function renderTabsOnly() {
 function renderNavbarCardsOnly() {
   const wrap = document.getElementById('groupsWrap');
   if (!wrap) return;
-  wrap.innerHTML = '';
+  clearGroupContent(wrap);
 
   const visibleTop = state._navbarVisibleTop ||
     (state.topGroups || []).filter(g => {
