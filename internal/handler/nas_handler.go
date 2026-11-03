@@ -40,6 +40,9 @@ type alertMsg struct {
 }
 
 // NASHandler 输出宿主机与 Docker 容器状态（面板开关与访客权限均读设置表）
+// NASRef 供 settings 保存后按需启停后台任务
+var NASRef *NASHandler
+
 type NASHandler struct {
 	collector *nas.Collector
 
@@ -47,6 +50,10 @@ type NASHandler struct {
 	alerts  map[string]alertEntry
 	running map[string]bool // 上一轮运行中的容器
 	down    map[string]bool // 已发现停止、尚未恢复的容器
+
+	alertStop   chan struct{}
+	alertOn     bool
+	alertStopMu sync.Mutex
 }
 
 func NewNASHandler(cfg *config.Config) *NASHandler {
@@ -56,8 +63,35 @@ func NewNASHandler(cfg *config.Config) *NASHandler {
 		running:   make(map[string]bool),
 		down:      make(map[string]bool),
 	}
-	go h.alertLoop()
+	NASRef = h // 供 settings 保存后调用 SyncBackgroundTasks
+	// 不再无条件启动 alertLoop，由 SyncBackgroundTasks 按需控制
 	return h
+}
+
+// SyncBackgroundTasks 根据设置启停后台采样与告警（容器启动时调用一次，设置变更后也可调用）
+func (h *NASHandler) SyncBackgroundTasks() {
+	settings, err := loadNASSettings("nas_show", "nas_alert_enable", "nas_alert_webhook")
+	if err != nil {
+		return
+	}
+	showOn := settings["nas_show"] == "1"
+	alertOn := settings["nas_alert_enable"] == "1" && strings.TrimSpace(settings["nas_alert_webhook"]) != ""
+
+	// 历史采样：面板开启或告警开启任一即启动（告警需要历史数据判断趋势）
+	h.collector.SetHistoryEnabled(showOn || alertOn)
+
+	// 告警循环：仅当明确开启且配置了 webhook 才启动
+	h.alertStopMu.Lock()
+	if alertOn && !h.alertOn {
+		h.alertStop = make(chan struct{})
+		h.alertOn = true
+		go h.alertLoop(h.alertStop)
+	} else if !alertOn && h.alertOn {
+		close(h.alertStop)
+		h.alertOn = false
+		h.resetAlertState()
+	}
+	h.alertStopMu.Unlock()
 }
 
 // loadNASSettings 批量读取设置
@@ -163,11 +197,16 @@ func maskSnapshot(s *nas.Snapshot) {
 
 /* ================= 阈值告警 ================= */
 
-func (h *NASHandler) alertLoop() {
+func (h *NASHandler) alertLoop(stop <-chan struct{}) {
 	t := time.NewTicker(60 * time.Second)
 	defer t.Stop()
-	for range t.C {
-		h.checkAlerts()
+	for {
+		select {
+		case <-t.C:
+			h.checkAlerts()
+		case <-stop:
+			return
+		}
 	}
 }
 

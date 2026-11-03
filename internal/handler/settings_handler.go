@@ -143,6 +143,7 @@ func (h *SettingsHandler) Save(w http.ResponseWriter, r *http.Request) {
 
 	saved := 0
 	retentionChanged := false
+	nasChanged := false
 	for k, v := range body {
 		if _, ok := allowedSettingKeys[k]; !ok {
 			continue
@@ -241,11 +242,18 @@ func (h *SettingsHandler) Save(w http.ResponseWriter, r *http.Request) {
 		if k == "audit_retention_days" {
 			retentionChanged = true
 		}
+		if k == "nas_show" || k == "nas_alert_enable" || k == "nas_alert_webhook" {
+			nasChanged = true
+		}
 	}
 
 	// 保存时长调整后立即按新规则清理一次，无需等待每小时任务
 	if retentionChanged {
 		go auth.AuditCleanup()
+	}
+	// NAS 开关/告警配置变更后，按需启停后台采样与告警 goroutine
+	if nasChanged && NASRef != nil {
+		NASRef.SyncBackgroundTasks()
 	}
 
 	if saved > 0 {

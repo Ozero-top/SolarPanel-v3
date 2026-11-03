@@ -275,6 +275,7 @@ func main() {
 	importHandler := handler.NewImportHandler()
 	wallpaperHandler := handler.NewWallpaperHandler(cfg)
 	nasHandler := handler.NewNASHandler(cfg)
+	nasHandler.SyncBackgroundTasks() // 按 nas_show / nas_alert_enable 启停后台采样与告警
 	versionHandler := handler.VersionHandler{}
 	clipHandler := handler.NewClipHandler(cfg)
 	clipTokenHandler := handler.ClipTokenHandler{}

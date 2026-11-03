@@ -208,6 +208,11 @@ type Collector struct {
 	hist60   histTier // 30s × 120 = 1 小时
 	hist24   histTier // 600s × 144 = 24 小时
 	histTick int
+
+	// 后台任务按需启停（nas_show=1 或 nas_alert_enable=1 才运行）
+	histStop   chan struct{}
+	histOn     bool
+	histStopMu sync.Mutex
 }
 
 func NewCollector(hostRoot, dockerSocket, stateDir string) *Collector {
@@ -222,16 +227,35 @@ func NewCollector(hostRoot, dockerSocket, stateDir string) *Collector {
 		hist24:       histTier{step: 600, max: 144},
 	}
 	c.loadHistory()
-	go c.historyLoop()
+	// 不再无条件启动 historyLoop，由 SetHistoryEnabled 按需控制
 	return c
 }
 
+// SetHistoryEnabled 按需启停后台历史采样（避免容器启动即常驻 /proc 读取）
+func (c *Collector) SetHistoryEnabled(on bool) {
+	c.histStopMu.Lock()
+	defer c.histStopMu.Unlock()
+	if on && !c.histOn {
+		c.histStop = make(chan struct{})
+		c.histOn = true
+		go c.historyLoop(c.histStop)
+	} else if !on && c.histOn {
+		close(c.histStop)
+		c.histOn = false
+	}
+}
+
 // historyLoop 后台轻量采样（只读 /proc，不触发 Docker 查询），保证曲线在刷新页面后依然完整
-func (c *Collector) historyLoop() {
+func (c *Collector) historyLoop(stop <-chan struct{}) {
 	t := time.NewTicker(time.Duration(c.hist10.step) * time.Second)
 	defer t.Stop()
-	for range t.C {
-		c.sampleHistory()
+	for {
+		select {
+		case <-t.C:
+			c.sampleHistory()
+		case <-stop:
+			return
+		}
 	}
 }
 
