@@ -157,6 +157,8 @@ async function boot() {
     state.theme = applyTheme(state.settings);
     applyWetabPrefs(wetabPrefs());
     updateThemeBtn();
+    // 清掉 groupsWrap 里的骨架屏，锁屏模态框下面不应漏出卡片占位
+    document.getElementById('groupsWrap').innerHTML = '';
     renderBase();
     startClock();
     renderGuestLock();

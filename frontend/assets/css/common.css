@@ -636,3 +636,73 @@ body .toast.success {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ============================================================
+   骨架屏（Skeleton Screen）
+   HTML 首帧即显示在 groupsWrap 内；renderGroups() 做 wrap.innerHTML='' 自动清除。
+   shimmer 渐变基于 --surface / --surface-2，明暗主题自动适配。
+   ============================================================ */
+.skel-wrap { padding: 0 2px; }
+.skel-group { margin-bottom: 36px; }
+.skel-title { width: 160px; height: 22px; margin: 0 0 15px 0; }
+
+.skel-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+.skel-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 15px;
+  border-radius: 18px;
+  border: 1px solid var(--edge);
+  background: var(--surface);
+  box-shadow: var(--raised-sm);
+  overflow: hidden;
+}
+.skel-icon {
+  width: 42px; height: 42px;
+  flex-shrink: 0;
+  border-radius: 12px;
+}
+.skel-text {
+  height: 14px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+.skel-t1 { width: 72%; }
+.skel-t2 { width: 40%; height: 11px; opacity: 0.6; }
+
+/* 小屏（≤640px）单列，避免骨架撑破 */
+@media (max-width: 640px) {
+  .skel-cards { grid-template-columns: 1fr; }
+  .skel-title { width: 120px; height: 18px; }
+  .skel-icon { width: 36px; height: 36px; border-radius: 10px; }
+}
+
+/* shimmer 动画：明暗主题共用同一渐变方向，色值取自 --surface / --surface-2 */
+.skel-line, .skel-icon, .skel-text {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 0%,
+    var(--surface)    40%,
+    var(--surface-2)  80%
+  );
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skel-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* renderGroups() 清理骨架屏前的淡出过渡 */
+.skel-wrap.skcl-fadeout { animation: skel-fadeout .18s ease-out forwards; }
+@keyframes skel-fadeout {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
