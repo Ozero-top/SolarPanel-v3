@@ -642,12 +642,18 @@ body .toast.success {
    HTML 首帧即在 groupsWrap 内；首次渲染时由 clearGroupContent() 淡出移除。
    shimmer 渐变基于 --surface / --surface-2，明暗主题自动适配。
    ============================================================ */
-/* 骨架屏覆盖层：绝对定位压在 groupsWrap 上，真实内容渲染后淡出，避免布局跳动与硬闪 */
+/* 骨架屏覆盖层：固定铺满视口并水平居中，不再跟随 groupsWrap 的布局。
+   早期实现是绝对定位在 groupsWrap 内，但主题/卡片宽度等设置要等 public.php 返回后才应用，
+   在此之前容器宽度会缩水，骨架被挤到左上角且只有一列窄卡片，观感很差。 */
 #groupsWrap { position: relative; }
 .skel-wrap {
-  padding: 0 2px;
-  position: absolute;
-  top: 0; left: 0; right: 0;
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 36px 24px 0;
   z-index: 1;
   pointer-events: none;
   opacity: 0;
@@ -658,7 +664,7 @@ body .toast.success {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-.skel-group { margin-bottom: 36px; }
+.skel-group { width: min(1180px, 100%); margin-bottom: 36px; }
 .skel-title { width: 160px; height: 22px; margin: 0 0 15px 0; }
 
 .skel-cards {

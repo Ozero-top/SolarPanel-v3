@@ -641,7 +641,9 @@ func (h *ItemsHandler) FaviconSave(w http.ResponseWriter, r *http.Request) {
 		Fail(w, "handler 未初始化")
 		return
 	}
-	saved, err := downloadFavicon(h.cfg, rawURL)
+	// site 为卡片站点地址，用于按站点 host 去重存储；未传时回退到图标地址的 host
+	site := r.URL.Query().Get("site")
+	saved, err := downloadFavicon(h.cfg, hostOfURL(site), rawURL)
 	if err != nil {
 		Fail(w, "保存图标失败："+err.Error())
 		return

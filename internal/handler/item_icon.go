@@ -5,10 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"path"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -109,8 +105,19 @@ func resolveFaviconURL(href string, base *url.URL) string {
 	return abs.String()
 }
 
-// downloadFavicon 下载图标并保存到上传目录的日期子目录，返回前端可访问的静态路径。
-func downloadFavicon(cfg *config.Config, iconURL string) (string, error) {
+// hostOfURL 取 URL 的主机名（忽略端口），用于图标按站点去重
+func hostOfURL(rawURL string) string {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return u.Hostname()
+}
+
+// downloadFavicon 下载用户选中的图标。
+// 存储层沿用原有实现：按 host 去重、魔数校验、位图统一缩到 ≤64px 并转 WebP；
+// 只替换“获取/选择”流程（Sun-Panel 的候选列表 + 手动点选）。
+func downloadFavicon(cfg *config.Config, host, iconURL string) (string, error) {
 	u, err := url.Parse(iconURL)
 	if err != nil {
 		return "", fmt.Errorf("图标地址解析失败")
@@ -155,17 +162,21 @@ func downloadFavicon(cfg *config.Config, iconURL string) (string, error) {
 		return "", fmt.Errorf("图标内容为空")
 	}
 
-	now := time.Now()
-	rel := now.Format("2006/01/02")
-	dir := filepath.Join(cfg.UploadDir, now.Format("2006"), now.Format("01"), now.Format("02"))
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", err
+	// 存储层：按站点 host 去重（同一站点重复抓取覆盖旧文件），
+	// 统一做魔数校验 + 缩放到 ≤64px + 转 WebP，避免把 1MB 原图塞进首屏。
+	if host == "" {
+		host = u.Hostname()
 	}
-	// 文件名 = md5(图标地址 + 纳秒时间戳) + 原扩展名
-	name := md5Hex(iconURL+strconv.FormatInt(now.UnixNano(), 10)) + path.Ext(u.Path)
-	dst := filepath.Join(dir, name)
-	if err := os.WriteFile(dst, data, 0644); err != nil {
-		return "", err
+	ext := detectImageExt(data)
+	if ext == "" {
+		ext = extractExtFromCT(getResp.Header.Get("Content-Type"))
 	}
-	return "/frontend/uploads/" + rel + "/" + name, nil
+	if ext == "" {
+		ext = extFromURL(iconURL)
+	}
+	saved := saveFavicon(cfg, host, ext, data)
+	if saved == "" {
+		return "", fmt.Errorf("图标内容无效或无法识别")
+	}
+	return saved, nil
 }

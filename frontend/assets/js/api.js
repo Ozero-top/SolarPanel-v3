@@ -404,7 +404,8 @@ window.pickSiteFavicon = async function (url) {
         btn.disabled = true;
         status.textContent = '正在保存图标…';
         try {
-          const saved = await API.get('/api/items.php?action=favicon_save&url=' + encodeURIComponent(src));
+          // 附带站点地址：后端按站点 host 去重存储，避免同一站点重复抓取产生多个文件
+          const saved = await API.get('/api/items.php?action=favicon_save&site=' + encodeURIComponent(url) + '&url=' + encodeURIComponent(src));
           close((saved && saved.url) || null);
         } catch (e) {
           btn.disabled = false;

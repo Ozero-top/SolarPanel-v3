@@ -79,7 +79,7 @@ func MigrateLegacyFaviconItems(cfg *config.Config) {
 					failedCh <- it.id
 					return
 				}
-				saved, err := downloadFavicon(cfg, cands[0])
+				saved, err := downloadFavicon(cfg, hostOfURL(it.pageURL), cands[0])
 				if err != nil {
 					log.Printf("[icon-migrate] 卡片 #%d 下载图标失败: %v", it.id, err)
 					failedCh <- it.id
