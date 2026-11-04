@@ -4359,11 +4359,18 @@ function nasBannerEl() {
   return document.getElementById('nasBanner');
 }
 
-// 任一展示形态可见即继续轮询（悬浮面板 / 底部状态条）
+// 任一展示形态可见即继续轮询（悬浮面板 / 底部状态条 / 详情弹窗）
 function nasAnyVisible() {
   const banner = nasBannerEl();
   if (banner && !banner.hidden) return true;
+  if (nasDetailOpen()) return true;
   return nasPanels().some(p => p && !p.hidden);
+}
+
+// 详情弹窗是否打开：只有打开时才请求容器 stats（后端按 detail=1 决定是否采集）
+function nasDetailOpen() {
+  const m = document.getElementById('nasDetailModal');
+  return !!(m && m.classList.contains('show'));
 }
 
 function initNASPanel() {
@@ -4486,11 +4493,17 @@ function scheduleNAS(delaySec) {
   }, Math.max(2, delaySec) * 1000);
 }
 
-async function refreshNAS() {
-  if (nasState.inflight) return;
+async function refreshNAS(force) {
+  if (nasState.inflight) {
+    // 本次在途：记一个"补一次"标记，等结束后立刻按当前形态重新请求
+    if (force) nasState.pending = true;
+    return;
+  }
   nasState.inflight = true;
   try {
-    const data = await API.get(API_BASE + 'nas.php?_t=' + Date.now());
+    // 只有详情弹窗打开时才让后端采集容器 stats（每个容器约 1s，串行）
+    const url = API_BASE + 'nas.php?_t=' + Date.now() + (nasDetailOpen() ? '&detail=1' : '');
+    const data = await API.get(url);
     if (!data || !data.enabled) { stopNASPanel(); return; }
     nasState.refresh = Math.min(60, Math.max(2, parseInt(data.refresh, 10) || 3));
     nasState.snap = data.snapshot || {};
@@ -4506,7 +4519,14 @@ async function refreshNAS() {
     renderNASDetailIfOpen();
   } finally {
     nasState.inflight = false;
-    if (nasAnyVisible()) scheduleNAS(nasNextDelay());
+    if (nasAnyVisible()) {
+      if (nasState.pending) {
+        nasState.pending = false;
+        refreshNAS();
+        return;
+      }
+      scheduleNAS(nasNextDelay());
+    }
   }
 }
 
@@ -5147,6 +5167,8 @@ function openNASDetail() {
   applyNasModalAlpha();
   m.classList.add('show');
   renderNASDetailIfOpen();
+  // 弹窗打开后才需要容器 stats：立刻补一次带 detail=1 的采集
+  refreshNAS(true);
 }
 
 // 弹窗不透明度来自后台设置（40%~100%），以 CSS 变量控制

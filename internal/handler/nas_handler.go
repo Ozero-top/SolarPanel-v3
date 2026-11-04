@@ -163,7 +163,9 @@ func (h *NASHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	snap := h.collector.Collect(nasDiskPaths(settings), nasTTL(settings))
+	// 容器 stats 开销大（每容器约 1s、串行），仅详情弹窗打开时才采集
+	withStats := r.URL.Query().Get("detail") == "1"
+	snap := h.collector.Collect(nasDiskPaths(settings), nasTTL(settings), nas.CollectOptions{WithStats: withStats})
 	// 访客脱敏：仅开启 nas_guest 时生效，成员/管理员不受影响
 	if !isMember && settings["nas_guest"] == "1" {
 		maskSnapshot(&snap)
@@ -173,6 +175,7 @@ func (h *NASHandler) Get(w http.ResponseWriter, r *http.Request) {
 		"enabled":  true,
 		"layout":   settings["nas_layout"],
 		"refresh":  nasRefresh(settings),
+		"detail":   withStats,
 		"snapshot": snap,
 	})
 }
@@ -238,7 +241,8 @@ func (h *NASHandler) checkAlerts() {
 		tempLimit = 75
 	}
 
-	snap := h.collector.Collect(nasDiskPaths(settings), nasTTL(settings))
+	// 告警只需要容器状态（运行/停止），不需要 stats，避免 60s 一次触发昂贵采集
+	snap := h.collector.Collect(nasDiskPaths(settings), nasTTL(settings), nas.CollectOptions{})
 
 	conditions := make(map[string]alertMsg)
 	for _, d := range snap.Disks {

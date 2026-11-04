@@ -153,6 +153,10 @@ type ctSample struct {
 // containerStatsTTL 容器 stats 结果缓存时长；dockerd 单次 stats 需要约 1s，短缓存可显著降低压力
 const containerStatsTTL = 5 * time.Second
 
+// containerStatsKeep stats 缓存保留时长：只用于"详情未打开时复用上次数值"，
+// 不再触发采集；容器消失时才清理。
+const containerStatsKeep = 30 * time.Minute
+
 // statsCacheEntry 单个容器的 stats 结果快照
 type statsCacheEntry struct {
 	info ContainerInfo
@@ -198,6 +202,9 @@ type Collector struct {
 	mu     sync.Mutex
 	snap   *Snapshot
 	snapAt time.Time
+	// snapStats 标记缓存快照是否包含容器资源数据（CPU/内存/网络）
+	// 详情弹窗才采集 stats，普通轮询命中"无 stats"缓存时需要重新采集
+	snapStats bool
 
 	// sampleMu 保护 cpuPrev / cpuCorePrev / netPrev：主采集与后台历史采样会并发读取 /proc
 	sampleMu    sync.Mutex
@@ -384,15 +391,23 @@ func (c *Collector) saveHistory() {
 	os.Rename(tmp, p)
 }
 
+// CollectOptions 控制本次采集的深度。
+// 容器 stats（每个容器约 1s、串行）只在详情弹窗打开时采集，
+// 普通轮询只取容器列表（state/uptime/镜像），并复用上一次的 stats 数值。
+type CollectOptions struct {
+	WithStats bool
+}
+
 // Collect 返回快照；ttl 内的重复调用直接返回缓存（ttl 由调用方按刷新间隔传入）
-func (c *Collector) Collect(diskPaths []string, ttl time.Duration) Snapshot {
+func (c *Collector) Collect(diskPaths []string, ttl time.Duration, opt CollectOptions) Snapshot {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if ttl <= 0 {
 		ttl = 3 * time.Second
 	}
-	if c.snap != nil && time.Since(c.snapAt) < ttl {
+	// 缓存命中条件：未过期；且若本次要 stats，则缓存必须带 stats
+	if c.snap != nil && time.Since(c.snapAt) < ttl && (!opt.WithStats || c.snapStats) {
 		cp := *c.snap
 		cp.History = c.historySnapshot()
 		cp.HistoryHour = c.historyHourSnapshot()
@@ -414,7 +429,7 @@ func (c *Collector) Collect(diskPaths []string, ttl time.Duration) Snapshot {
 		CollectedAt: time.Now().Unix(),
 	}
 	if s.DockerOK {
-		s.Containers = c.collectContainers()
+		s.Containers = c.collectContainers(opt.WithStats)
 	}
 	if s.Containers == nil {
 		s.Containers = []ContainerInfo{}
@@ -425,6 +440,7 @@ func (c *Collector) Collect(diskPaths []string, ttl time.Duration) Snapshot {
 
 	c.snap = &s
 	c.snapAt = time.Now()
+	c.snapStats = opt.WithStats
 	return s
 }
 

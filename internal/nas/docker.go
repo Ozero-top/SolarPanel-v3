@@ -130,8 +130,9 @@ type dockerInspect struct {
 	} `json:"State"`
 }
 
-// collectContainers 拉取容器列表与运行中容器的资源占用
-func (c *Collector) collectContainers() []ContainerInfo {
+// collectContainers 拉取容器列表；
+// withStats 为 false 时只读列表并复用上一次的 stats 数值，不向 docker daemon 发起 stats 请求。
+func (c *Collector) collectContainers(withStats bool) []ContainerInfo {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
@@ -170,27 +171,37 @@ func (c *Collector) collectContainers() []ContainerInfo {
 		}
 	}
 
-	// stats 单次约 1s（daemon 需要两个采样点）。这里刻意串行：
-	// dockerd 是所有 Docker API 的单点，并发拉取会直接拖慢同机的宝塔容器页。
-	sem := make(chan struct{}, 1)
-	var wg sync.WaitGroup
-	for i := range items {
-		if items[i].State != "running" {
-			continue
-		}
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			select {
-			case sem <- struct{}{}:
-				defer func() { <-sem }()
-			case <-ctx.Done():
-				return
+	if withStats {
+		// stats 单次约 1s（daemon 需要两个采样点）。这里刻意串行：
+		// dockerd 是所有 Docker API 的单点，并发拉取会直接拖慢同机的宝塔容器页。
+		sem := make(chan struct{}, 1)
+		var wg sync.WaitGroup
+		for i := range items {
+			if items[i].State != "running" {
+				continue
 			}
-			c.fillContainerStats(ctx, &items[idx])
-		}(i)
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				select {
+				case sem <- struct{}{}:
+					defer func() { <-sem }()
+				case <-ctx.Done():
+					return
+				}
+				c.fillContainerStats(ctx, &items[idx])
+			}(i)
+		}
+		wg.Wait()
+	} else {
+		// 详情弹窗未打开：不请求 stats，只复用上一次采到的数值。
+		// 面板上看到的是"上次详情采样"的结果，宁可略旧，也不持续占用 dockerd。
+		for i := range items {
+			if items[i].State == "running" {
+				c.fillContainerStatsFromCache(&items[i])
+			}
+		}
 	}
-	wg.Wait()
 
 	// 清理已消失容器的差分状态，避免长期运行内存增长
 	alive := make(map[string]ctSample, len(items))
@@ -203,14 +214,15 @@ func (c *Collector) collectContainers() []ContainerInfo {
 	c.ctPrev = alive
 	c.ctMu.Unlock()
 
-	// 同步清理 stats 缓存中已消失/已过期的条目
+	// 同步清理 stats 缓存中已消失或过久未更新的条目。
+	// 保留窗口远大于刷新 TTL：详情弹窗关闭后，普通轮询仍要复用上一次的 stats 数值。
 	present := make(map[string]bool, len(items))
 	for _, it := range items {
 		present[it.ID] = true
 	}
 	c.statsMu.Lock()
 	for id, e := range c.statsCache {
-		if !present[id] || time.Since(e.at) > containerStatsTTL {
+		if !present[id] || time.Since(e.at) > containerStatsKeep {
 			delete(c.statsCache, id)
 		}
 	}
@@ -225,20 +237,36 @@ func (c *Collector) collectContainers() []ContainerInfo {
 	return items
 }
 
+// applyCachedStats 把缓存里的资源字段拷贝到当前条目
+func applyCachedStats(it *ContainerInfo, cached ContainerInfo) {
+	it.CPUPct = cached.CPUPct
+	it.MemUsed = cached.MemUsed
+	it.MemLimit = cached.MemLimit
+	it.RxBps = cached.RxBps
+	it.TxBps = cached.TxBps
+	it.RestartCount = cached.RestartCount
+	it.Health = cached.Health
+	it.Uptime = cached.Uptime
+}
+
+// fillContainerStatsFromCache 只读缓存、不发请求：详情未打开时的普通轮询走这里
+func (c *Collector) fillContainerStatsFromCache(it *ContainerInfo) {
+	c.statsMu.Lock()
+	e, ok := c.statsCache[it.ID]
+	c.statsMu.Unlock()
+	if !ok || e.info.State != it.State {
+		return
+	}
+	applyCachedStats(it, e.info)
+}
+
 func (c *Collector) fillContainerStats(ctx context.Context, it *ContainerInfo) {
 	// 命中短缓存直接复用，避免频繁轮询反复阻塞 dockerd
 	c.statsMu.Lock()
 	if e, ok := c.statsCache[it.ID]; ok && time.Since(e.at) < containerStatsTTL && e.info.State == it.State {
 		cached := e.info
 		c.statsMu.Unlock()
-		it.CPUPct = cached.CPUPct
-		it.MemUsed = cached.MemUsed
-		it.MemLimit = cached.MemLimit
-		it.RxBps = cached.RxBps
-		it.TxBps = cached.TxBps
-		it.RestartCount = cached.RestartCount
-		it.Health = cached.Health
-		it.Uptime = cached.Uptime
+		applyCachedStats(it, cached)
 		return
 	}
 	c.statsMu.Unlock()
