@@ -23,10 +23,20 @@
     }
   } catch (e) { /* 未登录，正常展示登录页 */ }
 
-  // 应用后端默认主题
+  // 登录页只跟随后端皮肤（极光暗色 / 赛博霓虹 / 极简白），不跟随前台主题
+  function applyAdminSkin(skin) {
+    if (['aurora', 'neon', 'element'].indexOf(skin) < 0) skin = 'aurora';
+    document.body.dataset.adminSkin = skin;
+    document.documentElement.dataset.style = 'console';
+    document.documentElement.dataset.theme = skin === 'element' ? 'light' : 'dark';
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = skin === 'element' ? '#f4f6fb' : '#0a0e17';
+    try { localStorage.setItem('sp_admin_skin', skin); } catch (e) { /* 隐私模式忽略 */ }
+  }
+
   try {
     const data = await API.get('/api/public.php');
-    if (data && data.settings) applyTheme(data.settings);
+    if (data && data.settings) applyAdminSkin(data.settings.admin_skin || 'aurora');
   } catch (e) { /* 忽略 */ }
 
   const form = document.getElementById('loginForm');

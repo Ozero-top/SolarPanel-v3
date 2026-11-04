@@ -168,6 +168,8 @@ async function applyThemeFromBackend() {
   try {
     const s = await API.get(API_BASE + 'settings.php?action=list');
     applyTheme(s);
+    // 后端皮肤以服务端记录为准（换机器打开也保持一致）
+    try { if (window.__adminSkinSync) window.__adminSkinSync(s.admin_skin); } catch (e) { /* 忽略 */ }
     state.siteUrl = (s.site_url || '').trim();
     fillSettingsForm(s);
     applyUpdateSettings(s);
@@ -1775,6 +1777,12 @@ function fillSettingsForm(s) {
   const cardOpacity = isNaN(cv) ? 100 : Math.min(Math.max(cv, 0), 100);
   document.getElementById('s_card_opacity').value = cardOpacity;
   document.getElementById('v_card_opacity').textContent = String(cardOpacity);
+  const iv = parseInt(s.card_icon_size, 10);
+  const cardIconSize = isNaN(iv) || iv <= 0 ? 0 : Math.min(Math.max(iv, 24), 96);
+  const iconRange = document.getElementById('s_card_icon_size');
+  const iconOut = document.getElementById('v_card_icon_size');
+  if (iconRange) iconRange.value = String(cardIconSize);
+  if (iconOut) iconOut.textContent = cardIconSize > 0 ? cardIconSize + ' px' : '主题默认';
   document.getElementById('s_search_bar_enabled').value = s.search_bar_enabled === '0' ? '0' : '1';
 
   // 内容区域滑条
@@ -2413,7 +2421,7 @@ function refreshEngineDefaults() {
    分区顺序与站点设置的二级导航一一对应：站点信息（含访问控制）→ 外观与卡片 → 导航与搜索 → 热点新闻 → NAS 监控 */
 const SETTING_SECTIONS = {
   basic:  { label: '站点信息', keys: ['site_title', 'site_url', 'footer', 'site_logo', 'icp_show', 'icp_number', 'icp_link', 'police_show', 'police_number', 'police_link', 'default_lan_mode', 'lan_hostnames', 'guest_access_enabled', 'guest_password_hash'] },
-  theme:  { label: '外观与卡片', keys: ['default_theme', 'theme_style', 'card_style', 'card_opacity', 'default_group', 'content_maxwidth', 'content_pad_lr', 'content_pad_top', 'content_pad_bottom', 'page_font', 'clock_font', 'clock_show', 'weather_show', 'weather_city', 'wallpaper', 'mask_opacity', 'wallpaper_blur', 'wallpaper_source'] },
+  theme:  { label: '外观与卡片', keys: ['default_theme', 'theme_style', 'card_style', 'card_opacity', 'card_icon_size', 'default_group', 'content_maxwidth', 'content_pad_lr', 'content_pad_top', 'content_pad_bottom', 'page_font', 'clock_font', 'clock_show', 'weather_show', 'weather_city', 'wallpaper', 'mask_opacity', 'wallpaper_blur', 'wallpaper_source'] },
   search: { label: '导航与搜索', keys: ['search_bar_enabled', 'search_engines', 'search_default', 'search_width'] },
   news:   { label: '热点新闻', keys: ['news_show', 'news_auto_refresh', 'news_sources', 'news_order'] },
   nas:    { label: 'NAS 监控', keys: ['nas_show', 'nas_layout', 'nas_refresh', 'nas_guest', 'nas_disk_paths', 'nas_modal_alpha', 'nas_alert_enable', 'nas_alert_disk', 'nas_alert_temp', 'nas_alert_webhook'] },
@@ -2595,6 +2603,16 @@ function bindSettings() {
     const o = document.getElementById(oid);
     if (r && o) r.addEventListener('input', () => { o.textContent = r.value; });
   });
+
+  // 卡片图标大小滑条：0 显示「主题默认」
+  const ciRange = document.getElementById('s_card_icon_size');
+  const ciOut = document.getElementById('v_card_icon_size');
+  if (ciRange && ciOut) {
+    ciRange.addEventListener('input', () => {
+      const n = parseInt(ciRange.value, 10) || 0;
+      ciOut.textContent = n > 0 ? n + ' px' : '主题默认';
+    });
+  }
 
   // 壁纸图库弹窗：打开时加载最新列表
   const openGalleryBtn = document.getElementById('openGalleryBtn');

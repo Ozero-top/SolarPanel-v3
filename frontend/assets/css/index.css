@@ -1295,6 +1295,14 @@ body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
   overflow: hidden;
   box-shadow: 0 2px 6px var(--sh-dark), inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
+
+/* 后台「卡片图标大小」（0 = 跟随主题）：仅非 Tab标签页 主题生效，
+   取 html[data-card-icon] 标记，由 api.js 按当前主题设置 */
+:root[data-card-icon] body .card .icon {
+  width: var(--card-icon-size, 52px) !important;
+  height: var(--card-icon-size, 52px) !important;
+  font-size: calc(var(--card-icon-size, 52px) * 0.38) !important;
+}
 .card .icon img {
   width: 100%;
   height: 100%;

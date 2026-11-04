@@ -508,6 +508,25 @@ body.admin-console .cs-nav .tab.active {
   background: var(--accent-soft);
   border-color: var(--accent-soft);
 }
+/* 顶栏「后端主题」文字按钮 */
+.cs-skin-btn {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid var(--edge);
+  background: var(--btn-bg);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+.cs-skin-btn:hover,
+.cs-skin-btn[aria-expanded='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-soft);
+}
 
 /* ---------- 内容容器 ---------- */
 body.admin-console .admin-wrap {
@@ -1092,13 +1111,15 @@ body.admin-console .toast {
   text-overflow: ellipsis;
 }
 
-/* ---------- 风格切换停靠 ---------- */
+/* ---------- 风格切换停靠（吸附在顶栏「后端主题」下方） ---------- */
 .skin-dock {
   position: fixed;
-  right: 22px;
-  bottom: 22px;
+  right: 64px;
+  top: 72px;
+  bottom: auto;
   z-index: 150;
   width: 168px;
+  transform-origin: top right;
   padding: 10px;
   display: flex;
   flex-direction: column;
@@ -1190,7 +1211,7 @@ body.admin-console .toast {
   .dash-head h2 { font-size: 20px; }
   body.admin-console .admin-panel { padding: 14px 12px; border-radius: 16px; }
   body.admin-console #tab-dashboard { padding: 0; }
-  .skin-dock { right: 14px; bottom: 14px; }
+  .skin-dock { right: 52px; top: 64px; }
 }
 
 /* ---------- 表格滚动容器：窄屏只让表格自身横向滚动，筛选栏保持不动 ---------- */
@@ -1407,4 +1428,22 @@ body.admin-console .table-scroll::-webkit-scrollbar-thumb { background: var(--ed
   body.admin-console #tab-items .table td:nth-child(3) { min-width: 120px; }
   body.admin-console #tab-groups .table td:nth-child(2) { white-space: nowrap; }
   body.admin-console #tab-groups .table td:nth-child(3) { min-width: 132px; }
+}
+
+/* ============================================================
+   登录页：只跟随后端皮肤（aurora / neon / element），与前台主题无关
+   ============================================================ */
+body.login-body[data-admin-skin] {
+  background-color: var(--page-bg);
+  background-image: var(--glow-a), var(--glow-b);
+  background-attachment: fixed;
+  color: var(--text);
+}
+
+body.login-body[data-admin-skin] .style-fx { display: none; }
+
+body.login-body[data-admin-skin] .login-card {
+  background: var(--surface-2);
+  border: 1px solid var(--edge);
+  box-shadow: var(--raised-lg);
 }

@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.ico?v=1b5d8c6c" type="image/x-icon">
   <link rel="stylesheet" href="assets/css/common.css?v=dc014ca6">
   <link rel="stylesheet" href="assets/css/auth-admin.css?v=c7ccd34b">
-  <link rel="stylesheet" href="assets/css/themes.css?v=29b1e8c0">
+  <link rel="stylesheet" href="assets/css/themes.css?v=11cdc1c6">
 </head>
 <body class="admin-classic">
   <div class="style-fx" aria-hidden="true"></div>
@@ -257,6 +257,7 @@
                 <option value="liquid-glass">Liquid Glass 液态玻璃（默认 · 磨砂透光 · 流动光斑 · 仅浅色）</option>
                 <option value="wetab">Tab标签页（仿新标签页 · 壁纸主视觉  · 左悬浮分组条 · 底部 Dock · 图标间距 / 大小 / 内容宽度可调）</option>
                 <option value="soft">Soft 柔和浮雕（柔光弥散 · 流动光斑 · 大圆角 · 轻投影 · 通透卡片）</option>
+                <option value="soft-mini">Soft 小浮雕（轻浮雕 · 小阴影 · 三档灰蓝 · 内凹小图标 · 靛蓝主色）</option>
                 <option value="aurora">Aurora 动态极光（柔光渐变 · 缓慢流动 · 光环描边）</option>
                 <option value="blueprint">Blueprint 工程蓝图（深蓝底 · 白线网格 · 等宽字 · 橙色标注）</option>
                 <option value="corporate-clean">Corporate Clean 企业简洁（白卡细边 · 蓝主色 · 焦点环 · 轻浮起）</option>
@@ -264,7 +265,6 @@
                 <option value="neo-brutalist">Neo-Brutalist 新野兽派（纯黑粗框 · 硬边阴影 · 直角 · 高对比撞色）</option>
                 <option value="retro-vintage">Retro Vintage 复古怀旧（羊皮纸 · 粗棕框 · 衬线大写 · 角花）</option>
                 <option value="sketch-style">铅笔手绘风（纸张纹理 · 虚线铅笔框 · 涂黑反白）</option>
-                <option value="soft-utility">Soft Utility 柔和工具（暖灰画布 · 深青主色 · 发丝线 · 小圆角 · 薄荷状态）</option>
               </select>
             </div>
             <div class="form-item">
@@ -293,7 +293,7 @@
 
           <div class="sub-group-head">
             <h4 class="sub-group-title">📐 布局标尺</h4>
-            <button class="btn btn-primary btn-sm group-save" type="button" data-keys="content_maxwidth,content_pad_lr,content_pad_top,content_pad_bottom,card_opacity">保存</button>
+            <button class="btn btn-primary btn-sm group-save" type="button" data-keys="content_maxwidth,content_pad_lr,content_pad_top,content_pad_bottom,card_opacity,card_icon_size">保存</button>
           </div>
           <div class="form-row aligned cols-5">
             <div class="form-item">
@@ -312,12 +312,18 @@
               <label>底部边距：<span class="range-val" id="v_content_pad_bottom">40</span> px</label>
               <input type="range" class="range" id="s_content_pad_bottom" min="0" max="300" step="2" value="40">
             </div>
+          </div>
+          <div class="form-row aligned cols-2">
             <div class="form-item">
               <label>卡片背景透明度：<span class="range-val" id="v_card_opacity">100</span>%</label>
               <input type="range" class="range" id="s_card_opacity" min="0" max="100" step="5" value="100">
             </div>
+            <div class="form-item">
+              <label>卡片图标大小：<span class="range-val" id="v_card_icon_size">主题默认</span></label>
+              <input type="range" class="range" id="s_card_icon_size" min="0" max="96" step="2" value="0">
+            </div>
           </div>
-          <div class="form-hint">布局控制主页卡片区域的宽度与边距；卡片背景透明度仅调整卡片底色，文字与图标不受影响（Tab标签页主题不支持）。保存后刷新主页生效，若未生效可强制刷新（Ctrl+F5）。</div>
+          <div class="form-hint">布局控制主页卡片区域的宽度与边距；卡片背景透明度只调整卡片底色，文字与图标不受影响；卡片图标大小 0 = 跟随各主题自带尺寸，设为 24–96 px 后统一覆盖（Tab标签页主题两项都不支持，它有自己的图标大小设置）。保存后刷新主页生效，若未生效可强制刷新（Ctrl+F5）。</div>
 
           <div class="form-row aligned cols-2 font-cols">
             <div class="form-item">
@@ -1395,8 +1401,8 @@
   </div>
 
   <script src="assets/js/qrcode.min.js"></script>
-  <script src="assets/js/api.js?v=20fc8e8e"></script>
-  <script src="assets/js/admin.js?v=8382ae65"></script>
+  <script src="assets/js/api.js?v=3040138e"></script>
+  <script src="assets/js/admin.js?v=4f141f9a"></script>
   <script src="assets/js/admin-ui.js?v=0218fafc"></script>
 </body>
 </html>

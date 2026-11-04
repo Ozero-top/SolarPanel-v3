@@ -18,7 +18,8 @@ var allowedSettingKeys = map[string]struct{}{
 	"site_title": {}, "site_logo": {}, "wallpaper": {}, "mask_opacity": {},
 	"wallpaper_blur": {},
 	"footer": {}, "clock_show": {}, "clock_font": {}, "page_font": {}, "default_theme": {}, "theme_style": {},
-	"card_style": {}, "card_opacity": {}, "default_lan_mode": {}, "lan_hostnames": {},
+	"admin_skin": {},
+	"card_style": {}, "card_opacity": {}, "card_icon_size": {}, "default_lan_mode": {}, "lan_hostnames": {},
 	"default_group": {},
 	"wetab_prefs": {}, "wetab_dock": {},
 	"search_engines": {}, "search_default": {}, "site_url": {},
@@ -41,7 +42,8 @@ var allowedSettingKeys = map[string]struct{}{
 
 // settingValueWhitelist 特定键的取值白名单（与 frontend/themes.json / card_style 可选项保持同步）
 var settingValueWhitelist = map[string]map[string]bool{
-	"theme_style":          {"soft": true, "blueprint": true, "clarity": true, "soft-utility": true, "aurora": true, "iris": true, "sketch-style": true, "retro-vintage": true, "corporate-clean": true, "liquid-glass": true, "neo-brutalist": true, "wetab": true},
+	"theme_style":          {"soft": true, "soft-mini": true, "blueprint": true, "clarity": true, "aurora": true, "iris": true, "sketch-style": true, "retro-vintage": true, "corporate-clean": true, "liquid-glass": true, "neo-brutalist": true, "wetab": true},
+	"admin_skin":           {"aurora": true, "neon": true, "element": true},
 	"card_style":           {"nav": true, "navapp": true},
 	"default_lan_mode":     {"auto": true, "public": true, "lan": true},
 	"nas_show":             {"0": true, "1": true},
@@ -161,6 +163,21 @@ func (h *SettingsHandler) Save(w http.ResponseWriter, r *http.Request) {
 				n = 40
 			} else if n > 100 {
 				n = 100
+			}
+			v = strconv.Itoa(n)
+		}
+		// 卡片图标大小：0 = 跟随主题，其余限制在 24–96px
+		if k == "card_icon_size" {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				continue
+			}
+			if n != 0 {
+				if n < 24 {
+					n = 24
+				} else if n > 96 {
+					n = 96
+				}
 			}
 			v = strconv.Itoa(n)
 		}

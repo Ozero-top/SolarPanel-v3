@@ -3,8 +3,17 @@
  */
 
 /* ================= 应用版本与更新日志（每次更新只需改这里） ================= */
-const APP_VERSION = 'v3.8.0';
+const APP_VERSION = 'v3.9.0';
 const APP_CHANGELOG = [
+  { ver: 'v3.9.0', date: '2026-11-05', items: [
+    '🎨 新增「Soft 小浮雕」主题：轻浮雕、小阴影、三档灰蓝分层、内凹小图标与靛蓝主色',
+    '🖌️ 五套主题按新方案重做：工程蓝图（两级网格/REF 编号/SECTION 标注）、企业简洁（去投影/发丝线）、新野兽派（统一3px硬边/单一洋红）、复古怀旧（双线框/纸面暗角）、铅笔手绘（细墨线/红笔标题/手剪纸角）',
+    '🗑️ 移除「柔和工具」主题，已选该主题的账号会自动回退到默认主题',
+    '🎚️ 新增「卡片图标大小」设置：0 = 跟随各主题自带尺寸，24–96px统一覆盖；Tab标签页主题不受影响',
+    '🖥️ 后台登录页与控制台改用独立的「后端主题」（极光暗色/赛博霓虹/极简白），不再跟随前台主题',
+    '💾 后端主题保存到服务端，换电脑或换浏览器打开保持一致',
+    '🧭 后台顶栏新增「后端主题」文字按钮，皮肤列表改为从右上角下拉选择',
+  ]},
   { ver: 'v3.8.0', date: '2026-11-04', items: [
     '⚠️ 已安装v3.7.6版本一定要更新：旧版开着NAS信息面板，会一直向NAS索取容器数据，容器越多NAS越吃力',
     '🐢 优化为点开「详情」才会调取NAS信息，平时只显示容器列表，启用面板不消耗NAS性能',
@@ -537,7 +546,7 @@ function buildBgCss(color, alphaPercent) {
 }
 
 /** 可选风格主题（与 themes.css 的 html[data-style] 对应） */
-const SP_STYLES = ['liquid-glass', 'wetab', 'soft', 'aurora', 'blueprint', 'corporate-clean', 'iris', 'neo-brutalist', 'retro-vintage', 'sketch-style', 'soft-utility'];
+const SP_STYLES = ['liquid-glass', 'wetab', 'soft', 'soft-mini', 'aurora', 'blueprint', 'corporate-clean', 'iris', 'neo-brutalist', 'retro-vintage', 'sketch-style'];
 
 /** 时钟/天气可选字体：18 款免费开源（OFL）设计字体，中文自动回退系统黑体 */
 const SP_CLOCK_FONTS = [
@@ -721,6 +730,21 @@ function applyTheme(settings) {
   }
   root.dataset.style = style;
   try { localStorage.setItem('sp_style', style); } catch (e) { /* 隐私模式忽略 */ }
+
+  /* 卡片图标大小：后台设置（0 = 跟随各主题自带尺寸；Tab标签页主题不参与）
+     主题切换时可能只传 theme_style，这里用上一次的值兜底 */
+  const rawIcon = settings && settings.card_icon_size;
+  const iconSize = rawIcon != null
+    ? Math.min(Math.max(parseInt(rawIcon, 10) || 0, 0), 96)
+    : (window.__spIconSize || 0);
+  window.__spIconSize = iconSize;
+  if (style === 'wetab' || iconSize <= 0) {
+    root.removeAttribute('data-card-icon');
+    root.style.removeProperty('--card-icon-size');
+  } else {
+    root.setAttribute('data-card-icon', '1');
+    root.style.setProperty('--card-icon-size', iconSize + 'px');
+  }
 
   const saved = localStorage.getItem('sp_theme');
   const mode = saved === 'light' || saved === 'dark' || saved === 'system'

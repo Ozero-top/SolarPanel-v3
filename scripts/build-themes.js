@@ -25,8 +25,8 @@ const DRY_RUN = process.argv.includes('--dry-run');
 /** 主题名 → 中文显示名（与原始 admin.html option 逐字一致） */
 const DISPLAY_NAMES = {
   'soft': 'Soft 柔和浮雕（柔光弥散 · 流动光斑 · 大圆角 · 轻投影 · 通透卡片）',
+  'soft-mini': 'Soft 小浮雕（轻浮雕 · 小阴影 · 三档灰蓝 · 内凹小图标 · 靛蓝主色）',
   'blueprint': 'Blueprint 工程蓝图（深蓝底 · 白线网格 · 等宽字 · 橙色标注）',
-  'soft-utility': 'Soft Utility 柔和工具（暖灰画布 · 深青主色 · 发丝线 · 小圆角 · 薄荷状态）',
   'aurora': 'Aurora 动态极光（柔光渐变 · 缓慢流动 · 光环描边）',
   'iris': 'IRIS 光圈（深空 HUD · 氙蓝酸绿 · 漂移网格）',
   'sketch-style': '铅笔手绘风（纸张纹理 · 虚线铅笔框 · 涂黑反白）',
@@ -156,8 +156,10 @@ function main() {
   const json = JSON.parse(fs.readFileSync(THEMES_JSON, 'utf8'));
 
   // 下拉顺序：Liquid Glass 置顶（默认主题），Tab标签页紧随其后，其次 soft，其余按名称排序
-  const restStyles = Object.keys(json).filter(k => k !== '_meta' && k !== 'soft' && k !== 'liquid-glass' && k !== 'wetab').sort();
-  const allStyles = ['liquid-glass', 'wetab', 'soft', ...restStyles];
+  const restStyles = Object.keys(json).filter(k => k !== '_meta' && k !== 'soft' && k !== 'liquid-glass' && k !== 'wetab' && k !== 'soft-mini').sort();
+  const allStyles = ['liquid-glass', 'wetab', 'soft']
+    .concat(json['soft-mini'] ? ['soft-mini'] : [])
+    .concat(restStyles);
 
   // 1. 生成 themes.css
   const css = buildThemesCss(json);

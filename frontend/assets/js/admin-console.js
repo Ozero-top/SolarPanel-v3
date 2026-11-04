@@ -57,6 +57,10 @@
     document.documentElement.dataset.theme = skin === 'element' ? 'light' : 'dark';
     if (persist !== false) {
       try { localStorage.setItem(SKIN_KEY, skin); } catch (e) { /* 隐私模式忽略 */ }
+      // 皮肤存到服务端，换机器 / 换浏览器打开也保持一致
+      try {
+        if (window.API && API.post) API.post('/api/settings.php?action=save', { admin_skin: skin }).catch(function () {});
+      } catch (e) { /* 无权限或离线时忽略 */ }
     }
     var opts = document.querySelectorAll('.skin-opt');
     for (var i = 0; i < opts.length; i++) {
@@ -64,6 +68,12 @@
     }
     if (lastDonut.total) drawDonut(lastDonut.list, lastDonut.total);
   }
+
+  // 后台设置加载完成后由 admin.js 调用，用服务端记录校正本机缓存
+  window.__adminSkinSync = function (skin) {
+    if (SKINS.indexOf(skin) < 0) return;
+    applySkin(skin, false);
+  };
 
   function initSkin() {
     var saved = null;
@@ -77,10 +87,14 @@
     toggle.addEventListener('click', function (e) {
       e.stopPropagation();
       dock.hidden = !dock.hidden;
+      toggle.setAttribute('aria-expanded', dock.hidden ? 'false' : 'true');
     });
     dock.addEventListener('click', function (e) { e.stopPropagation(); });
     document.addEventListener('click', function () {
-      if (!dock.hidden) dock.hidden = true;
+      if (!dock.hidden) {
+        dock.hidden = true;
+        toggle.setAttribute('aria-expanded', 'false');
+      }
     });
 
     var opts = dock.querySelectorAll('.skin-opt');
