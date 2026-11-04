@@ -18,7 +18,7 @@
 - DEMO：<https://demo.ozero.top>
 
 <div align=center>
-<img src="https://ozero.top/media/2026/11/6aeb6e5bf065a4.56020500.png" width="1920" height="1386"> 
+<img src="https://ozero.top/media/2026/11/6aeb7071ec7020.63173453.png" width="880" height="587"> 
 </div>
 
 ## ✨ 特性
