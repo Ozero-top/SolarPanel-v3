@@ -1,5 +1,21 @@
+# 版本库
 .git
+.gitignore
+.dockerignore
+
+# 运行时数据 / 本地 Docker 测试数据（含 sqlite 库与 uploads，勿进构建上下文）
 data
-presets
+.docker-test-data
+
+# 构建产物与发布附件
+dist
+*.zip
 *.tar
 *.log
+
+# 文档、扩展源码与部署示例（服务端镜像构建不需要）
+docs
+*.md
+clipper-extension
+presets
+docker-compose.yml
