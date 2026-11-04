@@ -26,12 +26,13 @@
 - **零依赖单二进制** — Go + 纯 Go SQLite（`modernc.org/sqlite`），无 CGO、无外部数据库；三架构镜像约 14MB
 - **空库启动** — 首次启动只建表、写默认设置与管理账号，不注入演示内容；「恢复初始状态」同样只清数据
 - **两级分组导航** — 父分组折叠、子分组缩进；搜索按「卡片 → 子分组 → 父分组」三级命中
-- **十一套主题** — 液态玻璃（默认）/ Tab标签页 / 柔和浮雕 / Soft 小浮雕 / 工程蓝图 / 清透极简 / 动态极光 / IRIS 深空 / 铅笔手绘 / 复古怀旧 / 企业简洁 / 新野兽派；明暗模式、卡片样式与圆角留白独立配置
+- **十一套主题** — 液态玻璃（默认）/ Tab标签页 / 柔和浮雕 / Soft 小浮雕 / 工程蓝图 / 动态极光 / IRIS 深空 / 铅笔手绘 / 复古怀旧 / 企业简洁 / 新野兽派；明暗模式、卡片样式与圆角留白独立配置
+- **后端主题** — 后台登录页与控制台使用独立配色（极光暗色 / 赛博霓虹 / 极简白），选择保存到服务端，换电脑或换浏览器保持一致
 - **热点新闻聚合** — 24 个内置源 + 自定义 RSS，支持勾选、排序与独立入口
-- **NAS 运行状态面板** — 主机名 / 内网 IP / CPU / 内存 / 存储池 / 网络 / 温度 / 容器；四种放置方式 + 近 10 分钟曲线 + 详情弹窗
+- **NAS 运行状态面板** — 主机名 / 内网 IP / CPU / 内存 / 存储池 / 网络 / 温度 / 容器；四种放置方式 + 近 10 分钟 / 1 小时 / 24 小时曲线 + 详情弹窗
 - **天气与壁纸** — 顶部时钟与天气；每日壁纸多源合并、失败重试、图库管理与上传
-- **内外网自动切换** — 卡片可同时配置公网与内网地址，按访问者网段自动选路，顶栏可手动切换
-- **字体与搜索** — 页面字体与时钟/天气字体各 12 款开源字体；多引擎切换、搜索历史与常用搜索、`/` 或 `Ctrl+K` 聚焦
+- **内外网自动切换** — 卡片可同时配置公网与内网地址，按访问者网段自动选路，右下角快捷菜单可手动切换
+- **字体与搜索** — 页面字体与时钟/天气字体各 18 款开源字体；多引擎切换、搜索历史与常用搜索、`/` 或 `Ctrl+K` 聚焦
 - **卡片与图标** — 图标上传、favicon 自动抓取、标题与描述自动获取；右键菜单可快速编辑或删除
 - **键盘快捷键** — `t` 深浅色，`n` 新闻，`b` / `h` 导航站，`g` 分组目录，`?` 帮助，`Esc` 逐级退出
 - **剪藏（Clipper）** — 扩展 / iOS 快捷指令 / Android PWA 分享 / 网页入口共用 `/api/v1/clips`；服务端抓取标题、图标与封面，支持正文快照、全文检索、PDF 文本快照、AI 摘要与自动标签、整页截图、标签与访问令牌
@@ -185,8 +186,8 @@ SolarPanel/
 │   └── release.ps1              # 一键发版
 ├── frontend/                    # 前端源码（embed 进二进制）
 │   ├── themes.json              # 主题唯一事实源
-│   ├── index.html / admin.html / login.html
-│   ├── clip.html / clip-read.html / offline.html / manifest.json / sw.js
+│   ├── index.html / admin.html / admin-classic.html / login.html
+│   ├── clip.html / clips.html / clip-read.html / offline.html / manifest.json / sw.js
 │   ├── uploads/weather/         # 预置天气壁纸
 │   └── assets/{css,js}/         # common、index、themes、admin、clip 等
 ├── internal/
@@ -212,7 +213,7 @@ SolarPanel/
 - **表**：
   - 导航与系统：`users` · `settings` · `item_groups` · `items` · `custom_feeds` · `audit_logs` · `schema_versions` · `rate_limits` · `trusted_devices`
   - 剪藏：`api_tokens`（`token_plain` 明文便于再复制，校验用 `token_hash`）· `clip_requests`（24 小时幂等）· `clip_contents`（正文快照，含 `summary` / `auto_tags` / `screenshot_path`）· `item_tags` · `clip_fts`（FTS5 虚表）
-- **迁移**：`schema_versions` 记录已应用版本，当前 v1–v8；新增条目追加到末尾，`Version` 严格递增且不得修改历史项
+- **迁移**：`schema_versions` 记录已应用版本，当前 v1–v10；新增条目追加到末尾，`Version` 严格递增且不得修改历史项
 - **全文索引**：`clip_fts` 优先 trigram（中文可用），不支持时回退 `unicode61`；`EnsureClipFTS()` 启动时比对并重建；检索词少于 3 个字符退回 `LIKE`
 - **旧库兼容**：`ensureColumns()` 按 `PRAGMA table_info` 补齐缺失列，避免 `no such column` 直接 500
 - **启动自愈**：`BackfillURLKeys()` 补算查重键、`EnsureClipFTS()` 校验索引、孤儿分组重置为顶级
@@ -221,7 +222,7 @@ SolarPanel/
 
 ## 🎨 主题定制
 
-主题唯一事实源为 `frontend/themes.json`，当前十二套：`liquid-glass`（默认）、`wetab`（Tab标签页）、`soft`、`soft-mini`（Soft 小浮雕）、`blueprint`、`aurora`、`iris`、`sketch-style`、`retro-vintage`、`corporate-clean`、`neo-brutalist`。
+主题唯一事实源为 `frontend/themes.json`，当前十一套：`liquid-glass`（默认）、`wetab`（Tab标签页）、`soft`、`soft-mini`（Soft 小浮雕）、`blueprint`、`aurora`、`iris`、`sketch-style`、`retro-vintage`、`corporate-clean`、`neo-brutalist`。
 
 ```json
 {
@@ -262,8 +263,12 @@ CORS 允许 `*`，`OPTIONS` 直接返回 204；IP 限流 120/min，Bearer 另有
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | POST | `/api/v1/clips` | 新建剪藏；`url` 必填，可选 `title` / `note` / `group_id` / `capture` / `force` / `client_id` |
+| GET | `/api/v1/clips` | 剪藏列表（筛选 / 排序 / 分页） |
+| PATCH | `/api/v1/clips/{id}` | 标记已读 / 收藏（仅本人或管理员） |
 | DELETE | `/api/v1/clips` | 撤销剪藏（`{"id":N}`），仅本人或管理员 |
 | GET | `/api/v1/clips/search?q=&limit=&offset=` | 正文快照全文检索 |
+| GET | `/api/v1/clips/export` | 按当前筛选导出 ZIP（逐条 Markdown + `clips.csv`） |
+| GET | `/api/v1/clips/duplicates` | 重复链接分组列表 |
 | GET | `/api/v1/clips/{id}` | 卡片详情 + 快照 + 标签 |
 | POST | `/api/v1/clips/{id}/refetch` | 重新抓取正文 |
 | POST | `/api/v1/clips/{id}/screenshot` | 上传整页截图（≤15MB） |
@@ -292,8 +297,8 @@ CORS 允许 `*`，`OPTIONS` 直接返回 204；IP 限流 120/min，Bearer 另有
 | 路径 | 说明 |
 |---|---|
 | `GET /` | 主页 |
-| `GET /login.html` · `GET /admin.html` | 登录页 / 后台页（按登录态互相重定向） |
-| `GET /clip` · `GET /clip-share` | 剪藏网页入口 / Android PWA 分享目标 |
+| `GET /login.html` · `GET /admin.html` · `GET /admin-classic.html` | 登录页 / 控制台 / 经典后台（按登录态互相重定向） |
+| `GET /clip` · `GET /clips` · `GET /clip-share` | 剪藏网页入口 / 剪藏库（需登录） / Android PWA 分享目标 |
 | `GET /read/{id}` | 正文快照阅读页（需登录） |
 | `/uploads/*` | 用户上传目录（CSP `sandbox` 限制脚本） |
 | 其他路径 | embed 静态资源兜底，后台与登录页保持登录保护 |
@@ -302,7 +307,7 @@ CORS 允许 `*`，`OPTIONS` 直接返回 204；IP 限流 120/min，Bearer 另有
 
 | 模块 | 能力 |
 |---|---|
-| **站点设置** | 六个分区：站点信息、外观与卡片（主题 / 明暗 / 字体 / 壁纸）、导航与搜索、访问控制、热点新闻、NAS 监控 |
+| **站点设置** | 五个分区：站点信息（含访问控制）、外观与卡片（主题 / 明暗 / 字体 / 壁纸 / 卡片透明度 / 卡片图标大小）、导航与搜索、热点新闻、NAS 监控 |
 | **卡片** | CRUD、拖拽排序、显隐、图标上传或自动抓取、标题自动获取、标签维护（≤20 个） |
 | **分组** | 两级分组 CRUD、排序、显隐、图标与描述；页面底部为浏览器书签导入 |
 | **账号** | 修改密码、TOTP 双因子、受信设备；管理员可增删用户与改角色 |
@@ -342,7 +347,7 @@ CORS 允许 `*`，`OPTIONS` 直接返回 204；IP 限流 120/min，Bearer 另有
 
 ## 🧲 浏览器扩展（剪藏）
 
-源码位于 `clipper-extension/`（MV3，仅申请 `activeTab` / `scripting` / `contextMenus` / `storage`），打包产物在 [Releases](https://github.com/Ozero-top/SolarPanel-v3/releases/latest)（`solarpanel-clipper-v1.0.0.zip` 与 `SHA256SUMS.txt`），也可运行 `node scripts/build-clipper.js` 生成到 `dist/`。
+源码位于 `clipper-extension/`（MV3，仅申请 `activeTab` / `scripting` / `contextMenus` / `storage`），打包产物在 [Releases](https://github.com/Ozero-top/SolarPanel-v3/releases/latest)（`solarpanel-clipper-v1.0.10.zip` 与 `SHA256SUMS.txt`），也可运行 `node scripts/build-clipper.js` 生成到 `dist/`。
 
 **安装**：解压 zip 到固定目录 → 打开 `chrome://extensions` 或 `edge://extensions` → 开启「开发者模式」→「加载已解压的扩展程序」。
 
