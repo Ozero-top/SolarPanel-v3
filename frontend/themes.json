@@ -1385,6 +1385,7 @@
     },
     "extra_css": [
       "[data-style='wetab'] .style-fx::before,\n[data-style='wetab'] .style-fx::after { content: none !important; animation: none !important; }",
+      "/* 触屏翻页手势接管边界滚动：禁止安卓 Chrome 在顶部下滑时触发下拉刷新 / 链式滚动 */\n:root[data-style='wetab'] { overscroll-behavior-y: contain; }",
       ":root[data-style='wetab'] body:not(.has-wallpaper) .bg-layer { background: radial-gradient(110% 80% at 12% 8%, #2b3f7a 0%, transparent 58%), radial-gradient(110% 80% at 92% 16%, #6a3f8f 0%, transparent 60%), radial-gradient(120% 90% at 50% 112%, #12352f 0%, transparent 58%), linear-gradient(160deg, #0f1424 0%, #0a0d18 100%); }",
       ":root[data-theme='light'][data-style='wetab'] body:not(.has-wallpaper) .bg-layer { background: radial-gradient(110% 80% at 12% 8%, #e6dcff 0%, transparent 58%), radial-gradient(110% 80% at 92% 16%, #ffe3f2 0%, transparent 60%), radial-gradient(120% 90% at 50% 112%, #dcecff 0%, transparent 58%), linear-gradient(160deg, #f7f3ff 0%, #eef4ff 55%, #fff0f8 100%); }",
       ":root[data-style='wetab'] .page { max-width: var(--wetab-content-width, var(--content-max, 1200px)); margin: 0 auto; padding: 0 28px 168px; }",

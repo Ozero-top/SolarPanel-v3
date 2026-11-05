@@ -1844,6 +1844,53 @@ function initWetabRail() {
     flushWheel();
   }, { passive: false });
 
+  // 触屏滑动翻页：手机没有 wheel 事件，用竖向滑动镜像滚轮逻辑。
+  // 页面未滚到边界时交给原生滚动（当前分组内自由浏览）；
+  // 到达顶 / 底后继续向外滑才累计翻页量，过阈值走一档，避免和内容滚动打架。
+  let touchY = null;
+  let touchAcc = 0;
+  let touchLock = 0;
+  const TOUCH_STEP = 72;      // 界外滑动多少像素走一档
+  const TOUCH_COOLDOWN = 320; // 连续两档的最小间隔
+
+  document.addEventListener('touchstart', (e) => {
+    if (!wetabRailActive() || e.touches.length !== 1) { touchY = null; return; }
+    const wrap = document.getElementById('groupsWrap');
+    if (!wrap || wrap.hidden) { touchY = null; return; } // 新闻视图不切换分组
+    if (e.target && e.target.closest && e.target.closest('.modal, .wetab-prefs')) { touchY = null; return; }
+    touchY = e.touches[0].clientY;
+    touchAcc = 0;
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (touchY === null || !wetabRailActive()) return;
+    if (e.touches.length !== 1) { touchY = null; touchAcc = 0; return; }
+    if (document.querySelector('.sort-drag, .dock-drag')) { touchAcc = 0; return; } // 卡片 / Dock 拖拽中不翻页
+    const y = e.touches[0].clientY;
+    const d = touchY - y; // >0 上滑 → 下一组，<0 下滑 → 上一组
+    touchY = y;
+    const maxTop = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    const atTop = window.scrollY <= 0;
+    const atBottom = window.scrollY >= maxTop - 1;
+    // 只在滚到边界后继续向界外滑时累计翻页量；界内滑动完全交给原生滚动
+    if ((d > 0 && !atBottom) || (d < 0 && !atTop)) { touchAcc = 0; return; }
+    if ((touchAcc > 0 && d < 0) || (touchAcc < 0 && d > 0)) touchAcc = 0;
+    touchAcc += d;
+    const now = Date.now();
+    if (now - touchLock < TOUCH_COOLDOWN) return;
+    if (Math.abs(touchAcc) < TOUCH_STEP) return;
+    const dir = touchAcc > 0 ? 1 : -1;
+    touchAcc = 0;
+    if (wetabStepGroup(dir)) {
+      touchLock = now;
+      wetabRailShow(true);
+    }
+  }, { passive: true });
+
+  const touchSwipeReset = () => { touchY = null; touchAcc = 0; };
+  document.addEventListener('touchend', touchSwipeReset, { passive: true });
+  document.addEventListener('touchcancel', touchSwipeReset, { passive: true });
+
   // 手动拖动滚动条 / 页面自身滚动后反算当前档位，避免索引滞后导致“往回跳”
   let syncTimer = null;
   window.addEventListener('scroll', () => {
