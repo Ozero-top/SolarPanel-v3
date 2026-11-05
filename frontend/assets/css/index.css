@@ -2493,6 +2493,12 @@ kbd {
   margin-right: 7px;
   font-size: 0.92em;
 }
+/* 线性图标（sp:）跟随字号与主题色 */
+.group-head h2 .g-title-icon .sp-li { width: 1em; height: 1em; vertical-align: -0.12em; }
+.ntab-ic .sp-li { width: 18px; height: 18px; vertical-align: middle; }
+.nm-face .sp-li { width: 22px; height: 22px; }
+.nm-item.active .nm-face .sp-li { color: #fff; }
+.gn-icon .sp-li { width: 15px; height: 15px; vertical-align: -2px; }
 
 /* 侧边目录：有图标时替代色点 */
 .gn-icon {

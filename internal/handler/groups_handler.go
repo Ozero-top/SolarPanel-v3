@@ -17,6 +17,20 @@ func sanitizeGroupIcon(s string) string {
 		}
 		return r
 	}, s)
+	// 线性图标：sp:<id>，id 仅允许小写字母、数字与连字符，长度放宽到 48
+	if strings.HasPrefix(s, "sp:") {
+		var b strings.Builder
+		for _, r := range s[3:] {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+				b.WriteRune(r)
+			}
+		}
+		id := b.String()
+		if len(id) > 48 {
+			id = id[:48]
+		}
+		return "sp:" + id
+	}
 	if runes := []rune(s); len(runes) > 8 {
 		s = string(runes[:8])
 	}

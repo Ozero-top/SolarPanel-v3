@@ -1518,6 +1518,41 @@ tr.drag-over-bottom td {
   margin-bottom: 12px;
 }
 
+/* 线性图标 / Emoji 切换 */
+.gic-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 12px;
+}
+.gic-mode-btn {
+  padding: 4px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--accent);
+  background: var(--accent-weak, rgba(92, 124, 250, 0.12));
+  border: 1px solid var(--accent);
+  transition: background 180ms var(--ease), color 180ms var(--ease);
+}
+.gic-mode-btn:hover {
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+}
+.gic-svg {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+}
+.gic-svg .sp-li { width: 100%; height: 100%; }
+.gic-item.active .gic-svg { color: var(--accent); }
+.g-icon-pick .sp-li { width: 22px; height: 22px; }
+.g-table-icon .sp-li { width: 16px; height: 16px; vertical-align: -3px; }
+
 /* 分类内容区 */
 #gicBody {
   display: flex;

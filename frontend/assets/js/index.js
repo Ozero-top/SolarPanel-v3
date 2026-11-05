@@ -824,7 +824,7 @@ function renderGroupCard(container, g, styleApp, idx, skipIntro, isChild, stagge
   if (g.icon) {
     const ic = document.createElement('span');
     ic.className = 'g-title-icon';
-    ic.textContent = g.icon;
+    ic.innerHTML = spGroupIconHtml(g.icon);
     h2.appendChild(ic);
   }
   h2.appendChild(document.createTextNode(g.title));
@@ -1048,7 +1048,7 @@ function renderGroups() {
         const ph = document.createElement('div');
         ph.className = 'group-parent-head glass';
         const h = document.createElement('h3');
-        h.textContent = (tg.icon ? tg.icon + ' ' : '') + tg.title;
+        h.innerHTML = (tg.icon ? '<span class="gn-icon">' + spGroupIconHtml(tg.icon) + '</span> ' : '') + esc(tg.title);
         ph.appendChild(h);
         if (tg.description) {
           const d = document.createElement('span');
@@ -1228,7 +1228,13 @@ function renderGroupNav() {
 
     const a = document.createElement('a');
     a.href = '#group-' + g.id;
-    if (g.icon) a.appendChild(document.createTextNode(g.icon + ' '));
+    if (g.icon) {
+      const gl = document.createElement('span');
+      gl.className = 'gn-icon';
+      gl.innerHTML = spGroupIconHtml(g.icon);
+      a.appendChild(gl);
+      a.appendChild(document.createTextNode(' '));
+    }
     a.appendChild(document.createTextNode(g.title));
     // 点击一级顶级 → 切换主内容区只渲染该顶级下的子分组 section
     a.onclick = (e) => {
@@ -1277,7 +1283,13 @@ function renderGroupNav() {
         if (k.id === state.activeChildId) subLi.classList.add('active-child');
         const subA = document.createElement('a');
         subA.href = '#group-' + k.id;
-        if (k.icon) subA.appendChild(document.createTextNode(k.icon + ' '));
+        if (k.icon) {
+          const gl = document.createElement('span');
+          gl.className = 'gn-icon';
+          gl.innerHTML = spGroupIconHtml(k.icon);
+          subA.appendChild(gl);
+          subA.appendChild(document.createTextNode(' '));
+        }
         subA.appendChild(document.createTextNode(k.title));
         // 点击二级 → 联动 activeTopId + 定位主内容区
         subA.onclick = (e) => {
@@ -1361,7 +1373,7 @@ function renderGroupsNavbar() {
     btn.type = 'button';
     const ic = document.createElement('span');
     ic.className = 'ntab-ic';
-    ic.textContent = g.icon || '📁';
+    ic.innerHTML = spGroupIconHtml(g.icon || '📁');
     const lb = document.createElement('span');
     lb.className = 'ntab-lb';
     lb.textContent = g.title;
@@ -1393,7 +1405,7 @@ function renderGroupsNavbar() {
       item.setAttribute('aria-label', g.title);
       const face = document.createElement('span');
       face.className = 'nm-face';
-      face.textContent = g.icon || '🗂️';
+      face.innerHTML = spGroupIconHtml(g.icon || '🗂️');
       item.appendChild(face);
       item.onclick = () => {
         state.navActiveGroupIdx = vIdx;
@@ -3851,7 +3863,7 @@ function openQuickAddCard(groupId, item) {
       return;
     }
     const og = document.createElement('optgroup');
-    og.label = (t.icon ? t.icon + ' ' : '') + t.title;
+    og.label = (t.icon ? spGroupIconText(t.icon) + ' ' : '') + t.title;
     og.appendChild(mkOpt(t, false));
     kids.forEach(k => og.appendChild(mkOpt(k, true)));
     groupSel.appendChild(og);

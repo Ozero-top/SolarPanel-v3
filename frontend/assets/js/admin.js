@@ -390,7 +390,7 @@ function buildGroupOptionNodes() {
       return;
     }
     const og = document.createElement('optgroup');
-    og.label = (t.icon ? t.icon + ' ' : '') + t.title;
+    og.label = (t.icon ? spGroupIconText(t.icon) + ' ' : '') + t.title;
     og.appendChild(mkOpt(t, false));       // 直属该一级分组的卡片
     kids.forEach(k => og.appendChild(mkOpt(k, true)));
     nodes.push(og);
@@ -431,7 +431,7 @@ function syncGroupLevel(currentParentId) {
 
   // 填充 parent 下拉（只列一级分组）
   const tops = (state.groups || []).filter(g => (g.parent_id || 0) === 0);
-  parentSel.innerHTML = tops.map(t => `<option value="${Number(t.id)}">${esc(t.icon || '')} ${esc(t.title)}</option>`).join('');
+  parentSel.innerHTML = tops.map(t => `<option value="${Number(t.id)}">${esc(spGroupIconText(t.icon) || '')} ${esc(t.title)}</option>`).join('');
   if (pid !== 0) parentSel.value = pid;
 }
 
@@ -635,7 +635,7 @@ function renderGroupsTable() {
       '<td class="drag-cell"><span class="drag-handle" title="拖动调整顺序">⠿</span></td>' +
       '<td><span class="g-table-name' + (isChild ? ' is-child' : '') + '">' +
         (isChild ? '<span class="g-level-tag">二级</span>' : '') +
-        (g.icon ? '<span class="g-table-icon">' + esc(g.icon) + '</span>' : '') +
+        (g.icon ? '<span class="g-table-icon">' + spGroupIconHtml(g.icon) + '</span>' : '') +
         '<span>' + esc(g.title) + '</span>' +
         (foldable ? '<button type="button" class="g-fold' + (open ? ' open' : '') +
           '" data-fold="' + g.id + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
@@ -775,15 +775,8 @@ function bindGroups() {
 function setGroupIconValue(v) {
   document.getElementById('g_icon').value = v || '';
   const btn = document.getElementById('gIconPick');
-  btn.textContent = '';
-  if (v) {
-    btn.appendChild(document.createTextNode(v));
-  } else {
-    const ph = document.createElement('span');
-    ph.className = 'g-icon-placeholder';
-    ph.textContent = '图标';
-    btn.appendChild(ph);
-  }
+  btn.innerHTML = v ? spGroupIconHtml(v) : '<span class="g-icon-placeholder">图标</span>';
+  btn.title = v ? (spIsLineIcon(v) ? '线性图标' : v) : '选择分组图标';
 }
 
 function bindGroupIconPicker() {
@@ -793,8 +786,14 @@ function bindGroupIconPicker() {
   const body = document.getElementById('gicBody');
   const search = document.getElementById('gicSearch');
   let currentKw = '';
+  let mode = 'emoji';
+  const modeBtn = document.getElementById('gicModeToggle');
 
-  /* 构建一个图标按钮（图标 + 短名，短名永不换行） */
+  const syncModeBtn = () => {
+    modeBtn.textContent = mode === 'line' ? '切换 Emoji 图标' : '切换线性图标';
+  };
+
+  /* 构建一个 emoji 图标按钮（图标 + 短名，短名永不换行） */
   const buildItem = (o, current) => {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -815,36 +814,75 @@ function bindGroupIconPicker() {
     return btn;
   };
 
+  /* 构建一个线性图标按钮（SVG + 短名） */
+  const buildLineItem = (o, current) => {
+    const value = 'sp:' + o.i;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'gic-item' + (value === current ? ' active' : '');
+    const ic = document.createElement('span');
+    ic.className = 'gic-svg';
+    ic.innerHTML = spLineIconSvg(o.i, 'sp-li');
+    const nm = document.createElement('span');
+    nm.className = 'gic-name';
+    nm.textContent = o.n;
+    btn.appendChild(ic);
+    btn.appendChild(nm);
+    btn.title = o.n + (o.k ? ' ' + o.k : '');
+    btn.onclick = () => {
+      setGroupIconValue(value);
+      modal.classList.remove('show');
+    };
+    return btn;
+  };
+
+  /* 追加一个分类区块，返回该分类实际渲染数量 */
+  const appendCat = (ci, label, list, builder, current) => {
+    if (!list.length) return 0;
+    const sec = document.createElement('section');
+    sec.className = 'gic-cat';
+    sec.dataset.ci = ci;
+    const head = document.createElement('div');
+    head.className = 'gic-cat-head';
+    const bar = document.createElement('span');
+    bar.className = 'gic-cat-bar';
+    head.appendChild(bar);
+    head.appendChild(document.createTextNode(label));
+    const grid = document.createElement('div');
+    grid.className = 'gic-cat-grid';
+    list.forEach(o => grid.appendChild(builder(o, current)));
+    sec.appendChild(head);
+    sec.appendChild(grid);
+    body.appendChild(sec);
+    return list.length;
+  };
+
   /* 按分类渲染（搜索时仅保留命中分类，分组结构不变） */
   const renderBody = () => {
     const current = document.getElementById('g_icon').value;
     body.innerHTML = '';
     let total = 0;
-    GROUP_ICON_CATS.forEach((cat, ci) => {
+    if (mode === 'line') {
       const list = currentKw
-        ? cat.list.filter(o =>
+        ? SP_LINE_ICONS.filter(o =>
             o.n.toLowerCase().includes(currentKw) ||
             o.k.toLowerCase().includes(currentKw) ||
             o.i.includes(currentKw))
-        : cat.list;
-      if (!list.length) return;
-      total += list.length;
-      const sec = document.createElement('section');
-      sec.className = 'gic-cat';
-      sec.dataset.ci = ci;
-      const head = document.createElement('div');
-      head.className = 'gic-cat-head';
-      const bar = document.createElement('span');
-      bar.className = 'gic-cat-bar';
-      head.appendChild(bar);
-      head.appendChild(document.createTextNode(cat.c));
-      const grid = document.createElement('div');
-      grid.className = 'gic-cat-grid';
-      list.forEach(o => grid.appendChild(buildItem(o, current)));
-      sec.appendChild(head);
-      sec.appendChild(grid);
-      body.appendChild(sec);
-    });
+        : SP_LINE_ICONS;
+      SP_LINE_ICON_CATS.forEach((cat, ci) => {
+        total += appendCat(ci, cat, list.filter(o => o.c === cat), buildLineItem, current);
+      });
+    } else {
+      GROUP_ICON_CATS.forEach((cat, ci) => {
+        const list = currentKw
+          ? cat.list.filter(o =>
+              o.n.toLowerCase().includes(currentKw) ||
+              o.k.toLowerCase().includes(currentKw) ||
+              o.i.includes(currentKw))
+          : cat.list;
+        total += appendCat(ci, cat.c, list, buildItem, current);
+      });
+    }
     if (!total) {
       const empty = document.createElement('div');
       empty.className = 'gic-empty';
@@ -853,9 +891,18 @@ function bindGroupIconPicker() {
     }
   };
 
+  modeBtn.onclick = () => {
+    mode = mode === 'line' ? 'emoji' : 'line';
+    syncModeBtn();
+    renderBody();
+    box.scrollTop = 0;
+  };
+
   pickBtn.onclick = () => {
     search.value = '';
     currentKw = '';
+    mode = spIsLineIcon(document.getElementById('g_icon').value) ? 'line' : 'emoji';
+    syncModeBtn();
     renderBody();
     modal.classList.add('show');
     box.scrollTop = 0;
