@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="assets/css/common.css?v=dc014ca6">
   <link rel="stylesheet" href="assets/css/auth-admin.css?v=ce6193c1">
   <link rel="stylesheet" href="assets/css/themes.css?v=11cdc1c6">
-  <link rel="stylesheet" href="assets/css/console.css?v=e3e43cef">
+  <link rel="stylesheet" href="assets/css/console.css?v=fb90bb56">
 </head>
 <body class="admin-console" data-admin-skin="aurora">
   <script>(function(){try{var k=localStorage.getItem('sp_admin_skin');if(!k||['aurora','neon','element'].indexOf(k)<0)k='aurora';document.body.dataset.adminSkin=k;document.documentElement.dataset.theme=k==='element'?'light':'dark';document.documentElement.dataset.style='console';}catch(e){}})();</script>
@@ -136,13 +136,24 @@
         </div>
       </div>
 
-      <div class="dash-grid">
+      <div class="dash-grid dash-grid-4">
         <div class="dash-card span-2" id="dashAuditCard">
           <div class="dash-card-head">
             <div><h3>审计日志</h3><p>最近登录与操作记录</p></div>
             <button class="btn btn-sm" type="button" id="dashGotoAudit">查看全部</button>
           </div>
           <div class="audit-preview" id="auditPreviewList"></div>
+        </div>
+
+        <div class="dash-card" id="dashClipCard">
+          <div class="dash-card-head">
+            <div><h3>剪藏动态</h3><p>最近保存的网页与阅读状态</p></div>
+            <button class="btn btn-sm" type="button" id="dashGotoClips">剪藏库</button>
+          </div>
+          <div class="clip-stats" id="clipStats"></div>
+          <div class="clip-meters" id="clipMeters"></div>
+          <div class="clip-extra" id="clipExtra"></div>
+          <div class="recent-list" id="clipRecentList"></div>
         </div>
 
         <div class="dash-card">
@@ -152,6 +163,8 @@
             <button class="quick-btn" type="button" data-quick="group"><span>＋</span><b>新建分组</b><i>整理卡片分类</i></button>
             <button class="quick-btn" type="button" data-quick="clip"><span>⌸</span><b>剪藏与接入</b><i>扩展与令牌</i></button>
             <button class="quick-btn" type="button" data-quick="settings"><span>⚙</span><b>站点设置</b><i>外观与访问</i></button>
+            <button class="quick-btn" type="button" data-quick="backup"><span>⛁</span><b>系统备份</b><i>导入 / 导出配置</i></button>
+            <button class="quick-btn" type="button" data-quick="account"><span>◍</span><b>账号管理</b><i>用户与权限</i></button>
           </div>
         </div>
       </div>
@@ -1025,7 +1038,7 @@
         <div class="backup-row">
           <div class="backup-info">
             <b>默认分组</b>
-            <span>剪藏时未指定分组则进入该分组；选择「自动」时使用已有的「稍后读」，不存在则自动创建。</span>
+            <span>剪藏时未指定分组则进入该分组；选择「自动」时使用已有的「剪藏收纳箱」，不存在则自动创建。</span>
           </div>
           <div class="backup-row-actions">
             <select class="select" id="s_clip_default_group" style="width:auto;min-width:180px"></select>
@@ -1537,10 +1550,10 @@
   </div>
 
   <script src="assets/js/qrcode.min.js"></script>
-  <script src="assets/js/api.js?v=25865066"></script>
+  <script src="assets/js/api.js?v=26c78e94"></script>
   <script src="assets/js/group-icons.js?v=9802d869"></script>
-  <script src="assets/js/admin.js?v=4e96700b"></script>
-  <script src="assets/js/admin-console.js?v=c5cd0bdc"></script>
+  <script src="assets/js/admin.js?v=5009905e"></script>
+  <script src="assets/js/admin-console.js?v=c8b132ea"></script>
   <script src="assets/js/admin-ui.js?v=0218fafc"></script>
 </body>
 </html>

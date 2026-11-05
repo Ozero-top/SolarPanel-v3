@@ -22,6 +22,9 @@
   var OPEN_LABEL = { 1: '当前页打开', 2: '新窗口打开', 3: '弹层内嵌' };
   var ROLE_NAME = { admin: '管理员', editor: '编辑者', viewer: '只读', guest: '访客' };
 
+  var clipPreviewAt = 0;
+  var clipLoaded = false;
+
   var lastDonut = { list: [], total: 0 };
   var donutAnim = null;
 
@@ -198,6 +201,118 @@
         new MutationObserver(sync).observe(who, { childList: true, characterData: true, subtree: true });
       } catch (e) { /* 忽略 */ }
     }
+  }
+
+  /* ================= 剪藏动态 ================= */
+  function clipTime(s) {
+    var v = String(s || '').replace('T', ' ');
+    return v.length >= 16 ? v.slice(5, 16) : v;
+  }
+
+  function renderClips() {
+    var statsBox = $('clipStats');
+    var listBox = $('clipRecentList');
+    if (!statsBox || !listBox) return;
+    var metersBox = $('clipMeters');
+    var extraBox = $('clipExtra');
+    if (typeof API === 'undefined' || typeof API.get !== 'function') return;
+
+    var now = Date.now();
+    if (clipLoaded && now - clipPreviewAt < 30000) return;
+    clipPreviewAt = now;
+    if (!clipLoaded) statsBox.innerHTML = '<div class="dash-empty">正在读取剪藏…</div>';
+
+    API.get('/api/v1/clips?limit=5&sort=updated').then(function (data) {
+      clipLoaded = true;
+      var stats = (data && data.stats) || {};
+      var items = (data && data.items) || [];
+      var groups = (data && data.groups) || [];
+      var tags = (data && data.tags) || [];
+
+      var total = Number(stats.total || 0);
+      var unread = Number(stats.unread || 0);
+      var starred = Number(stats.starred || 0);
+      var snapshot = Number(stats.snapshot || 0);
+      var shot = Number(stats.screenshot || 0);
+      var read = Math.max(0, total - unread);
+
+      function tile(n, label, cls) {
+        return '<div class="clip-stat' + (cls ? ' ' + cls : '') + '"><b>' + n + '</b><span>' + label + '</span></div>';
+      }
+      statsBox.innerHTML =
+        tile(total, '全部') + tile(unread, '未读', 'unread') + tile(read, '已读') +
+        tile(starred, '收藏') + tile(snapshot, '快照') + tile(shot, '截图');
+
+      function pct(n) { return total ? Math.round((n / total) * 100) : 0; }
+      if (metersBox) {
+        metersBox.innerHTML =
+          '<div class="clip-meter"><div class="cm-head"><span>正文快照</span><span>' +
+            snapshot + '/' + total + ' · ' + pct(snapshot) + '%</span></div>' +
+            '<div class="cm-track"><i style="width:' + pct(snapshot) + '%"></i></div></div>' +
+          '<div class="clip-meter"><div class="cm-head"><span>整页截图</span><span>' +
+            shot + '/' + total + ' · ' + pct(shot) + '%</span></div>' +
+            '<div class="cm-track"><i style="width:' + pct(shot) + '%"></i></div></div>';
+      }
+
+      if (extraBox) {
+        if (!total) {
+          extraBox.innerHTML =
+            '<div class="clip-hint-title">还没有剪藏，接入方式：</div>' +
+            '<div class="clip-entry"><b>浏览器扩展</b><span>右键保存页面 / 链接 / 选中文本</span></div>' +
+            '<div class="clip-entry"><b>网页入口</b><span>打开 /clip 粘贴链接</span></div>' +
+            '<div class="clip-entry"><b>iOS 快捷指令</b><span>POST /api/v1/clips + 令牌</span></div>' +
+            '<div class="clip-entry"><b>Android 分享</b><span>添加到主屏幕后用分享面板</span></div>';
+        } else {
+          var html = '';
+          if (groups.length) {
+            var gTop = groups.slice(0, 3);
+            html += '<div class="clip-hint-title">主要分组</div><div class="clip-chips">' +
+              gTop.map(function (g) {
+                return '<span class="clip-chip">' + escapeHtml(g.title || '未分组') +
+                  '<b>' + Number(g.count || 0) + '</b></span>';
+              }).join('') + '</div>';
+          }
+          if (tags.length) {
+            var tTop = tags.slice(0, 6);
+            html += '<div class="clip-hint-title">热门标签</div><div class="clip-chips">' +
+              tTop.map(function (t) {
+                return '<span class="clip-chip">#' + escapeHtml(t.tag) +
+                  '<b>' + Number(t.count || 0) + '</b></span>';
+              }).join('') + '</div>';
+          }
+          extraBox.innerHTML = html;
+        }
+      }
+
+      if (!items.length) {
+        if (total) {
+          listBox.innerHTML = '<div class="dash-empty">暂无最近更新的剪藏</div>';
+        } else {
+          listBox.innerHTML = '';
+        }
+        return;
+      }
+      listBox.innerHTML = items.slice(0, 3).map(function (it) {
+        var isUnread = !it.read_at;
+        var title = it.title || it.url || '未命名剪藏';
+        return '<div class="recent-row">' +
+          '<span class="recent-ico' + (isUnread ? ' unread' : '') + '">' +
+            escapeHtml(String(title).trim().charAt(0).toUpperCase() || '·') + '</span>' +
+          '<div class="recent-main"><b title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</b>' +
+            '<span title="' + escapeHtml(it.url || '') + '">' +
+              escapeHtml(it.group || '未分组') + ' · ' + escapeHtml(clipTime(it.created_at)) + '</span></div>' +
+          '<span class="recent-tag' + (it.starred ? ' on' : '') + '">' +
+            (it.starred ? '收藏' : (isUnread ? '未读' : '已读')) + '</span>' +
+          '</div>';
+      }).join('');
+    }).catch(function (e) {
+      clipLoaded = true;
+      statsBox.innerHTML = '';
+      if (metersBox) metersBox.innerHTML = '';
+      if (extraBox) extraBox.innerHTML = '';
+      listBox.innerHTML = '<div class="dash-empty">剪藏读取失败：' +
+        escapeHtml((e && e.message) || '未知错误') + '</div>';
+    });
   }
 
   /* ================= 工作台数据 ================= */
@@ -492,7 +607,7 @@
     auditPreviewAt = now;
     box.dataset.loaded = '1';
     box.innerHTML = '<div class="dash-empty">正在读取审计日志…</div>';
-    API.get(API_BASE + 'audit.php?action=list&page=1&pagesize=6').then(function (data) {
+    API.get(API_BASE + 'audit.php?action=list&page=1&pagesize=20').then(function (data) {
       var list = (data && data.list) || [];
       if (!list.length) {
         box.innerHTML = '<div class="dash-empty">暂无审计记录</div>';
@@ -573,6 +688,7 @@
     renderOpenMethods(items);
     renderOverview(items, groups, hidden);
     renderRecent(items, groups);
+    renderClips();
     renderAuditPreview();
   }
 
@@ -609,6 +725,8 @@
 
   function reloadData() {
     auditPreviewAt = 0;
+    clipPreviewAt = 0;
+    clipLoaded = false;
     if (typeof loadGroups === 'function') loadGroups();
     if (typeof loadItems === 'function') loadItems();
     setTimeout(refreshDashboard, 80);
@@ -624,6 +742,16 @@
 
     var gotoAudit = $('dashGotoAudit');
     if (gotoAudit) gotoAudit.addEventListener('click', function () { goTab('audit'); });
+
+    var gotoClips = $('dashGotoClips');
+    if (gotoClips) gotoClips.addEventListener('click', function () {
+      window.open('/clips', '_blank', 'noopener');
+    });
+
+    // 系统备份仅管理员可用，其他角色隐藏入口
+    var quickBackup = document.querySelector('.quick-btn[data-quick="backup"]');
+    var st = getState();
+    if (quickBackup && (!st || st.role !== 'admin')) quickBackup.hidden = true;
 
     var quicks = document.querySelectorAll('.quick-btn');
     for (var i = 0; i < quicks.length; i++) {

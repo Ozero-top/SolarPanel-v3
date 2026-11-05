@@ -181,7 +181,7 @@ func (h *SettingsHandler) Save(w http.ResponseWriter, r *http.Request) {
 			}
 			v = strconv.Itoa(n)
 		}
-		// 剪藏默认分组：0 表示自动创建「稍后读」，其余必须是可见分组
+		// 剪藏默认分组：0 表示自动创建「剪藏收纳箱」，其余必须是可见分组
 		if k == "clip_default_group" {
 			n, err := strconv.Atoi(v)
 			if err != nil {

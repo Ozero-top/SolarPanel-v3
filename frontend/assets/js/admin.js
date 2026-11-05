@@ -3824,7 +3824,7 @@ function syncClipAiFields() {
 
 function buildClipGroupOptions() {
   const sel = document.getElementById('s_clip_default_group');
-  sel.innerHTML = '<option value="0">自动（稍后读）</option>';
+  sel.innerHTML = '<option value="0">自动（剪藏收纳箱）</option>';
   const groups = state.groups || [];
   groups.filter(g => !g.parent_id).forEach(top => {
     const opt = document.createElement('option');

@@ -97,7 +97,7 @@ async function loadGroups() {
     if (!res.ok) return;
     const groups = unwrap(await res.json());
     const sel = $('defaultGroup');
-    sel.innerHTML = '<option value="0">默认分组（稍后读）</option>';
+    sel.innerHTML = '<option value="0">默认分组（剪藏收纳箱）</option>';
     groups.filter((g) => !g.parent_id).forEach((top) => {
       const opt = document.createElement('option');
       opt.value = String(top.id);

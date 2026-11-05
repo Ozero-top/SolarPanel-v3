@@ -56,6 +56,20 @@ var migrations = []Migration{
 
 	// v10: 剪藏库 — 卡片剪藏标记（来源 / 已读 / 收藏）+ 截图元数据
 	{Version: 10, Name: "clip: library markers + screenshot meta", Fn: migrateV10ClipLibrary},
+
+	// v11: 剪藏收件箱分组改名（稍后读 → 剪藏收纳箱）
+	{Version: 11, Name: "clip: inbox group renamed", Fn: migrateV11ClipInboxRename},
+}
+
+// migrateV11ClipInboxRename 把自动创建的剪藏收件箱分组从「稍后读」改为「剪藏收纳箱」。
+// 只匹配 description=剪藏收件箱 的自动分组，用户自建同名分组不受影响。
+func migrateV11ClipInboxRename() error {
+	if DB == nil {
+		return nil
+	}
+	_, err := DB.Exec(`UPDATE item_groups SET title = '剪藏收纳箱'
+		WHERE title = '稍后读' AND description = '剪藏收件箱'`)
+	return err
 }
 
 // migrateV10ClipLibrary 为剪藏库补基础字段：

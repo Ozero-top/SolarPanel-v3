@@ -941,6 +941,15 @@ body.admin-console .toast {
 
 /* 审计日志预览 */
 .audit-preview { display: flex; flex-direction: column; }
+/* 宽屏时审计日志改为两列，9 条记录不增加卡片高度 */
+@media (min-width: 1101px) {
+  .audit-preview {
+    display: block;
+    column-count: 2;
+    column-gap: 24px;
+  }
+  .audit-preview .audit-row { break-inside: avoid; }
+}
 .audit-row {
   display: flex;
   align-items: center;
@@ -1446,4 +1455,135 @@ body.login-body[data-admin-skin] .login-card {
   background: var(--surface-2);
   border: 1px solid var(--edge);
   box-shadow: var(--raised-lg);
+}
+
+/* ============================================================
+   工作台：审计日志 + 剪藏动态 + 快捷操作（四列一行）
+   ============================================================ */
+.dash-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.clip-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.clip-stat {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--edge);
+}
+.clip-stat b {
+  display: block;
+  font-size: 18px;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.clip-stat span {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.clip-stat.unread b { color: var(--accent); }
+
+/* 覆盖率条 */
+.clip-meters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.clip-meter .cm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.clip-meter .cm-track {
+  height: 4px;
+  margin-top: 4px;
+  border-radius: 99px;
+  background: var(--edge-weak);
+  overflow: hidden;
+}
+.clip-meter .cm-track i {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--accent);
+  transition: width 500ms ease;
+}
+
+/* 分组 / 标签 / 接入方式 */
+.clip-extra { margin-bottom: 8px; }
+.clip-hint-title {
+  margin: 0 0 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.clip-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+.clip-chip {
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--edge);
+  background: var(--surface-2);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.clip-chip b {
+  margin-left: 4px;
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.clip-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.clip-entry b {
+  flex: 0 0 86px;
+  color: var(--text);
+  font-weight: 600;
+}
+.clip-entry span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-ico.unread {
+  background: var(--accent);
+  color: #fff;
+}
+.recent-tag.on {
+  color: var(--accent);
+  border-color: var(--accent-soft);
+  background: var(--accent-soft);
+}
+
+@media (max-width: 1100px) {
+  .dash-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* 单列时 20 条会撑高卡片，超出部分内部滚动 */
+  .audit-preview { max-height: 340px; overflow-y: auto; }
+}
+@media (max-width: 760px) {
+  .dash-grid-4 { grid-template-columns: 1fr; }
+  .dash-grid-4 .dash-card.span-2 { grid-column: auto; }
 }

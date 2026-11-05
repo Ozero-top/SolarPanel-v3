@@ -19,7 +19,7 @@ async function getConfig() {
     serverUrl: normalizeBase(cfg.serverUrl),
     token: String(cfg.token || '').trim(),
     defaultGroup: parseInt(cfg.defaultGroup || '0', 10) || 0,
-    defaultGroupName: cfg.defaultGroupName || '稍后读',
+    defaultGroupName: cfg.defaultGroupName || '剪藏收纳箱',
     snapshot: cfg.snapshot === undefined ? true : !!cfg.snapshot,
   };
 }

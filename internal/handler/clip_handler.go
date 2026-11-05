@@ -524,7 +524,7 @@ func findClipRequest(tokenID int, clientID string) (*ItemRow, bool) {
 	return it, true
 }
 
-// resolveClipGroup 分组优先级：显式 id → 显式名称 → 站点默认分组 → 自动创建「稍后读」
+// resolveClipGroup 分组优先级：显式 id → 显式名称 → 站点默认分组 → 自动创建「剪藏收纳箱」
 func resolveClipGroup(cfg *config.Config, id int, name string) (int, string, int, string) {
 	if id > 0 {
 		var title string
@@ -550,7 +550,7 @@ func resolveClipGroup(cfg *config.Config, id int, name string) (int, string, int
 		}
 	}
 
-	const inbox = "稍后读"
+	const inbox = "剪藏收纳箱"
 	var gid int
 	var title string
 	if err := db.DB.QueryRow("SELECT id, title FROM item_groups WHERE title = ? AND parent_id = 0 ORDER BY id ASC LIMIT 1", inbox).Scan(&gid, &title); err == nil {
