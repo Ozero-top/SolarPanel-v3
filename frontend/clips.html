@@ -7,7 +7,7 @@
 <title>剪藏库 · SolarPanel</title>
 <script>(function(){try{var d=document.documentElement;var s=localStorage.getItem('sp_theme');var t;if(s==='light'||s==='dark'){t=s}else{t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}d.dataset.theme=t;d.dataset.mode=s||'system';var st=localStorage.getItem('sp_style');if(st)d.dataset.style=st;}catch(e){}})();</script>
 <link rel="stylesheet" href="/assets/css/themes.css?v=11cdc1c6">
-<link rel="stylesheet" href="/assets/css/clips.css?v=f9648af1">
+<link rel="stylesheet" href="/assets/css/clips.css?v=d22d09a9">
 </head>
 <body>
 <div class="style-fx" aria-hidden="true"></div>
@@ -68,6 +68,9 @@
         </select>
         <button id="cl-export" class="cl-btn cl-tool-btn" type="button" title="按当前筛选导出 Markdown ZIP">导出</button>
         <button id="cl-dupes" class="cl-btn cl-tool-btn" type="button" title="扫描重复链接">查重</button>
+        <button id="cl-select-all" class="cl-btn cl-tool-btn" type="button" title="全选当前已加载的剪藏">全选</button>
+        <button id="cl-invert" class="cl-btn cl-tool-btn" type="button" title="反选当前已加载的剪藏">反选</button>
+        <button id="cl-del-selected" class="cl-btn cl-tool-btn danger" type="button" disabled title="删除选中的剪藏">删除(0)</button>
         <div class="cl-view" id="cl-view">
           <button data-view="grid" class="active" type="button" title="网格视图">▦</button>
           <button data-view="list" type="button" title="列表视图">☰</button>
@@ -102,7 +105,7 @@
   </div>
 </div>
 
-<script src="/assets/js/api.js?v=26c78e94"></script>
-<script src="/assets/js/clips.js?v=29a467e3"></script>
+<script src="/assets/js/api.js?v=9982292b"></script>
+<script src="/assets/js/clips.js?v=34244691"></script>
 </body>
 </html>

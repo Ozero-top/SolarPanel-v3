@@ -360,29 +360,59 @@ func (h *ClipHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		ID int `json:"id"`
+		ID  int   `json:"id"`
+		IDs []int `json:"ids"`
 	}
-	if err := BindJSON(r, &body); err != nil || body.ID <= 0 {
+	if err := BindJSON(r, &body); err != nil {
 		Fail(w, "参数错误")
 		return
 	}
-	var owner int
-	if err := db.DB.QueryRow("SELECT user_id FROM items WHERE id = ?", body.ID).Scan(&owner); err != nil {
-		Fail(w, "卡片不存在")
+	ids := body.IDs
+	if len(ids) == 0 && body.ID > 0 {
+		ids = []int{body.ID}
+	}
+	// 过滤非法 id，单次最多 200 条
+	valid := make([]int, 0, len(ids))
+	for _, id := range ids {
+		if id > 0 {
+			valid = append(valid, id)
+		}
+	}
+	if len(valid) == 0 {
+		Fail(w, "参数错误")
 		return
 	}
-	if p.Role != "admin" && owner != int(p.UID) {
-		Err(w, http.StatusForbidden, 1, "只能撤销自己剪藏的卡片")
+	if len(valid) > 200 {
+		Fail(w, "一次最多删除 200 条")
 		return
 	}
-	dropClipSnapshotWithFiles(h.cfg, body.ID)
-	deleteItemTags(body.ID)
-	if _, err := db.DB.Exec("DELETE FROM items WHERE id = ?", body.ID); err != nil {
-		Fail(w, "删除失败")
-		return
+
+	deleted := 0
+	failed := 0
+	for _, id := range valid {
+		var owner int
+		if err := db.DB.QueryRow("SELECT user_id FROM items WHERE id = ?", id).Scan(&owner); err != nil {
+			failed++
+			continue
+		}
+		if p.Role != "admin" && owner != int(p.UID) {
+			failed++
+			continue
+		}
+		dropClipSnapshotWithFiles(h.cfg, id)
+		deleteItemTags(id)
+		if _, err := db.DB.Exec("DELETE FROM items WHERE id = ?", id); err != nil {
+			failed++
+			continue
+		}
+		deleted++
+		auditClip(w, r, p, "undo", "success", id)
 	}
-	auditClip(w, r, p, "undo", "success", body.ID)
-	OK(w, map[string]any{"id": body.ID})
+	OK(w, map[string]any{
+		"id":      body.ID,
+		"deleted": deleted,
+		"failed":  failed,
+	})
 }
 
 // Preview POST /api/v1/preview：只抓元数据，不写库

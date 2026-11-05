@@ -15,6 +15,7 @@ const state = {
   limit: 24,
   total: 0,
   items: [],
+  selected: new Set(),
   loading: false,
 };
 
@@ -89,6 +90,11 @@ function init() {
   $('cl-more').addEventListener('click', () => load(false));
 
   $('cl-list').addEventListener('click', onListClick);
+  $('cl-list').addEventListener('change', onListChange);
+
+  $('cl-select-all').addEventListener('click', selectAll);
+  $('cl-invert').addEventListener('click', invertSelection);
+  $('cl-del-selected').addEventListener('click', deleteSelected);
 
   $('cl-export').addEventListener('click', exportClips);
   $('cl-dupes').addEventListener('click', openDupModal);
@@ -173,6 +179,8 @@ function applyView() {
 function reload() {
   state.offset = 0;
   state.items = [];
+  state.selected.clear();
+  syncSelection();
   $('cl-list').textContent = '';
   load(true);
 }
@@ -217,6 +225,7 @@ async function load(reset) {
     renderTags(data.tags || []);
 
     items.forEach((it) => $('cl-list').appendChild(card(it)));
+    syncSelection();
     $('cl-empty').classList.toggle('hidden', state.items.length > 0);
     $('cl-more').classList.toggle('hidden', state.items.length < state.total || items.length === 0);
     setStatus(items.length === 0 ? '' : ('已显示 ' + state.items.length + ' / ' + state.total + ' 条'), '');
@@ -310,6 +319,15 @@ function card(it) {
   const article = document.createElement('article');
   article.className = 'cl-card';
   article.dataset.id = String(it.id);
+
+  const check = document.createElement('input');
+  check.type = 'checkbox';
+  check.className = 'cl-check';
+  check.dataset.check = String(it.id);
+  check.checked = state.selected.has(it.id);
+  check.title = '选择此剪藏';
+  article.appendChild(check);
+  if (check.checked) article.classList.add('selected');
 
   const host = hostOf(it.url);
 
@@ -463,13 +481,83 @@ async function onListClick(e) {
       await API.request('/api/v1/clips', { method: 'DELETE', data: { id: id } });
       art.remove();
       state.items = state.items.filter((x) => x.id !== id);
+      state.selected.delete(id);
       state.total = Math.max(0, state.total - 1);
+      syncSelection();
       $('cl-empty').classList.toggle('hidden', state.items.length > 0);
       toast('已删除');
     } catch (err) {
       act.disabled = false;
       toast('删除失败：' + (err.message || '未知错误'));
     }
+  }
+}
+
+/** 勾选变化：同步选中集合与卡片状态 */
+function onListChange(e) {
+  const cb = e.target.closest('.cl-check');
+  if (!cb) return;
+  const id = parseInt(cb.dataset.check, 10);
+  if (!id) return;
+  if (cb.checked) state.selected.add(id);
+  else state.selected.delete(id);
+  const art = cb.closest('.cl-card');
+  if (art) art.classList.toggle('selected', cb.checked);
+  syncSelection();
+}
+
+/** 同步删除按钮文案/禁用态，并回写卡片勾选 */
+function syncSelection() {
+  const btn = $('cl-del-selected');
+  const n = state.selected.size;
+  if (btn) {
+    btn.textContent = '删除(' + n + ')';
+    btn.disabled = n === 0;
+  }
+  document.querySelectorAll('#cl-list .cl-card').forEach((art) => {
+    const id = parseInt(art.dataset.id, 10);
+    const on = state.selected.has(id);
+    const cb = art.querySelector('.cl-check');
+    if (cb && cb.checked !== on) cb.checked = on;
+    art.classList.toggle('selected', on);
+  });
+}
+
+/** 全选当前已加载的剪藏 */
+function selectAll() {
+  state.items.forEach((it) => state.selected.add(it.id));
+  syncSelection();
+}
+
+/** 反选当前已加载的剪藏 */
+function invertSelection() {
+  state.items.forEach((it) => {
+    if (state.selected.has(it.id)) state.selected.delete(it.id);
+    else state.selected.add(it.id);
+  });
+  syncSelection();
+}
+
+/** 批量删除选中的剪藏 */
+async function deleteSelected() {
+  const ids = Array.from(state.selected);
+  if (!ids.length) return;
+  if (!confirm('删除选中的 ' + ids.length + ' 条剪藏？对应的正文快照与截图也会一并删除。')) return;
+  const btn = $('cl-del-selected');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '删除中…';
+  }
+  try {
+    const res = await API.request('/api/v1/clips', { method: 'DELETE', data: { ids: ids } });
+    const deleted = (res && res.deleted) || 0;
+    const failed = (res && res.failed) || 0;
+    state.selected.clear();
+    toast('已删除 ' + deleted + ' 条' + (failed ? '，' + failed + ' 条失败' : ''));
+    reload();
+  } catch (err) {
+    toast('删除失败：' + (err.message || '未知错误'));
+    syncSelection();
   }
 }
 
