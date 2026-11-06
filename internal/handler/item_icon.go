@@ -70,7 +70,7 @@ func fetchFaviconPage(pageURL *url.URL) (string, *url.URL) {
 	// 出站目标即「获取站点图标 / 自动获取标题」功能本身，仅管理员与编辑者可调用；
 	// 已经过 scheme 白名单、回环 / 链路本地拦截、重定向复检，并在拨号阶段校验真实 IP
 	// （防 DNS 重绑定），因此属于预期内的受控请求，非可被访客利用的请求伪造。
-	resp, err := faviconClient().Do(req) // lgtm[go/request-forgery]
+	resp, err := faviconClient().Do(req)
 	if err != nil {
 		return "", nil
 	}
