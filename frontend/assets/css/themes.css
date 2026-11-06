@@ -3605,7 +3605,7 @@ body.has-wallpaper .style-fx {
 
 @keyframes wetab-pop-in { from { opacity: 0; transform: translateY(12px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
 
-@media (max-width: 1024px) { :root[data-style='wetab'] .navbar-tabs { display: none !important; } :root[data-style='wetab'] .wetab-rail-handle { display: none !important; } :root[data-style='wetab'] .page { padding: 0 16px 128px; } :root[data-style='wetab'] .float-tools { bottom: 108px; } :root[data-style='wetab'] .wetab-dock { bottom: 10px; max-width: 94vw; } }
+@media (max-width: 1024px) { :root[data-style='wetab'] .navbar-tabs { display: none !important; } :root[data-style='wetab'] .wetab-rail-handle { display: none !important; } :root[data-style='wetab'] .wetab-dock { display: none !important; } :root[data-style='wetab'] .page { padding: 0 16px 96px; } :root[data-style='wetab'] .float-tools { bottom: 108px; } }
 
 @media (max-width: 720px) { :root[data-style='wetab'] #heroWrap { position: static; padding: 0; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; -webkit-mask-image: none; mask-image: none; } }
 
