@@ -397,22 +397,6 @@ body.admin-console .cs-nav .tab.active {
 .cs-side-actions { display: flex; gap: 6px; }
 .cs-side-actions .btn { flex: 1; padding: 6px 8px; font-size: 12px; }
 .cs-ver { font-size: 11px; color: var(--text-muted); display: flex; gap: 4px; align-items: center; }
-.cs-ui-switch {
-  width: 100%;
-  padding: 7px 10px;
-  font-size: 12px;
-  color: var(--text-muted);
-  background: var(--surface-2);
-  border: 1px solid var(--edge);
-  border-radius: 9px;
-  cursor: pointer;
-  transition: color 0.18s ease, border-color 0.18s ease;
-}
-.cs-ui-switch:hover {
-  color: var(--text);
-  border-color: var(--accent);
-}
-.console-shell.collapsed .cs-ui-switch { display: none; }
 .console-shell.collapsed .cs-user-meta,
 .console-shell.collapsed .cs-side-actions,
 .console-shell.collapsed .cs-ver { display: none; }

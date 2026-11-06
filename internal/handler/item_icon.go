@@ -51,10 +51,15 @@ func parseSiteURL(rawURL string) (*url.URL, error) {
 }
 
 // fetchFaviconPage 抓取页面 HTML，返回 HTML 与跟随重定向后的最终 URL（相对路径解析基准）。
+// 只接受 parseSiteURL 校验过的地址（scheme 白名单 + 禁止回环/链路本地），避免把未校验的
+// 用户输入直接用于出站请求。
 // 站点返回 4xx/5xx（反爬页、防盗链）或非 HTML 时不算失败：返回空 HTML + 最终 URL，
 // 由调用方用默认路径候选（/favicon.ico、apple-touch-icon 等）继续尝试。
-func fetchFaviconPage(rawURL string) (string, *url.URL) {
-	req, err := http.NewRequest("GET", rawURL, nil)
+func fetchFaviconPage(pageURL *url.URL) (string, *url.URL) {
+	if pageURL == nil || pageURL.Host == "" {
+		return "", nil
+	}
+	req, err := http.NewRequest("GET", pageURL.String(), nil)
 	if err != nil {
 		return "", nil
 	}
@@ -92,7 +97,7 @@ func siteFaviconCandidates(rawURL string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	html, final := fetchFaviconPage(rawURL)
+	html, final := fetchFaviconPage(base)
 	if final != nil {
 		base = final
 	}
@@ -119,7 +124,7 @@ func downloadFavicon(cfg *config.Config, host, iconURL string) (string, error) {
 		return "", fmt.Errorf("handler 未初始化")
 	}
 
-	req, err := http.NewRequest("GET", iconURL, nil)
+	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
 		return "", err
 	}
@@ -227,7 +232,7 @@ func autoPickFaviconFromURL(cfg *config.Config, pageURL string) (string, error) 
 	if iconFetchFailedRecently(host) {
 		return "", fmt.Errorf("该站点图标抓取刚失败，稍后再试")
 	}
-	html, final := fetchFaviconPage(pageURL)
+	html, final := fetchFaviconPage(base)
 	if final != nil {
 		base = final
 	}

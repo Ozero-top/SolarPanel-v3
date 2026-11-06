@@ -4,7 +4,7 @@
 
 <h1 align=center>SolarPanel V3 - 轻量自托管导航页面板</h1>
 
-[![Version](https://img.shields.io/badge/Version-v3.10.0-5B8DEF?logo=semanticrelease)](#)
+[![Version](https://img.shields.io/badge/Version-v3.10.1-5B8DEF?logo=semanticrelease)](#)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev)
 [![Architecture](https://img.shields.io/badge/Architecture-chi%2Bsqlite-50C878)](https://github.com/go-chi/chi)
 [![Multi-Arch](https://img.shields.io/badge/Arch-amd64__arm64__armv7-7A51F5)](https://hub.docker.com/r/ovitor/solarpanel-v3)
@@ -186,7 +186,7 @@ SolarPanel/
 │   └── release.ps1              # 一键发版
 ├── frontend/                    # 前端源码（embed 进二进制）
 │   ├── themes.json              # 主题唯一事实源
-│   ├── index.html / admin.html / admin-classic.html / login.html
+│   ├── index.html / admin.html / login.html
 │   ├── clip.html / clips.html / clip-read.html / offline.html / manifest.json / sw.js
 │   ├── uploads/weather/         # 预置天气壁纸
 │   └── assets/{css,js}/         # common、index、themes、admin、clip 等
@@ -297,7 +297,7 @@ CORS 允许 `*`，`OPTIONS` 直接返回 204；IP 限流 120/min，Bearer 另有
 | 路径 | 说明 |
 |---|---|
 | `GET /` | 主页 |
-| `GET /login.html` · `GET /admin.html` · `GET /admin-classic.html` | 登录页 / 控制台 / 经典后台（按登录态互相重定向） |
+| `GET /login.html` · `GET /admin.html` | 登录页 / 控制台（按登录态互相重定向） |
 | `GET /clip` · `GET /clips` · `GET /clip-share` | 剪藏网页入口 / 剪藏库（需登录） / Android PWA 分享目标 |
 | `GET /read/{id}` | 正文快照阅读页（需登录） |
 | `/uploads/*` | 用户上传目录（CSP `sandbox` 限制脚本） |

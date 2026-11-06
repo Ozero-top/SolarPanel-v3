@@ -347,7 +347,7 @@ func fetchIconBytes(ctx context.Context, rawURL string, timeout time.Duration) (
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	client := newSafeHTTPClient(timeout)
-	req, err := http.NewRequestWithContext(reqCtx, "GET", rawURL, nil)
+	req, err := http.NewRequestWithContext(reqCtx, "GET", u.String(), nil)
 	if err != nil {
 		return nil, "", err
 	}
@@ -383,26 +383,33 @@ func fetchIconBytes(ctx context.Context, rawURL string, timeout time.Duration) (
 
 var faviconExts = []string{".png", ".ico", ".svg", ".jpg", ".gif", ".webp"}
 
+// iconHostKey 校验并归一化站点主机名，仅允许字母、数字与 .-_:，
+// 保证参与文件名生成的输入不含路径分隔符等危险字符
+func iconHostKey(host string) string {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" || len(host) > 253 {
+		return ""
+	}
+	for i := 0; i < len(host); i++ {
+		c := host[i]
+		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_' || c == ':' {
+			continue
+		}
+		return ""
+	}
+	return host
+}
+
 func saveFavicon(cfg *config.Config, host, ext string, data []byte) string {
+	host = iconHostKey(host)
+	if host == "" {
+		return ""
+	}
 	md5h := md5Hex(host)
 	dir := filepath.Join(cfg.UploadDir, "favicon")
 	os.MkdirAll(dir, 0755)
-	if ext == "" {
-		ext = ".png"
-	}
-	if !strings.HasPrefix(ext, ".") {
-		ext = "." + ext
-	}
-	validExt := false
-	for _, e := range faviconExts {
-		if e == ext {
-			validExt = true
-			break
-		}
-	}
-	if !validExt {
-		ext = ".png"
-	}
+	// 扩展名只可能来自固定白名单常量，杜绝外部字符串进入文件名
+	ext = normalizeFaviconExt(ext)
 	if !validIconData(data, ext) {
 		return ""
 	}
@@ -411,7 +418,12 @@ func saveFavicon(cfg *config.Config, host, ext string, data []byte) string {
 	}
 	// 位图统一缩到 ≤64px（转 PNG），卡片实际只显示 52~58px，原图浪费带宽与解码时间
 	data, ext = optimizeFaviconImage(data, ext)
-	p := filepath.Join(dir, md5h+ext)
+	// 文件名由 md5(host) + 白名单扩展名组成；再显式校验最终路径仍落在 favicon 目录内
+	base := filepath.Clean(dir)
+	p := filepath.Clean(filepath.Join(base, md5h+normalizeFaviconExt(ext)))
+	if !strings.HasPrefix(p, base+string(os.PathSeparator)) {
+		return ""
+	}
 	if err := os.WriteFile(p, data, 0644); err != nil {
 		return ""
 	}
@@ -420,7 +432,7 @@ func saveFavicon(cfg *config.Config, host, ext string, data []byte) string {
 		if e == ext {
 			continue
 		}
-		os.Remove(filepath.Join(dir, md5h+e))
+		os.Remove(filepath.Join(base, md5h+e))
 	}
 	info, err := os.Stat(p)
 	if err != nil || info.Size() < 50 {
@@ -435,6 +447,27 @@ var faviconFallbackServices = []string{
 	"https://favicon.im/%s?larger=true",
 	"https://icon.horse/icon/%s",
 	"https://www.google.com/s2/favicons?domain=%s&sz=128",
+}
+
+// normalizeFaviconExt 把外部传入的扩展名归一化到固定白名单常量，
+// 保证拼进文件名的部分不可能包含目录分隔符或其他用户可控字符
+func normalizeFaviconExt(ext string) string {
+	switch strings.ToLower(strings.TrimSpace(ext)) {
+	case ".png", "png":
+		return ".png"
+	case ".ico", "ico":
+		return ".ico"
+	case ".svg", "svg":
+		return ".svg"
+	case ".jpg", ".jpeg", "jpg", "jpeg":
+		return ".jpg"
+	case ".gif", "gif":
+		return ".gif"
+	case ".webp", "webp":
+		return ".webp"
+	default:
+		return ".png"
+	}
 }
 
 func extractExtFromCT(ct string) string {

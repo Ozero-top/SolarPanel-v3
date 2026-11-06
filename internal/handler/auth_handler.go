@@ -191,9 +191,8 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var u UserRow
-	var uiPref, uiVer string
-	err := db.DB.QueryRow("SELECT id, username, name, status, role, totp_secret, admin_ui, admin_ui_ver FROM users WHERE id=?", sess.UID).Scan(
-		&u.ID, &u.Username, &u.Name, &u.Status, &u.Role, &u.TOTPSecret, &uiPref, &uiVer)
+	err := db.DB.QueryRow("SELECT id, username, name, status, role, totp_secret FROM users WHERE id=?", sess.UID).Scan(
+		&u.ID, &u.Username, &u.Name, &u.Status, &u.Role, &u.TOTPSecret)
 	if err != nil {
 		Err(w, http.StatusUnauthorized, 1, "用户不存在")
 		return
@@ -201,7 +200,6 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	OK(w, map[string]any{
 		"id": u.ID, "username": u.Username, "name": u.Name,
 		"role": u.Role, "csrf": sess.CSRFToken, "has_2fa": u.TOTPSecret != "",
-		"admin_ui": uiPref, "admin_ui_ver": uiVer,
 	})
 }
 

@@ -1,6 +1,5 @@
 User-agent: *
 Disallow: /admin.html
-Disallow: /admin-classic.html
 Disallow: /login.html
 Disallow: /clips
 Disallow: /read/

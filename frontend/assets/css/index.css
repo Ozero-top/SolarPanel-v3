@@ -1971,20 +1971,31 @@ body.sp-card-app .cards.style-app .card:not(.search-hit):hover {
   white-space: nowrap;
 }
 
-/* 一级分组卡片区「隐藏 / 打开」：右侧对齐，隐藏后其下二级分组直接上移 */
-.group-head .group-cards-toggle {
-  flex: none;
-  margin-left: auto;
-  white-space: nowrap;
+/* 点击分组名收起 / 展开组内卡片（一级、二级分组通用） */
+.group-head h2.g-fold {
+  cursor: pointer;
+  user-select: none;
+  border-radius: 6px;
 }
-.group-head .group-cards-toggle.folded {
-  color: var(--accent);
-  border-color: var(--accent);
+.group-head h2.g-fold:hover { color: var(--accent); }
+.group-head h2.g-fold:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
+.g-fold-arrow {
+  display: inline-block;
+  margin-right: .35em;
+  font-size: .85em;
+  line-height: 1;
+  color: var(--text-muted);
+  transition: transform .18s ease, color .15s ease;
+}
+.group-head h2.g-fold:hover .g-fold-arrow { color: var(--accent); }
+.group-head h2.g-fold[aria-expanded="false"] .g-fold-arrow { transform: rotate(-90deg); }
 .cards.cards-collapsed {
   display: none;
 }
-/* 一级分组隐藏卡片后：去掉标题下方的间距与底部内边距，分组收成一条紧凑标题栏，
+/* 收起卡片后：去掉标题下方的间距与底部内边距，分组收成一条紧凑标题栏，
    避免中间留下一大块空白（下个分组直接上移贴合） */
 .group:has(> .cards.cards-collapsed) {
   padding: 16px 22px;

@@ -18,7 +18,7 @@ const state = {
   activeTopId: 0,        // 当前激活的顶级分组 id（两种模式共享：sidebar 模式用它决定渲染哪个顶级的子 section；navbar 模式和 navActiveGroupIdx 同步）
   activeChildId: 0,      // 当前激活的子分组 id（侧边栏点击二级定位主内容）
   searchKeyword: '',     // 实时页面内搜索关键词（空 = 全量渲染）
-  cardsFolded: new Set(), // 已隐藏自身卡片区的一级分组 id（隐藏后可直接看到二级分组）
+  cardsFolded: new Set(), // 已收起卡片区的分组 id（一级 / 二级分组均可，点击分组名切换）
 };
 
 const API_BASE = '/api/';
@@ -818,9 +818,27 @@ function renderGroupCard(container, g, styleApp, idx, skipIntro, isChild, stagge
     section.style.animationDelay = Math.min((idx || 0) * 24, 96) + 'ms';
   }
 
+  // 点击分组名收起 / 展开组内卡片（一级、二级分组都支持）
+  const canFold = (g.items || []).length > 0 && state.sortingGroupId !== g.id;
+  // 排序模式强制展开，否则收起状态会让卡片无法拖拽
+  const folded = canFold && state.cardsFolded.has(g.id);
+
   const head = document.createElement('div');
   head.className = 'group-head';
   const h2 = document.createElement('h2');
+  if (canFold) {
+    h2.className = 'g-fold';
+    h2.setAttribute('role', 'button');
+    h2.tabIndex = 0;
+    h2.setAttribute('aria-expanded', folded ? 'false' : 'true');
+    h2.title = folded ? '展开该分组的卡片' : '收起该分组的卡片';
+    // 折叠箭头：展开时朝下，收起时旋转 90° 朝右
+    const arrow = document.createElement('span');
+    arrow.className = 'g-fold-arrow';
+    arrow.setAttribute('aria-hidden', 'true');
+    arrow.textContent = '▾';
+    h2.appendChild(arrow);
+  }
   if (g.icon) {
     const ic = document.createElement('span');
     ic.className = 'g-title-icon';
@@ -888,24 +906,6 @@ function renderGroupCard(container, g, styleApp, idx, skipIntro, isChild, stagge
       sortWrap.appendChild(addBtn);
     }
   }
-  // 一级分组自身有卡片、且下面还有二级分组时，提供「隐藏 / 打开」自身卡片区的开关，
-  // 隐藏后二级分组直接上移，不用再往下翻找
-  const kidSections = (state.childrenMap && state.childrenMap[g.id]) || [];
-  const hasChildSections = !isChild && kidSections.some(k => (k.items || []).length > 0 || k.is_visible !== 0);
-  const canFoldCards = hasChildSections && (g.items || []).length > 0 && state.sortingGroupId !== g.id;
-  const folded = canFoldCards && state.cardsFolded.has(g.id);
-  if (canFoldCards) {
-    const foldBtn = document.createElement('button');
-    foldBtn.type = 'button';
-    foldBtn.className = 'btn btn-sm group-cards-toggle' + (folded ? ' folded' : '');
-    foldBtn.textContent = folded ? '打开卡片' : '隐藏卡片';
-    foldBtn.title = folded ? '显示该一级分组的卡片' : '收起该一级分组的卡片，直接查看下面的二级分组';
-    foldBtn.setAttribute('aria-expanded', folded ? 'false' : 'true');
-    foldBtn.onclick = (e) => { e.stopPropagation(); toggleGroupCards(g.id); };
-    // 有排序/添加按钮时并入同一容器，整体靠右，开关在最右端
-    if (sortWrap) sortWrap.appendChild(foldBtn);
-    else head.appendChild(foldBtn);
-  }
   section.appendChild(head);
 
   const cards = document.createElement('div');
@@ -917,6 +917,22 @@ function renderGroupCard(container, g, styleApp, idx, skipIntro, isChild, stagge
   });
   cards.appendChild(cardsFrag);
   section.appendChild(cards);
+
+  if (canFold) {
+    const toggle = () => {
+      const next = !state.cardsFolded.has(g.id);
+      if (next) state.cardsFolded.add(g.id);
+      else state.cardsFolded.delete(g.id);
+      // 只改当前分组 DOM，不整页重绘，避免滚动位置跳动
+      cards.classList.toggle('cards-collapsed', next);
+      h2.setAttribute('aria-expanded', next ? 'false' : 'true');
+      h2.title = next ? '展开该分组的卡片' : '收起该分组的卡片';
+    };
+    h2.onclick = toggle;
+    h2.onkeydown = (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    };
+  }
 
   // 排序模式：卡片区下方居中的操作提示，避免拖到一半就松手
   if (state.sortingGroupId === g.id) {
@@ -934,14 +950,6 @@ function renderGroupCard(container, g, styleApp, idx, skipIntro, isChild, stagge
   }
 
   container.appendChild(section);
-}
-
-/** 隐藏 / 打开一级分组自身的卡片区（不影响其下的二级分组） */
-function toggleGroupCards(gid) {
-  if (!state.cardsFolded) state.cardsFolded = new Set();
-  if (state.cardsFolded.has(gid)) state.cardsFolded.delete(gid);
-  else state.cardsFolded.add(gid);
-  renderGroups();
 }
 
 // 启动加载屏：首屏占位以覆盖层形式压在 groupsWrap 上，真实内容渲染到下方后淡出移除
@@ -4052,7 +4060,8 @@ function ensureQuickAddModal() {
             <span class="icon-preview" id="qa_preview"></span>
             <input class="input" id="qa_icon" type="text" placeholder="图标图片地址（选择「图片」类型时使用）">
             <button class="btn" type="button" id="qa_uploadIcon">上传图标</button>
-            <button class="btn" type="button" id="qa_useFavicon" hidden>获取站点图标</button>
+            <a class="btn" id="qa_iconLib" href="https://icon-sets.iconify.design/" target="_blank" rel="noopener noreferrer" style="display:none">在线图标库</a>
+            <button class="btn" type="button" id="qa_useFavicon" style="display:none">获取站点图标</button>
           </div>
           <div class="form-item" style="margin-top:10px" id="qa_textWrap">
             <label>手动文字（留空自动取卡片标题）</label>
@@ -4220,8 +4229,29 @@ function ensureQuickAddModal() {
     }
   });
 
-  // 获取站点图标按钮（文字类型时隐藏）
+  // 获取站点图标按钮（图片 / 站点图标类型可用）
   document.getElementById('qa_useFavicon').addEventListener('click', fetchQAFavicon);
+}
+
+/** 获取站点图标：先取候选列表，用户在弹窗中选择后下载落盘，再写入 qa_icon */
+async function fetchQAFavicon() {
+  const url = normalizeFetchUrl(document.getElementById('qa_url').value || document.getElementById('qa_lan').value);
+  if (!url) { toast('请先填写卡片地址或内网地址', 'error'); return; }
+  const btn = document.getElementById('qa_useFavicon');
+  btn.disabled = true; btn.textContent = '获取中…';
+  try {
+    const saved = await pickSiteFavicon(url);
+    if (!saved) return; // 用户取消
+    document.querySelector('#qa_itype input[value="image"]').checked = true;
+    document.getElementById('qa_icon').value = saved;
+    onQAIconTypeChange();
+    updateQAIconPreview();
+    toast('图标已保存', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '获取站点图标';
+  }
 }
 
 /** 图标类型切换 → 控制显隐 */
@@ -4229,8 +4259,11 @@ function onQAIconTypeChange() {
   const type = document.querySelector('#qa_itype input:checked').value;
   document.getElementById('qa_textWrap').style.display = type === 'text' ? '' : 'none';
   document.getElementById('qa_bgWrap').style.display = (type === 'text' || type === 'image') ? '' : 'none';
-  // 站点图标按需获取：favicon / image 类型都显示按钮，点击后走候选选择流程
-  document.getElementById('qa_useFavicon').hidden = type === 'text';
+  // 文字图标只保留在线图标库；图片 / 站点图标保留上传与获取站点图标
+  const isText = type === 'text';
+  document.getElementById('qa_uploadIcon').style.display = isText ? 'none' : '';
+  document.getElementById('qa_iconLib').style.display = isText ? '' : 'none';
+  document.getElementById('qa_useFavicon').style.display = isText ? 'none' : '';
   updateQAIconPreview();
 }
 
@@ -4383,27 +4416,6 @@ async function fetchQAMeta(auto, overrideUrl) {
   } finally {
     qaMetaBusy = false;
     btn.disabled = false; btn.textContent = '自动获取信息';
-  }
-}
-
-/** 获取站点图标：先取候选列表，用户在弹窗中选择后下载落盘，再写入 qa_icon */
-async function fetchQAFavicon() {
-  const url = normalizeFetchUrl(document.getElementById('qa_url').value || document.getElementById('qa_lan').value);
-  if (!url) { toast('请先填写卡片地址或内网地址', 'error'); return; }
-  const btn = document.getElementById('qa_useFavicon');
-  btn.disabled = true; btn.textContent = '获取中…';
-  try {
-    const saved = await pickSiteFavicon(url);
-    if (!saved) return; // 用户取消
-    document.querySelector('#qa_itype input[value="image"]').checked = true;
-    document.getElementById('qa_icon').value = saved;
-    onQAIconTypeChange();
-    updateQAIconPreview();
-    toast('图标已保存', 'success');
-  } catch (e) {
-    toast(e.message, 'error');
-  } finally {
-    btn.disabled = false; btn.textContent = '获取站点图标';
   }
 }
 

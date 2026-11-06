@@ -7,9 +7,9 @@
   <title>管理后台 - SolarPanel</title>
   <link rel="icon" href="favicon.ico?v=1b5d8c6c" type="image/x-icon">
   <link rel="stylesheet" href="assets/css/common.css?v=dc014ca6">
-  <link rel="stylesheet" href="assets/css/auth-admin.css?v=ce6193c1">
+  <link rel="stylesheet" href="assets/css/auth-admin.css?v=0eb45422">
   <link rel="stylesheet" href="assets/css/themes.css?v=7444f386">
-  <link rel="stylesheet" href="assets/css/console.css?v=fb90bb56">
+  <link rel="stylesheet" href="assets/css/console.css?v=cc38ffcc">
 </head>
 <body class="admin-console" data-admin-skin="aurora">
   <script>(function(){try{var k=localStorage.getItem('sp_admin_skin');if(!k||['aurora','neon','element'].indexOf(k)<0)k='aurora';document.body.dataset.adminSkin=k;document.documentElement.dataset.theme=k==='element'?'light':'dark';document.documentElement.dataset.style='console';}catch(e){}})();</script>
@@ -44,7 +44,6 @@
           <a class="btn btn-sm" href="/" target="_blank" rel="noopener">查看主页</a>
           <button class="btn btn-sm" id="logoutBtn">退出登录</button>
         </div>
-        <button class="cs-ui-switch" type="button" data-ui-switch="classic" title="切换到经典后台">⇄ 切换到经典后台</button>
         <div class="cs-ver">版本 v<span id="appVer"></span></div>
       </div>
     </aside>
@@ -1346,7 +1345,8 @@
           <div class="upload-row">
             <span class="icon-preview" id="i_preview"></span>
             <input class="input" id="i_icon" type="text" placeholder="图标图片地址（选择「图片」类型时使用）">
-            <button class="btn" type="button" data-upload="i_icon">上传图标</button>
+            <button class="btn" type="button" data-upload="i_icon" id="i_uploadIcon">上传图标</button>
+            <a class="btn" id="i_iconLib" href="https://icon-sets.iconify.design/" target="_blank" rel="noopener noreferrer" style="display:none">在线图标库</a>
             <button class="btn" type="button" id="i_useFavicon" hidden>获取站点图标</button>
           </div>
           <!-- 文字图标手动输入（type=text 时显示） -->
@@ -1550,10 +1550,9 @@
   </div>
 
   <script src="assets/js/qrcode.min.js"></script>
-  <script src="assets/js/api.js?v=e6824e07"></script>
+  <script src="assets/js/api.js?v=305da9fe"></script>
   <script src="assets/js/group-icons.js?v=9802d869"></script>
-  <script src="assets/js/admin.js?v=5009905e"></script>
-  <script src="assets/js/admin-console.js?v=c8b132ea"></script>
-  <script src="assets/js/admin-ui.js?v=0218fafc"></script>
+  <script src="assets/js/admin.js?v=6a5460b1"></script>
+  <script src="assets/js/admin-console.js?v=90615125"></script>
 </body>
 </html>

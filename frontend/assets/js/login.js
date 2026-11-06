@@ -2,23 +2,11 @@
  * 登录页逻辑 + 2FA 两步验证流程
  */
 (async function () {
-  // 账号已选后台界面的本地缓存（仅作跳转提示，后台页会以服务端记录为准校正）
-  function cachedAdminPage() {
-    try {
-      if (localStorage.getItem('sp_admin_ui_ver') === APP_VERSION &&
-          localStorage.getItem('sp_admin_ui') === 'classic') return 'admin-classic.html';
-    } catch (e) { /* 忽略 */ }
-    return 'admin.html';
-  }
-
   // 已登录（且非访客角色）则直接进入后台
   try {
     const u = await API.get('/api/auth.php?action=me');
     if (u && u.role && u.role !== 'guest') {
-      const saved = u.admin_ui;
-      const target = (saved === 'classic' && u.admin_ui_ver === APP_VERSION)
-        ? 'admin-classic.html' : 'admin.html';
-      location.replace(target);
+      location.replace('admin.html');
       return;
     }
   } catch (e) { /* 未登录，正常展示登录页 */ }
@@ -74,7 +62,7 @@
         }
       }
       toast('登录成功', 'success');
-      location.href = cachedAdminPage();
+      location.href = 'admin.html';
     } catch (err) {
       errEl.textContent = err.message;
       btn.disabled = false;

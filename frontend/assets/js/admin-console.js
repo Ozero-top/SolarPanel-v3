@@ -61,8 +61,13 @@
     if (persist !== false) {
       try { localStorage.setItem(SKIN_KEY, skin); } catch (e) { /* 隐私模式忽略 */ }
       // 皮肤存到服务端，换机器 / 换浏览器打开也保持一致
+      // 注意：api.js 用脚本作用域的 const 声明 API，不会挂到 window 上，不能判断 window.API
       try {
-        if (window.API && API.post) API.post('/api/settings.php?action=save', { admin_skin: skin }).catch(function () {});
+        if (typeof API !== 'undefined' && API.post) {
+          API.post('/api/settings.php?action=save', { admin_skin: skin }).catch(function (err) {
+            console.warn('[admin skin] 保存失败', err);
+          });
+        }
       } catch (e) { /* 无权限或离线时忽略 */ }
     }
     var opts = document.querySelectorAll('.skin-opt');
