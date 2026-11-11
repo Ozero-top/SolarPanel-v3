@@ -118,12 +118,25 @@ function init() {
   reload();
 }
 
-/** 主题：沿用主页逻辑，浏览器里没有 sp_style 缓存时用后端设置补齐风格主题 */
+/** 配色跟随后台主题（极光暗色 / 赛博霓虹 / 极简白），与后台皮肤保持一致 */
 function syncTheme() {
-  if (typeof applyTheme !== 'function') return;
+  let skin = '';
+  try { skin = localStorage.getItem('sp_admin_skin') || ''; } catch (_) { /* 忽略 */ }
+  if (ADMIN_SKINS.indexOf(skin) < 0) skin = '';
+  // 先用本地缓存即时上色，再以服务端记录为准校正（换浏览器 / 换设备也能一致）
+  if (skin) applyAdminSkin(skin);
   API.get('/api/public.php').then((d) => {
-    if (d && d.settings) applyTheme(d.settings);
-  }).catch(() => { /* 请求失败时沿用本地缓存 */ });
+    const s = d && d.settings && d.settings.admin_skin;
+    applyAdminSkin(ADMIN_SKINS.indexOf(s) >= 0 ? s : (skin || 'aurora'));
+  }).catch(() => { if (!skin) applyAdminSkin('aurora'); });
+}
+
+const ADMIN_SKINS = ['aurora', 'neon', 'element'];
+
+function applyAdminSkin(skin) {
+  document.body.dataset.adminSkin = skin;
+  try { localStorage.setItem('sp_admin_skin', skin); } catch (_) { /* 忽略 */ }
+  document.documentElement.dataset.theme = skin === 'element' ? 'light' : 'dark';
 }
 
 function isTyping(el) {

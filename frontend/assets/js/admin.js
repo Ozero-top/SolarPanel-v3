@@ -41,6 +41,7 @@ const state = {
   wpTab: 'uploaded', // 图库当前分区：uploaded / preset
   selectedItems: new Set(), // 卡片管理里勾选的卡片 id（批量移动/批量删除）
   movingItemIDs: [],        // 「移动分组」弹窗当前要移动的卡片 id
+  itemsView: 'split',       // 卡片管理视图：grid 网格 / split 双栏主从（默认双栏）
 };
 
 const ITEM_PAGE_SIZE = 18; // 卡片管理每页条数
@@ -92,6 +93,7 @@ const OPEN_TEXT = { 1: '当前页', 2: '新窗口', 3: '弹层' };
   bindItems();
   bindGroups();
   bindDragSort();
+  wrapSettingsCards();
   bindSettings();
   bindSettingsSubnav();
   bindNewsSourceDrag();
@@ -977,52 +979,173 @@ function updateFilterInfo(count) {
   el.textContent = (parts.length ? '筛选 ' + parts.join(' · ') + ' · ' : '') + '共 ' + count + ' 条';
 }
 
-function renderItemsTable() {
-  const tbody = document.getElementById('itemsTbody');
-  tbody.innerHTML = '';
-  const list = filteredItems();
-  updateFilterInfo(list.length);
-  if (!list.length) {
-    const hasFilter = !!(state.currentGroup || state.currentParent || state.itemKeyword);
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">' +
-      (hasFilter ? '没有匹配的卡片，试试调整筛选或清空搜索' : '暂无卡片，点击右上角「添加卡片」创建') + '</td></tr>';
-    renderItemsPager(0);
-    syncBulkBar();
-    return;
-  }
+/* ================= 卡片视图：网格 / 双栏主从 ================= */
+const ITEMS_VIEW_KEY = 'sp_items_view_v2';
+const ITEMS_VIEWS = ['grid', 'split'];
+
+function groupLabel(gid) {
+  return gid ? groupName(gid) : '未分组';
+}
+
+/** 当前页切片：越界页码自动收敛，返回总数与当页数据 */
+function pageSlice(list, perPage) {
+  const size = perPage || ITEM_PAGE_SIZE;
   const total = list.length;
-  const totalPages = Math.max(1, Math.ceil(total / ITEM_PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / size));
   if (state.itemPage > totalPages) state.itemPage = totalPages;
   if (state.itemPage < 1) state.itemPage = 1;
-  const start = (state.itemPage - 1) * ITEM_PAGE_SIZE;
-  const pageItems = list.slice(start, start + ITEM_PAGE_SIZE);
-  pageItems.forEach(item => {
-    const isHidden = !!(item.is_hidden & 1);
-    const tr = document.createElement('tr');
-    if (isHidden) tr.classList.add('row-hidden');
-    tr.innerHTML =
-      '<td><input type="checkbox" class="item-check" data-id="' + item.id + '"' + (state.selectedItems.has(item.id) ? ' checked' : '') + '></td>' +
-      '<td><span class="icon-preview" style="width:34px;height:34px;font-size:14px;border-radius:8px" data-cell="icon"></span></td>' +
-      '<td class="item-title"><div title="' + esc(item.title) + '">' + esc(item.title) + (isHidden ? ' <span class="vis-badge" style="background:var(--color-warn)">隐藏</span>' : '') + '</div></td>' +
-      '<td class="item-url" title="' + esc(item.url || item.lan_url || '') + '">' + esc(item.url || item.lan_url) + '</td>' +
-      '<td class="item-desc" title="' + esc(item.description || '') + '">' + esc(item.description || '—') + '</td>' +
-      '<td style="white-space:nowrap"><button type="button" class="item-group-tag" data-gid="' + item.group_id + '" title="只看该分组">' + esc(groupName(item.group_id)) + '</button></td>' +
-      '<td>' + (OPEN_TEXT[item.open_method] || '新窗口') + '</td>' +
-      '<td><div class="actions">' +
-      '<button class="btn btn-sm" data-act="up">上移</button>' +
-      '<button class="btn btn-sm" data-act="down">下移</button>' +
-      '<button class="btn btn-sm btn-vis" data-act="toggle_hidden">' + (isHidden ? '显示' : '隐藏') + '</button>' +
-      '<button class="btn btn-sm" data-act="move">移动</button>' +
-      '<button class="btn btn-sm" data-act="edit">编辑</button>' +
-      '<button class="btn btn-sm btn-danger" data-act="del">删除</button>' +
-      '</div></td>';
-    // 图标预览：iconFor 统一返回 HTML（img 或 grid span），直接 innerHTML
-    const iconCell = tr.querySelector('[data-cell="icon"]');
-    iconCell.innerHTML = iconFor(item);
-    tr.querySelectorAll('[data-act]').forEach(btn => {
-      btn.onclick = () => itemAction(btn.dataset.act, item);
+  const start = (state.itemPage - 1) * size;
+  return { total, items: list.slice(start, start + size), perPage: size };
+}
+
+/* 网格视图按屏幕自适应每页数量：列数看宽度，行数看剩余高度，避免固定 18 条留大片空白 */
+let gridCardH = 152;      // 上次渲染测得的卡片高度（首次用估算值）
+let gridResizeTimer = null;
+
+function gridPageSize() {
+  const box = document.getElementById('itemsViewGrid');
+  if (!box) return ITEM_PAGE_SIZE;
+  const gap = 12;
+  const minCard = 132;
+  const wrapW = box.clientWidth || 1000;
+  const cols = Math.max(2, Math.floor((wrapW + gap) / (minCard + gap)));
+  const top = box.getBoundingClientRect().top;
+  const usable = Math.max(gridCardH + gap, window.innerHeight - top - 160);
+  const rows = Math.max(1, Math.floor((usable + gap) / (gridCardH + gap)));
+  return Math.max(cols, Math.min(240, cols * rows));
+}
+
+function setItemsView(view) {
+  if (ITEMS_VIEWS.indexOf(view) < 0) view = 'split';
+  state.itemsView = view;
+  try { localStorage.setItem(ITEMS_VIEW_KEY, view); } catch (e) { /* 隐私模式忽略 */ }
+  const seg = document.getElementById('itemsViewSeg');
+  if (seg) {
+    seg.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('on', b.dataset.view === view));
+  }
+  renderItemsTable();
+}
+
+function initItemsView() {
+  try {
+    const saved = localStorage.getItem(ITEMS_VIEW_KEY);
+    if (ITEMS_VIEWS.indexOf(saved) >= 0) state.itemsView = saved;
+  } catch (e) { /* 忽略 */ }
+  const seg = document.getElementById('itemsViewSeg');
+  if (seg) {
+    seg.querySelectorAll('.seg-btn').forEach(b => {
+      b.classList.toggle('on', b.dataset.view === state.itemsView);
+      b.onclick = () => setItemsView(b.dataset.view);
     });
-    const chk = tr.querySelector('.item-check');
+  }
+  // 点空白处收起 ⋯ 菜单
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.icard-menu.open').forEach(m => m.classList.remove('open'));
+  });
+  // 窗口尺寸变化后，网格视图按新屏幕重算每页数量
+  window.addEventListener('resize', () => {
+    if (state.itemsView !== 'grid') return;
+    clearTimeout(gridResizeTimer);
+    gridResizeTimer = setTimeout(() => { renderItemsTable(); }, 200);
+  });
+  // 卡片管理页从隐藏变为显示时重渲一次：隐藏状态下量不到宽度，网格数量会算小
+  const tabItems = document.getElementById('tab-items');
+  if (tabItems) {
+    new MutationObserver(() => {
+      if (!tabItems.hidden) renderItemsTable();
+    }).observe(tabItems, { attributes: true, attributeFilter: ['hidden'] });
+  }
+  // 应用记住的视图（此时卡片可能尚未加载，加载完成后还会再渲染一次）
+  renderItemsTable();
+}
+
+/** 单张卡片的列表行 */
+function itemRowHTML(item) {
+  const hidden = !!(item.is_hidden & 1);
+  const url = item.url || item.lan_url || '';
+  const sub = [url, item.description].filter(Boolean).join(' · ');
+  return '<div class="icard' + (hidden ? ' is-hidden' : '') + '" data-id="' + item.id + '">' +
+    '<label class="icard-chk"><input type="checkbox" class="item-check" data-id="' + item.id + '"' +
+      (state.selectedItems.has(item.id) ? ' checked' : '') + '></label>' +
+    '<span class="icon-preview icard-ico" data-cell="icon"></span>' +
+    '<div class="icard-main">' +
+      '<div class="icard-t"><span class="icard-name" title="' + esc(item.title) + '">' + esc(item.title) + '</span>' +
+        (hidden ? '<span class="vis-badge">隐藏</span>' : '') +
+        '<span class="icard-open">' + (OPEN_TEXT[item.open_method] || '新窗口') + '</span></div>' +
+      '<div class="icard-d" title="' + esc(sub) + '">' + esc(sub || '—') + '</div>' +
+    '</div>' +
+    '<div class="icard-acts">' +
+      '<button type="button" class="btn btn-sm" data-act="up">上移</button>' +
+      '<button type="button" class="btn btn-sm" data-act="down">下移</button>' +
+      '<button type="button" class="btn btn-sm btn-vis" data-act="toggle_hidden">' + (hidden ? '显示' : '隐藏') + '</button>' +
+      '<button type="button" class="btn btn-sm" data-act="move">移动</button>' +
+      '<button type="button" class="btn btn-sm" data-act="edit">编辑</button>' +
+      '<button type="button" class="btn btn-sm btn-danger" data-act="del">删除</button>' +
+    '</div>' +
+  '</div>';
+}
+
+/** 卡片「⋯」菜单（沿用原有操作，动作名与 itemAction 对应） */
+function itemMenuHTML(hidden) {
+  return '<div class="icard-menu">' +
+    '<button type="button" data-act="move">移动分组</button>' +
+    '<button type="button" data-act="toggle_hidden">' + (hidden ? '显示卡片' : '隐藏卡片') + '</button>' +
+    '<hr>' +
+    '<button type="button" data-act="up">上移</button>' +
+    '<button type="button" data-act="down">下移</button>' +
+    '<hr>' +
+    '<button type="button" class="del" data-act="del">删除</button>' +
+  '</div>';
+}
+
+/** 网格视图的卡片 */
+function itemGridHTML(item) {
+  const hidden = !!(item.is_hidden & 1);
+  let host = '';
+  try { host = new URL(item.url || item.lan_url || '').hostname.replace(/^www\./, ''); } catch (e) { host = ''; }
+  return '<div class="igcard' + (hidden ? ' is-hidden' : '') + '" data-id="' + item.id + '">' +
+    '<label class="igcard-chk"><input type="checkbox" class="item-check" data-id="' + item.id + '"' +
+      (state.selectedItems.has(item.id) ? ' checked' : '') + '></label>' +
+    (hidden ? '<span class="igcard-hid">隐藏</span>' : '') +
+    '<span class="icon-preview igcard-ico" data-cell="icon"></span>' +
+    '<div class="igcard-t" title="' + esc(item.title) + '">' + esc(item.title) + '</div>' +
+    '<div class="igcard-u">' + esc(host || '—') + '</div>' +
+    '<span class="igcard-g" title="' + esc(groupLabel(item.group_id)) + '">' + esc(groupLabel(item.group_id)) + '</span>' +
+    '<div class="igcard-ov">' +
+      '<button type="button" class="btn btn-sm" data-act="edit">编辑</button>' +
+      '<button type="button" class="btn btn-sm icard-more" data-more="1" title="更多操作">⋯</button>' +
+    '</div>' +
+    itemMenuHTML(hidden) +
+  '</div>';
+}
+
+/** 给已插入 DOM 的卡片补图标、绑定操作/勾选/⋯ 菜单 */
+function bindItemCards(box) {
+  const byId = new Map();
+  (state.items || []).forEach(it => byId.set(String(it.id), it));
+  box.querySelectorAll('.icard, .igcard').forEach(card => {
+    const item = byId.get(card.dataset.id);
+    if (!item) return;
+    const iconCell = card.querySelector('[data-cell="icon"]');
+    if (iconCell) iconCell.innerHTML = iconFor(item);
+    card.querySelectorAll('[data-act]').forEach(btn => {
+      btn.onclick = e => {
+        e.stopPropagation();
+        card.querySelectorAll('.icard-menu.open').forEach(m => m.classList.remove('open'));
+        itemAction(btn.dataset.act, item);
+      };
+    });
+    const more = card.querySelector('[data-more]');
+    if (more) {
+      more.onclick = e => {
+        e.stopPropagation();
+        const menu = card.querySelector('.icard-menu');
+        const isOpen = menu.classList.contains('open');
+        document.querySelectorAll('.icard-menu.open').forEach(m => m.classList.remove('open'));
+        if (!isOpen) menu.classList.add('open');
+      };
+    }
+    const chk = card.querySelector('.item-check');
     if (chk) {
       chk.onchange = () => {
         const id = Number(chk.dataset.id);
@@ -1030,21 +1153,131 @@ function renderItemsTable() {
         syncBulkBar();
       };
     }
-    const tag = tr.querySelector('.item-group-tag');
-    if (tag) {
-      tag.onclick = () => {
-        const gid = Number(tag.dataset.gid);
-        const g = (state.groups || []).find(x => x.id === gid);
-        state.currentParent = g ? (g.parent_id || g.id) : 0;
-        state.currentGroup = g && (g.parent_id || 0) ? gid : 0;
-        state.itemPage = 1;
-        renderGroupFilter();
-        renderItemsTable();
-      };
-    }
-    tbody.appendChild(tr);
   });
-  renderItemsPager(total);
+}
+
+/** 网格视图 */
+function renderGridView(box, items) {
+  box.innerHTML = '<div class="igrid">' + items.map(itemGridHTML).join('') + '</div>';
+  bindItemCards(box);
+}
+
+/** 双栏：左侧分组树（含数量），右侧当前筛选下的卡片 */
+function renderItemsTree() {
+  const box = document.getElementById('itemsTree');
+  if (!box) return;
+  const groups = state.groups || [];
+  const counts = new Map();
+  (state.items || []).forEach(it => counts.set(it.group_id || 0, (counts.get(it.group_id || 0) || 0) + 1));
+  const tops = groups.filter(g => !g.parent_id);
+  const totalAll = (state.items || []).length;
+  const allOn = !state.currentParent && !state.currentGroup;
+
+  let html = '<div class="itree-node' + (allOn ? ' on' : '') + '" data-parent="0" data-group="0">' +
+    '<span class="itree-car"></span>全部卡片<span class="itree-cnt">' + totalAll + '</span></div>';
+
+  tops.forEach(g => {
+    const kids = groups.filter(x => x.parent_id === g.id);
+    let sum = counts.get(g.id) || 0;
+    kids.forEach(k => { sum += counts.get(k.id) || 0; });
+    const on = state.currentParent === g.id && !state.currentGroup;
+    html += '<div class="itree-node' + (on ? ' on' : '') + '" data-parent="' + g.id + '" data-group="0">' +
+      '<span class="itree-car">' + (kids.length ? '▾' : '') + '</span>' +
+      '<span class="itree-name">' + esc(g.title) + '</span>' +
+      '<span class="itree-cnt">' + sum + '</span></div>';
+    kids.forEach(k => {
+      html += '<div class="itree-node child' + (state.currentGroup === k.id ? ' on' : '') +
+        '" data-parent="' + g.id + '" data-group="' + k.id + '">' +
+        '<span class="itree-car"></span>' +
+        '<span class="itree-name">' + esc(k.title) + '</span>' +
+        '<span class="itree-cnt">' + (counts.get(k.id) || 0) + '</span></div>';
+    });
+  });
+
+  box.innerHTML = html;
+  box.querySelectorAll('.itree-node').forEach(n => {
+    n.onclick = () => {
+      state.currentParent = Number(n.dataset.parent) || 0;
+      state.currentGroup = Number(n.dataset.group) || 0;
+      state.itemPage = 1;
+      renderGroupFilter();
+      renderItemsTable();
+    };
+  });
+}
+
+function splitTitle() {
+  if (state.currentGroup) return groupLabel(state.currentGroup);
+  if (state.currentParent) {
+    const g = (state.groups || []).find(x => x.id === state.currentParent);
+    return (g ? g.title : '分组') + '（含子分组）';
+  }
+  return '全部卡片';
+}
+
+function renderSplitView(box, items, total) {
+  renderItemsTree();
+  const start = (state.itemPage - 1) * ITEM_PAGE_SIZE + 1;
+  const end = Math.min(state.itemPage * ITEM_PAGE_SIZE, total);
+  box.innerHTML =
+    '<div class="isplit-head"><b>' + esc(splitTitle()) + '</b>' +
+      '<span>第 ' + start + '–' + end + ' 张 / 共 ' + total + ' 张</span></div>' +
+    (items.length
+      ? '<div class="ilist">' + items.map(itemRowHTML).join('') + '</div>'
+      : '<div class="items-empty">该分组暂无卡片</div>');
+  bindItemCards(box);
+}
+
+function renderItemsTable() {
+  const list = filteredItems();
+  updateFilterInfo(list.length);
+
+  const view = state.itemsView || 'split';
+  // 双栏视图用左侧分组树筛选，不需要顶部两个分组下拉
+  const parentSel = document.getElementById('itemParentFilter');
+  const subSel = document.getElementById('itemSubFilter');
+  if (parentSel) parentSel.style.display = view === 'split' ? 'none' : '';
+  if (subSel) subSel.style.display = view === 'split' ? 'none' : '';
+  const gridBox = document.getElementById('itemsViewGrid');
+  const splitBox = document.getElementById('itemsViewSplit');
+  if (!gridBox || !splitBox) return;
+  gridBox.hidden = view !== 'grid';
+  splitBox.hidden = view !== 'split';
+  // 清掉非当前视图的旧 DOM，避免「全选本页」把隐藏视图里的卡片也算进去
+  if (view !== 'grid') gridBox.innerHTML = '';
+  if (view !== 'split') {
+    const splitList = document.getElementById('itemsSplitList');
+    if (splitList) splitList.innerHTML = '';
+  }
+
+  if (!list.length) {
+    const hasFilter = !!(state.currentGroup || state.currentParent || state.itemKeyword);
+    const empty = '<div class="items-empty">' +
+      (hasFilter ? '没有匹配的卡片，试试调整筛选或清空搜索' : '暂无卡片，点击右上角「添加卡片」创建') + '</div>';
+    if (view === 'split') {
+      renderSplitView(document.getElementById('itemsSplitList'), [], 0);
+    } else {
+      gridBox.innerHTML = empty;
+    }
+    renderItemsPager(0);
+    syncBulkBar();
+    return;
+  }
+
+  const perPage = view === 'grid' ? gridPageSize() : ITEM_PAGE_SIZE;
+  const { total, items } = pageSlice(list, perPage);
+  if (view === 'grid') {
+    renderGridView(gridBox, items);
+    const first = gridBox.querySelector('.igcard');
+    if (first) {
+      const h = Math.round(first.getBoundingClientRect().height);
+      if (h > 0) gridCardH = h;
+    }
+  } else {
+    renderSplitView(document.getElementById('itemsSplitList'), items, total);
+  }
+
+  renderItemsPager(total, perPage);
   syncBulkBar();
 }
 
@@ -1053,7 +1286,7 @@ function syncBulkBar() {
   const bar = document.getElementById('itemsBulkBar');
   const countEl = document.getElementById('itemsBulkCount');
   const checkAll = document.getElementById('itemsCheckAll');
-  const checks = document.querySelectorAll('#itemsTbody .item-check');
+  const checks = document.querySelectorAll('#tab-items .item-check');
   let pageChecked = 0;
   checks.forEach(c => { if (c.checked) pageChecked++; });
   if (checkAll) {
@@ -1065,11 +1298,12 @@ function syncBulkBar() {
 }
 
 /** 渲染卡片列表分页控件（上一页/页码/下一页 + 总数） */
-function renderItemsPager(total) {
+function renderItemsPager(total, perPage) {
+  const size = perPage || ITEM_PAGE_SIZE;
   const pager = document.getElementById('itemsPager');
   if (!pager) return;
   pager.hidden = false;
-  const totalPages = Math.max(1, Math.ceil(total / ITEM_PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / size));
   // 只有一页时只显示总数信息，不渲染翻页按钮
   if (totalPages <= 1) {
     pager.innerHTML = '<span class="pager-info">共 ' + total + ' 条</span>';
@@ -1087,11 +1321,9 @@ function renderItemsPager(total) {
       b.onclick = () => {
         state.itemPage = page;
         renderItemsTable();
-        // 翻页后回到表格顶部，避免停在旧位置
-        const table = document.getElementById('itemsTbody');
-        if (table && table.closest('.admin-panel')) {
-          table.closest('.admin-panel').scrollIntoView({ block: 'start', behavior: 'smooth' });
-        }
+        // 翻页后回到卡片区顶部，避免停在旧位置
+        const panel = document.getElementById('tab-items');
+        if (panel) panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
       };
     }
     return b;
@@ -1099,8 +1331,8 @@ function renderItemsPager(total) {
   pager.innerHTML = '';
   const info = document.createElement('span');
   info.className = 'pager-info';
-  const start = (cur - 1) * ITEM_PAGE_SIZE + 1;
-  const end = Math.min(cur * ITEM_PAGE_SIZE, total);
+  const start = (cur - 1) * size + 1;
+  const end = Math.min(cur * size, total);
   info.textContent = '第 ' + start + '–' + end + ' 条 / 共 ' + total + ' 条';
   pager.appendChild(info);
   const nav = document.createElement('span');
@@ -1230,7 +1462,7 @@ function bindItemsBulk() {
   const checkAll = document.getElementById('itemsCheckAll');
   if (checkAll) {
     checkAll.onchange = () => {
-      const ids = [...document.querySelectorAll('#itemsTbody .item-check')].map(c => Number(c.dataset.id));
+      const ids = [...document.querySelectorAll('#tab-items .item-check')].map(c => Number(c.dataset.id));
       ids.forEach(id => { if (checkAll.checked) state.selectedItems.add(id); else state.selectedItems.delete(id); });
       renderItemsTable();
     };
@@ -1518,6 +1750,7 @@ function bindItems() {
   const iconBatchBtn = document.getElementById('iconBatchBtn');
   if (iconBatchBtn) iconBatchBtn.onclick = startIconBatch;
   bindItemsBulk();
+  initItemsView();
 
   // ============ 事件绑定 ============
   // 标题 → iconText 自动同步（未手动编辑过时才跟随）
@@ -1814,6 +2047,7 @@ function fillSettingsForm(s) {
   document.getElementById('s_clock_font').value =
     SP_CLOCK_FONTS.some(f => f.id === s.clock_font) ? s.clock_font : '';
   updateClockFontPreview();
+  updateLunarPreview();
   document.getElementById('s_news_show').value = s.news_show === '0' ? '0' : '1';
   document.getElementById('s_news_auto_refresh').value = s.news_auto_refresh === '1' ? '1' : '0';
   loadNewsSourceRows(s.news_sources || '', s.news_order || '');
@@ -1967,115 +2201,89 @@ async function loadNewsSourceRows(saved, savedOrder) {
       wrap.innerHTML = '<div class="form-hint">暂无可选数据源</div>';
       return;
     }
-    const table = document.createElement('table');
-    table.className = 'table news-source-table';
-    table.innerHTML =
-      '<thead><tr>' +
-      '<th style="width:220px">数据源</th>' +
-      '<th>数据源API地址</th>' +
-      '<th style="width:70px;text-align:center">排序号</th>' +
-      '<th style="width:110px;text-align:center">前端显示</th>' +
-      '<th style="width:110px">操作</th>' +
-      '</tr></thead><tbody></tbody>';
-    const tbody = table.querySelector('tbody');
+    const grid = document.createElement('div');
+    grid.className = 'ns-grid';
     sources.forEach((src, i) => {
-      const tr = document.createElement('tr');
-      tr.className = 'news-source-item';
-      tr.dataset.id = src.id;
-      // 第 1 列：数据源（拖拽手柄 + 色点 + 名称）
-      const tdName = document.createElement('td');
-      tdName.style.whiteSpace = 'nowrap';
+      const item = document.createElement('div');
+      item.className = 'news-source-item';
+      item.dataset.id = src.id;
+
+      const top = document.createElement('div');
+      top.className = 'ns-top';
+
       const handle = document.createElement('span');
       handle.className = 'ns-handle';
       handle.title = '拖动调整主页显示顺序';
       handle.textContent = '⠿';
       handle.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); });
+
+      // 排序号（当前顺序，1 起始）：拖动后自动刷新
+      const idx = document.createElement('span');
+      idx.className = 'ns-index';
+      idx.textContent = i + 1;
+
       const dot = document.createElement('span');
       dot.className = 'ns-dot';
       dot.style.background = src.color || 'var(--accent)';
+
       const name = document.createElement('span');
+      name.className = 'ns-name';
       name.textContent = src.name;
-      tdName.appendChild(handle);
-      tdName.appendChild(dot);
-      tdName.appendChild(name);
-      // 第 2 列：数据源 API 地址（home）
-      const tdUrl = document.createElement('td');
-      const home = src.home || '-';
-      tdUrl.innerHTML = '<span class="ns-url" title="' + esc(home) + '">' + esc(home) + '</span>';
-      // 第 3 列：排序号（当前行序号，1 起始）
-      const tdOrder = document.createElement('td');
-      tdOrder.style.textAlign = 'center';
-      tdOrder.textContent = i + 1;
-      // 第 4 列：前端显示（启用开关）
-      const tdVis = document.createElement('td');
-      tdVis.style.textAlign = 'center';
+
+      // 前端显示（启用开关）
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.value = src.id;
       cb.checked = checked.includes(src.id);
       cb.title = '勾选后在主页新闻视图显示';
-      tdVis.appendChild(cb);
-      // 第 5 列：操作（上移/下移）
-      const tdAct = document.createElement('td');
-      const acts = document.createElement('div');
-      acts.className = 'actions';
-      const upBtn = document.createElement('button');
-      upBtn.className = 'btn btn-sm';
-      upBtn.textContent = '上移';
-      upBtn.onclick = () => moveNewsRow(tr, -1);
-      const downBtn = document.createElement('button');
-      downBtn.className = 'btn btn-sm';
-      downBtn.textContent = '下移';
-      downBtn.onclick = () => moveNewsRow(tr, 1);
-      acts.appendChild(upBtn);
-      acts.appendChild(downBtn);
-      tdAct.appendChild(acts);
+      cb.addEventListener('change', () => { item.classList.toggle('off', !cb.checked); });
 
-      tr.appendChild(tdName);
-      tr.appendChild(tdUrl);
-      tr.appendChild(tdOrder);
-      tr.appendChild(tdVis);
-      tr.appendChild(tdAct);
-      tbody.appendChild(tr);
+      top.appendChild(handle);
+      top.appendChild(idx);
+      top.appendChild(dot);
+      top.appendChild(name);
+      top.appendChild(cb);
+
+      const home = src.home || '-';
+      const url = document.createElement('div');
+      url.className = 'ns-url';
+      url.textContent = home;
+      url.title = home;
+
+      item.appendChild(top);
+      item.appendChild(url);
+      if (!cb.checked) item.classList.add('off');
+      grid.appendChild(item);
     });
-    wrap.appendChild(table);
-    refreshNewsOrderNumbers();
+    wrap.appendChild(grid);
 
-    // 全选 / 反选（表格每次重绘后重新绑定）
+    // 全选 / 反选（每次重绘后重新绑定）
     const allBtn = document.getElementById('newsSelectAll');
     const invertBtn = document.getElementById('newsSelectInvert');
+    const syncOff = () => {
+      wrap.querySelectorAll('.news-source-item').forEach(it => {
+        const box = it.querySelector('input[type="checkbox"]');
+        it.classList.toggle('off', !(box && box.checked));
+      });
+    };
     if (allBtn) allBtn.onclick = () => {
-      wrap.querySelectorAll('tbody input[type="checkbox"]').forEach(cb => { cb.checked = true; });
+      wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = true; });
+      syncOff();
     };
     if (invertBtn) invertBtn.onclick = () => {
-      wrap.querySelectorAll('tbody input[type="checkbox"]').forEach(cb => { cb.checked = !cb.checked; });
+      wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = !cb.checked; });
+      syncOff();
     };
   } catch (e) {
     wrap.innerHTML = '<div class="form-hint">数据源列表加载失败：' + esc(e.message) + '</div>';
   }
 }
 
-/** 上移/下移某行并刷新排序号显示 */
-function moveNewsRow(tr, dir) {
-  const tbody = tr.parentElement;
-  if (!tbody) return;
-  const rows = Array.prototype.slice.call(tbody.querySelectorAll('.news-source-item'));
-  const idx = rows.indexOf(tr);
-  if (idx < 0) return;
-  const target = idx + dir;
-  if (target < 0 || target >= rows.length) return;
-  const ref = rows[target];
-  if (dir < 0) tbody.insertBefore(tr, ref);
-  else tbody.insertBefore(tr, ref.nextSibling);
-  refreshNewsOrderNumbers();
-}
-
-/** 重排后刷新「排序号」列的数字显示 */
+/** 重排后刷新卡片上的顺序号 */
 function refreshNewsOrderNumbers() {
-  const rows = document.querySelectorAll('#newsSourceRows .news-source-item');
-  rows.forEach((r, i) => {
-    const td = r.children[2];
-    if (td) td.textContent = i + 1;
+  document.querySelectorAll('#newsSourceRows .news-source-item').forEach((it, i) => {
+    const idx = it.querySelector('.ns-index');
+    if (idx) idx.textContent = i + 1;
   });
 }
 
@@ -2125,6 +2333,7 @@ function bindNewsSourceDrag() {
     else item.before(dragEl);
     clearMarks();
     dragEl = null;
+    refreshNewsOrderNumbers();
   });
   wrap.addEventListener('dragend', () => { clearMarks(); dragEl = null; });
 }
@@ -2475,7 +2684,7 @@ const SETTING_SECTIONS = {
   search: { label: '导航与搜索', keys: ['search_bar_enabled', 'search_engines', 'search_default', 'search_width'] },
   news:   { label: '热点新闻', keys: ['news_show', 'news_auto_refresh', 'news_sources', 'news_order'] },
   nas:    { label: 'NAS 监控', keys: ['nas_show', 'nas_layout', 'nas_refresh', 'nas_guest', 'nas_disk_paths', 'nas_modal_alpha', 'nas_alert_enable', 'nas_alert_disk', 'nas_alert_temp', 'nas_alert_webhook'] },
-  clip:   { label: '剪藏与接入', keys: ['clip_enabled', 'clip_default_group', 'clip_default_capture'] },
+  clip:   { label: '剪藏管理', keys: ['clip_enabled', 'clip_default_group', 'clip_default_capture'] },
 };
 
 function numSetting(id, def) {
@@ -2597,6 +2806,16 @@ function updateClockFontPreview() {
   preview.style.fontFamily = stack || '';
 }
 
+/** 字体预览里的农历行：跟随「显示时钟 = 显示（含农历）」显示或隐藏 */
+function updateLunarPreview() {
+  const sel = document.getElementById('s_clock_show');
+  const on = !!sel && sel.value === 'lunar';
+  ['pageFontLunar', 'clockFontLunar'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.hidden = !on;
+  });
+}
+
 /* 分区内部二级导航：通用实现（外观 / 导航 / 新闻） */
 function bindPaneNav(navId, formSel, storageKey) {
   const nav = document.getElementById(navId);
@@ -2626,6 +2845,90 @@ function bindClipSubnav() {
   bindPaneNav('clipSubnav', '#tab-clip', 'sp_clip_pane');
 }
 
+/** 卡片内可保存的设置项：只取本分区白名单里、输入控件落在本卡片内的键 */
+function cardSettingsKeys(card) {
+  const form = card.closest('form[data-section]');
+  const sec = form && SETTING_SECTIONS[form.dataset.section];
+  const keys = [];
+  if (!sec) return keys;
+  sec.keys.forEach(function (k) {
+    const el = document.getElementById('s_' + k);
+    if (el && card.contains(el) && keys.indexOf(k) < 0) keys.push(k);
+  });
+  // 访客密码：输入框 id 为 s_guest_password，提交键是 guest_password_hash（留空=不改）
+  const gp = document.getElementById('s_guest_password');
+  if (gp && card.contains(gp) && keys.indexOf('guest_password_hash') < 0) keys.push('guest_password_hash');
+  // 搜索引擎与新闻数据源是动态容器，没有 s_ 前缀的输入框
+  if (card.querySelector('#engineRows') && keys.indexOf('search_engines') < 0) keys.push('search_engines');
+  if (card.querySelector('#newsSourceRows')) {
+    if (keys.indexOf('news_sources') < 0) keys.push('news_sources');
+    if (keys.indexOf('news_order') < 0) keys.push('news_order');
+  }
+  return keys;
+}
+
+/** 保证每张卡片头部都有「独立保存」按钮（已有分组保存按钮的卡片跳过） */
+function ensureCardSave(card) {
+  if (card.querySelector('.group-save')) return;
+  const keys = cardSettingsKeys(card);
+  if (!keys.length) return; // 无设置项的卡片（如自定义 RSS 源，增删即时生效）
+  let head = null;
+  Array.prototype.forEach.call(card.children, function (n) {
+    if (n.classList && n.classList.contains('sub-group-head')) head = n;
+  });
+  if (!head) {
+    const h4 = Array.prototype.filter.call(card.children, function (n) {
+      return n.nodeType === 1 && n.matches('h4.sub-group-title');
+    })[0];
+    if (!h4) return;
+    head = document.createElement('div');
+    head.className = 'sub-group-head';
+    card.insertBefore(head, h4);
+    head.appendChild(h4);
+  }
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-primary btn-sm group-save';
+  btn.dataset.keys = keys.join(',');
+  btn.textContent = '保存';
+  head.appendChild(btn);
+}
+
+/** 站点设置：把每个「小标题 + 设置项」包成独立卡片，避免设置项一长串平铺看不清 */
+function wrapSettingsCards() {
+  // 从标题节点开始，把它和后续同级设置项收进一张卡片，遇到下一个标题即停
+  const wrapFrom = function (start) {
+    const card = document.createElement('div');
+    card.className = 'set-card';
+    start.parentNode.insertBefore(card, start);
+    let node = start;
+    while (node) {
+      const next = node.nextSibling;
+      if (node !== start && node.nodeType === 1 &&
+          (node.matches('h4.sub-group-title') || node.matches('.sub-group-head') ||
+           node.querySelector('h4.sub-group-title'))) break;
+      card.appendChild(node);
+      node = next;
+    }
+    return card;
+  };
+
+  document.querySelectorAll('#tab-settings form').forEach(function (form) {
+    const heads = Array.prototype.slice.call(form.querySelectorAll('h4.sub-group-title'));
+    heads.forEach(function (h) {
+      const headRow = h.closest('.sub-group-head');
+      if (headRow) {
+        // 「页面字体 / 时钟与天气」在外层 form-item 里，直接让该 form-item 当卡片
+        const box = headRow.closest('.form-item');
+        if (box) { box.classList.add('set-card'); ensureCardSave(box); return; }
+        ensureCardSave(wrapFrom(headRow));
+        return;
+      }
+      ensureCardSave(wrapFrom(h));
+    });
+  });
+}
+
 function bindSettings() {
   // 外观与卡片已合并为单页，不再需要内部二级导航
   // 剪藏与接入内部二级导航
@@ -2633,6 +2936,9 @@ function bindSettings() {
   // 字体下拉：整页 + 时钟，填充 12 款字体并绑定预览
   ensurePageFontOptions();
   ensureClockFontOptions();
+  // 显示时钟切换为「含农历」时，字体预览同步显示农历行
+  const clockShowSel = document.getElementById('s_clock_show');
+  if (clockShowSel) clockShowSel.addEventListener('change', updateLunarPreview);
   // 内容区域滑条：拖动时同步显示当前数值
   ['maxwidth', 'pad_lr', 'pad_top', 'pad_bottom'].forEach(k => {
     const range = document.getElementById('s_content_' + k);

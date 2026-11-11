@@ -402,6 +402,7 @@ a:hover {
 /* 描述列：占用剩余宽度，最多两行，悬浮显示全文 */
 .item-desc {
   color: var(--text-muted);
+  max-width: 100%;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   /* 标准属性：与私有属性并列，供新内核直接识别 */

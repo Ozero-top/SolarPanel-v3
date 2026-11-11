@@ -48,6 +48,10 @@ body[data-admin-skin='aurora'] {
   --stat-4: #3ddc97;
   --stat-5: #22d3ee;
   --stat-6: #f472b6;
+  /* 侧栏选中项：胶囊底 + 描边 + 柔和外发光 */
+  --nav-active-bg: linear-gradient(90deg, rgba(91, 140, 255, 0.24), rgba(91, 140, 255, 0.06));
+  --nav-active-ring: rgba(91, 140, 255, 0.22);
+  --nav-active-glow: 0 4px 14px rgba(91, 140, 255, 0.16);
   color-scheme: dark;
 }
 
@@ -95,6 +99,9 @@ body[data-admin-skin='neon'] {
   --stat-4: #4ade80;
   --stat-5: #fbbf24;
   --stat-6: #818cf8;
+  --nav-active-bg: linear-gradient(90deg, rgba(177, 108, 255, 0.26), rgba(177, 108, 255, 0.07));
+  --nav-active-ring: rgba(177, 108, 255, 0.26);
+  --nav-active-glow: 0 4px 14px rgba(177, 108, 255, 0.2);
   color-scheme: dark;
 }
 
@@ -142,6 +149,9 @@ body[data-admin-skin='element'] {
   --stat-4: #10b981;
   --stat-5: #0891b2;
   --stat-6: #db2777;
+  --nav-active-bg: rgba(37, 99, 235, 0.09);
+  --nav-active-ring: rgba(37, 99, 235, 0.16);
+  --nav-active-glow: none;
   color-scheme: light;
 }
 
@@ -257,11 +267,14 @@ body.admin-console ::-webkit-scrollbar-track { background: transparent; }
   border-radius: 9px;
   display: grid;
   place-items: center;
-  font-size: 13px;
-  font-weight: 800;
-  color: #fff;
-  background: linear-gradient(135deg, #5b8cff, #3d6ef7 55%, #8b5cf6);
-  box-shadow: 0 6px 18px var(--accent-glow);
+  overflow: hidden;
+  background: transparent;
+}
+.cs-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 .cs-brand-text {
   display: flex;
@@ -287,10 +300,29 @@ body.admin-console ::-webkit-scrollbar-track { background: transparent; }
   transition: background 160ms ease, color 160ms ease, transform 220ms ease;
 }
 .cs-collapse:hover { background: var(--hover-bg); color: var(--accent); }
-.console-shell.collapsed .cs-collapse { transform: rotate(180deg); }
+.console-shell.collapsed .cs-collapse { transform: rotate(180deg); margin-left: 0; }
 .console-shell.collapsed .cs-brand-text { display: none; }
 .console-shell.collapsed .cs-brand { justify-content: center; padding: 0; }
-.console-shell.collapsed .cs-collapse { display: none; }
+/* 收起后隐藏 LOGO，只留展开按钮，否则没有入口可以展开回来 */
+.console-shell.collapsed .cs-logo { display: none; }
+
+/* 侧栏收起时的功能名称气泡（fixed 定位，避免被导航滚动区裁掉） */
+.cs-tip {
+  position: fixed;
+  z-index: 9999;
+  transform: translateY(-50%);
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--text);
+  color: var(--card-bg);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.cs-tip.on { opacity: 1; }
 
 /* 导航（复用 .admin-tabs 容器，保持原有 tab 机制） */
 body.admin-console .cs-nav {
@@ -322,13 +354,14 @@ body.admin-console .cs-nav::-webkit-scrollbar { width: 6px; }
   overflow: hidden;
 }
 body.admin-console .cs-nav .tab {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
   padding: 9px 12px;
   border: 0;
-  border-radius: 9px;
+  border-radius: 10px;
   background: transparent;
   color: var(--text-muted);
   font-size: 13.5px;
@@ -336,31 +369,47 @@ body.admin-console .cs-nav .tab {
   text-align: left;
   white-space: nowrap;
   box-shadow: none;
-  transition: background 160ms ease, color 160ms ease;
+  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
 body.admin-console .cs-nav .tab:hover {
   background: var(--hover-bg);
   color: var(--text);
 }
 body.admin-console .cs-nav .tab.active {
-  background: var(--accent-soft);
+  background: var(--nav-active-bg, var(--accent-soft));
   color: var(--accent);
   font-weight: 600;
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: inset 0 0 0 1px var(--nav-active-ring, transparent), var(--nav-active-glow, none);
+}
+/* 选中项左侧圆角指示条，不再用通高竖条切断圆角 */
+body.admin-console .cs-nav .tab.active::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 999px;
+  background: var(--accent);
 }
 .cs-ico {
   flex: 0 0 20px;
   width: 20px;
-  text-align: center;
+  height: 20px;
+  display: grid;
+  place-items: center;
   font-size: 14px;
   opacity: 0.9;
 }
+.cs-ico svg { width: 18px; height: 18px; display: block; }
 .cs-label { overflow: hidden; text-overflow: ellipsis; }
 
 .console-shell.collapsed .cs-nav-group { height: 8px; padding: 0; opacity: 0; }
 .console-shell.collapsed .cs-nav .tab { justify-content: center; padding: 10px; }
 .console-shell.collapsed .cs-nav .tab .cs-label { display: none; }
-.console-shell.collapsed .cs-nav .tab.active { box-shadow: inset 0 0 0 1px var(--accent-soft); }
+.console-shell.collapsed .cs-nav .tab.active { box-shadow: inset 0 0 0 1px var(--nav-active-ring, transparent); }
+.console-shell.collapsed .cs-nav .tab.active::before { display: none; }
 
 .cs-side-foot {
   flex: 0 0 auto;
@@ -492,7 +541,7 @@ body.admin-console .cs-nav .tab.active {
   background: var(--accent-soft);
   border-color: var(--accent-soft);
 }
-/* 顶栏「后端主题」文字按钮 */
+/* 顶栏「后端主题」「查看主页」文字按钮 */
 .cs-skin-btn {
   height: 34px;
   padding: 0 12px;
@@ -503,6 +552,9 @@ body.admin-console .cs-nav .tab.active {
   font-size: 12.5px;
   font-weight: 600;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
   transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
 }
 .cs-skin-btn:hover,
@@ -686,7 +738,7 @@ body.admin-console .settings-subnav .subtab.active {
 }
 
 body.admin-console .settings-section {
-  background: var(--surface-2);
+  background: var(--surface);
   border: 1px solid var(--edge);
   border-radius: 14px;
   padding: 18px 20px 4px;
@@ -794,7 +846,8 @@ body.admin-console .toast {
   justify-content: space-between;
 }
 .stat-label { font-size: 12.5px; color: var(--text-muted); letter-spacing: 0.3px; }
-.stat-glyph { font-size: 15px; color: var(--tone); opacity: 0.9; }
+.stat-glyph { font-size: 15px; color: var(--tone); opacity: 0.9; display: inline-flex; }
+.stat-glyph svg { width: 18px; height: 18px; display: block; }
 .stat-value {
   position: relative;
   z-index: 1;
@@ -1091,7 +1144,8 @@ body.admin-console .toast {
   background: var(--accent-soft);
   transform: translateY(-1px);
 }
-.quick-btn span { display: block; font-size: 16px; color: var(--accent); margin-bottom: 7px; }
+.quick-btn span { display: flex; align-items: center; font-size: 16px; color: var(--accent); margin-bottom: 7px; }
+.quick-btn span svg { width: 19px; height: 19px; display: block; }
 .quick-btn b { display: block; font-size: 12.5px; font-weight: 600; }
 .quick-btn i {
   display: block;
@@ -1570,4 +1624,248 @@ body.login-body[data-admin-skin] .login-card {
 @media (max-width: 760px) {
   .dash-grid-4 { grid-template-columns: 1fr; }
   .dash-grid-4 .dash-card.span-2 { grid-column: auto; }
+}
+
+/* ============================================================
+   卡片管理：三视图（列表 / 网格 / 双栏主从）
+   ============================================================ */
+body.admin-console .seg {
+  display: inline-flex;
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--card-bg);
+}
+body.admin-console .seg-btn {
+  border: 0;
+  background: transparent;
+  height: 30px;
+  padding: 0 11px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+body.admin-console .seg-btn + .seg-btn { border-left: 1px solid var(--edge); }
+body.admin-console .seg-btn:hover { color: var(--text); }
+body.admin-console .seg-btn.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+body.admin-console .items-empty {
+  padding: 30px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+body.admin-console .bulk-bar .bulk-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ---------- 双栏右侧卡片行 ---------- */
+body.admin-console .icard {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 10px;
+}
+body.admin-console .icard:hover { background: var(--hover-bg); }
+body.admin-console .icard.is-hidden,
+body.admin-console .igcard.is-hidden { opacity: .62; }
+body.admin-console .icard-chk { flex: 0 0 auto; display: flex; align-items: center; }
+body.admin-console .icard-ico,
+body.admin-console .igcard-ico { width: 34px; height: 34px; font-size: 13px; border-radius: 9px; }
+body.admin-console .icard-main { flex: 1; min-width: 0; }
+body.admin-console .icard-t { display: flex; align-items: center; gap: 8px; min-width: 0; }
+body.admin-console .icard-name {
+  font-weight: 600;
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.admin-console .icard-open {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+body.admin-console .icard-d {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.admin-console .icard-acts {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+}
+body.admin-console .icard-acts .btn { height: 28px; padding: 0 10px; font-size: 12px; }
+
+body.admin-console .icard-menu {
+  position: absolute;
+  right: 0;
+  top: 34px;
+  z-index: 30;
+  min-width: 132px;
+  display: none;
+  padding: 5px;
+  background: var(--card-bg);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(10, 16, 32, .16);
+}
+body.admin-console .icard-menu.open { display: block; }
+body.admin-console .icard-menu button {
+  display: block;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+body.admin-console .icard-menu button:hover { background: var(--hover-bg); }
+body.admin-console .icard-menu button.del { color: var(--color-danger, #e8463a); }
+body.admin-console .icard-menu hr { border: 0; border-top: 1px solid var(--edge-weak); margin: 4px 2px; }
+
+/* ---------- 网格视图 ---------- */
+body.admin-console .igrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 12px;
+  margin-top: 6px;
+}
+body.admin-console .igcard {
+  position: relative;
+  padding: 16px 10px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+  background: var(--card-bg);
+  text-align: center;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+body.admin-console .igcard:hover { border-color: var(--accent); box-shadow: 0 8px 20px rgba(10, 16, 32, .10); }
+body.admin-console .igcard-ico { width: 42px; height: 42px; font-size: 15px; border-radius: 11px; margin: 0 auto 8px; }
+body.admin-console .igcard-t {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.admin-console .igcard-u {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.admin-console .igcard-g {
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 7px;
+  padding: 0 7px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.admin-console .igcard-hid {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  padding: 0 6px;
+  font-size: 10.5px;
+  color: #a26400;
+  background: rgba(239, 170, 23, .18);
+  border-radius: 999px;
+}
+body.admin-console .igcard-chk { position: absolute; top: 8px; left: 9px; display: none; }
+body.admin-console .igcard:hover .igcard-chk,
+body.admin-console .igcard-chk:has(input:checked) { display: block; }
+body.admin-console .igcard-ov {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 14px;
+  background: var(--card-bg);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+body.admin-console .igcard:hover .igcard-ov { opacity: .95; }
+body.admin-console .igcard-ov .btn { height: 28px; padding: 0 10px; font-size: 12px; }
+body.admin-console .igcard .icard-menu { top: 46px; right: 8px; }
+
+/* ---------- 双栏主从 ---------- */
+body.admin-console .items-split { display: flex; gap: 14px; align-items: flex-start; }
+body.admin-console .items-tree {
+  flex: 0 0 214px;
+  width: 214px;
+  max-height: 560px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: var(--card-bg);
+}
+body.admin-console .itree-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+body.admin-console .itree-node:hover { background: var(--hover-bg); }
+body.admin-console .itree-node.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+body.admin-console .itree-car { flex: 0 0 10px; font-size: 9px; color: var(--text-muted); }
+body.admin-console .itree-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.admin-console .itree-cnt { font-size: 11px; color: var(--text-muted); }
+body.admin-console .itree-node.child { padding-left: 34px; font-size: 12.5px; }
+body.admin-console .items-split-main { flex: 1; min-width: 0; }
+body.admin-console .isplit-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+body.admin-console .isplit-head b { font-size: 14px; }
+body.admin-console .isplit-head span { font-size: 11.5px; color: var(--text-muted); }
+
+@media (max-width: 1100px) {
+  body.admin-console .icard-acts .btn { padding: 0 8px; font-size: 11.5px; }
+}
+@media (max-width: 900px) {
+  body.admin-console .items-split { flex-direction: column; }
+  body.admin-console .items-tree { flex: 0 0 auto; width: 100%; max-height: 220px; }
+}
+@media (max-width: 640px) {
+  body.admin-console .icard { flex-wrap: wrap; }
+  body.admin-console .icard-acts { flex-wrap: wrap; justify-content: flex-end; width: 100%; }
+  body.admin-console .icard-open { display: none; }
+  body.admin-console .igrid { grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); }
+  body.admin-console .seg-btn { padding: 0 9px; font-size: 12px; }
 }

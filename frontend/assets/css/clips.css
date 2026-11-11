@@ -26,7 +26,6 @@ html[data-theme="dark"] {
 }
 
 * { box-sizing: border-box; }
-
 body {
   margin: 0;
   background: var(--bg-grad, var(--cl-bg));
@@ -683,4 +682,54 @@ a { color: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   .cl-card { transition: none; }
+}
+
+/* ============================================================
+   配色跟随后台主题：极光暗色 / 赛博霓虹 / 极简白
+   （由 clips.js 写入 body[data-admin-skin]，与后台皮肤保持一致）
+   ============================================================ */
+body[data-admin-skin] {
+  background: var(--cl-bg);
+}
+
+body[data-admin-skin='aurora'] {
+  color-scheme: dark;
+  --cl-bg: #0a0e17;
+  --cl-panel: rgba(21, 27, 40, .78);
+  --cl-panel-2: #1a2130;
+  --cl-text: #e8eefb;
+  --cl-muted: #93a0b8;
+  --cl-line: rgba(255, 255, 255, .075);
+  --cl-accent: #5b8cff;
+  --cl-accent-soft: rgba(91, 140, 255, .16);
+  --cl-danger: #ff6b6b;
+  --cl-shadow: 0 10px 30px rgba(0, 0, 0, .26);
+}
+
+body[data-admin-skin='neon'] {
+  color-scheme: dark;
+  --cl-bg: #07050f;
+  --cl-panel: rgba(23, 16, 41, .78);
+  --cl-panel-2: #171029;
+  --cl-text: #ecf0ff;
+  --cl-muted: #9aa3c8;
+  --cl-line: rgba(177, 108, 255, .16);
+  --cl-accent: #b16cff;
+  --cl-accent-soft: rgba(177, 108, 255, .18);
+  --cl-danger: #fb7185;
+  --cl-shadow: 0 10px 30px rgba(0, 0, 0, .3);
+}
+
+body[data-admin-skin='element'] {
+  color-scheme: light;
+  --cl-bg: #f4f6fb;
+  --cl-panel: #ffffff;
+  --cl-panel-2: #f5f7fb;
+  --cl-text: #1f2637;
+  --cl-muted: #6b7486;
+  --cl-line: #e5e9f2;
+  --cl-accent: #2563eb;
+  --cl-accent-soft: rgba(37, 99, 235, .1);
+  --cl-danger: #dc2626;
+  --cl-shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 8px 24px rgba(16, 24, 40, .06);
 }

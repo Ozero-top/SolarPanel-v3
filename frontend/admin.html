@@ -6,10 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>管理后台 - SolarPanel</title>
   <link rel="icon" href="favicon.ico?v=1b5d8c6c" type="image/x-icon">
-  <link rel="stylesheet" href="assets/css/common.css?v=dc014ca6">
-  <link rel="stylesheet" href="assets/css/auth-admin.css?v=0eb45422">
+  <link rel="stylesheet" href="assets/css/common.css?v=9e8a1c7d">
+  <link rel="stylesheet" href="assets/css/auth-admin.css?v=dbbec97f">
   <link rel="stylesheet" href="assets/css/themes.css?v=0d33b01b">
-  <link rel="stylesheet" href="assets/css/console.css?v=cc38ffcc">
+  <link rel="stylesheet" href="assets/css/console.css?v=f20dbbea">
 </head>
 <body class="admin-console" data-admin-skin="aurora">
   <script>(function(){try{var k=localStorage.getItem('sp_admin_skin');if(!k||['aurora','neon','element'].indexOf(k)<0)k='aurora';document.body.dataset.adminSkin=k;document.documentElement.dataset.theme=k==='element'?'light':'dark';document.documentElement.dataset.style='console';}catch(e){}})();</script>
@@ -18,22 +18,22 @@
     <!-- 侧栏导航 -->
     <aside class="console-sidebar" id="consoleSidebar">
       <div class="cs-brand">
-        <div class="cs-logo">SP</div>
+        <div class="cs-logo"><img src="assets/img/icon-192.png" alt="SolarPanel" width="32" height="32"></div>
         <div class="cs-brand-text"><b>SolarPanel</b><span>管理控制台</span></div>
         <button class="cs-collapse" id="sidebarCollapseBtn" type="button" title="收起侧栏">‹</button>
       </div>
       <nav class="admin-tabs cs-nav" aria-label="后台导航">
         <div class="cs-nav-group">概览</div>
-        <button class="tab active" data-tab="dashboard"><span class="cs-ico">◉</span><span class="cs-label">系统状态</span></button>
+        <button class="tab active" data-tab="dashboard" data-tip="系统状态" aria-label="系统状态"><span class="cs-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 12 7 12 10 5 14 19 17 12 21 12"/></svg></span><span class="cs-label">系统状态</span></button>
         <div class="cs-nav-group">内容</div>
-        <button class="tab" data-tab="items"><span class="cs-ico">▤</span><span class="cs-label">卡片管理</span></button>
-        <button class="tab" data-tab="groups"><span class="cs-ico">▥</span><span class="cs-label">分组管理</span></button>
-        <button class="tab" data-tab="clip"><span class="cs-ico">⌸</span><span class="cs-label">剪藏与接入</span></button>
+        <button class="tab" data-tab="items" data-tip="卡片管理" aria-label="卡片管理"><span class="cs-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg></span><span class="cs-label">卡片管理</span></button>
+        <button class="tab" data-tab="groups" data-tip="分组管理" aria-label="分组管理"><span class="cs-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.2l2 2.2h7.8A2.5 2.5 0 0 1 21 9.7v7.8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5z"/></svg></span><span class="cs-label">分组管理</span></button>
+        <button class="tab" data-tab="clip" data-tip="剪藏管理" aria-label="剪藏管理"><span class="cs-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><line x1="8.1" y1="7.6" x2="20" y2="17"/><line x1="8.1" y1="16.4" x2="20" y2="7"/></svg></span><span class="cs-label">剪藏管理</span></button>
         <div class="cs-nav-group">系统</div>
-        <button class="tab" data-tab="settings"><span class="cs-ico">⚙</span><span class="cs-label">站点设置</span></button>
-        <button class="tab" data-tab="account"><span class="cs-ico">◍</span><span class="cs-label">账号管理</span></button>
-        <button class="tab" data-tab="backup"><span class="cs-ico">◫</span><span class="cs-label">系统备份</span></button>
-        <button class="tab" data-tab="audit"><span class="cs-ico">≡</span><span class="cs-label">审计日志</span></button>
+        <button class="tab" data-tab="settings" data-tip="站点设置" aria-label="站点设置"><span class="cs-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="9" cy="7" r="2.2"/><circle cx="15" cy="12" r="2.2"/><circle cx="7" cy="17" r="2.2"/></svg></span><span class="cs-label">站点设置</span></button>
+        <button class="tab" data-tab="account" data-tip="账号管理" aria-label="账号管理"><span class="cs-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.4"/><path d="M5.2 20a6.8 6.8 0 0 1 13.6 0"/></svg></span><span class="cs-label">账号管理</span></button>
+        <button class="tab" data-tab="backup" data-tip="系统备份" aria-label="系统备份"><span class="cs-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="4.5" rx="1.2"/><path d="M5 8.5v9.3A2.2 2.2 0 0 0 7.2 20h9.6a2.2 2.2 0 0 0 2.2-2.2V8.5"/><line x1="10" y1="12.5" x2="14" y2="12.5"/></svg></span><span class="cs-label">系统备份</span></button>
+        <button class="tab" data-tab="audit" data-tip="审计日志" aria-label="审计日志"><span class="cs-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4.5" cy="6" r="1.2"/><circle cx="4.5" cy="12" r="1.2"/><circle cx="4.5" cy="18" r="1.2"/></svg></span><span class="cs-label">审计日志</span></button>
       </nav>
       <div class="cs-side-foot">
         <div class="cs-user">
@@ -41,7 +41,6 @@
           <div class="cs-user-meta"><b id="whoami">—</b><span>已登录</span></div>
         </div>
         <div class="cs-side-actions">
-          <a class="btn btn-sm" href="/" target="_blank" rel="noopener">查看主页</a>
           <button class="btn btn-sm" id="logoutBtn">退出登录</button>
         </div>
         <div class="cs-ver">版本 v<span id="appVer"></span></div>
@@ -59,7 +58,7 @@
           <div class="cs-live"><span class="cs-dot"></span><span id="csLiveText">运行中</span></div>
           <div class="cs-clock" id="csClock">--:--:--</div>
           <button class="cs-skin-btn" id="skinDockBtn" type="button" title="切换后台主题">后端主题</button>
-          <a class="cs-icon-btn" href="/" target="_blank" rel="noopener" title="打开主页">↗</a>
+          <a class="cs-skin-btn" href="/" target="_blank" rel="noopener" title="打开站点主页">查看主页</a>
         </div>
       </header>
 
@@ -79,25 +78,25 @@
 
       <div class="stat-grid">
         <div class="stat-card tone-blue">
-          <div class="stat-top"><span class="stat-label">卡片总数</span><span class="stat-glyph">▦</span></div>
+          <div class="stat-top"><span class="stat-label">卡片总数</span><span class="stat-glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg></span></div>
           <div class="stat-value" id="statCards">0</div>
           <div class="stat-foot" id="statCardsFoot">正在读取…</div>
           <div class="stat-bar"><i id="statCardsBar"></i></div>
         </div>
         <div class="stat-card tone-purple">
-          <div class="stat-top"><span class="stat-label">分组总数</span><span class="stat-glyph">▥</span></div>
+          <div class="stat-top"><span class="stat-label">分组总数</span><span class="stat-glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.2l2 2.2h7.8A2.5 2.5 0 0 1 21 9.7v7.8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5z"/></svg></span></div>
           <div class="stat-value" id="statGroups">0</div>
           <div class="stat-foot" id="statGroupsFoot">正在读取…</div>
           <div class="stat-bar"><i id="statGroupsBar"></i></div>
         </div>
         <div class="stat-card tone-amber">
-          <div class="stat-top"><span class="stat-label">隐藏卡片</span><span class="stat-glyph">◌</span></div>
+          <div class="stat-top"><span class="stat-label">隐藏卡片</span><span class="stat-glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10 10 0 0 1 12 6c5 0 9 4.5 9 6a11.4 11.4 0 0 1-2.4 3.4"/><path d="M6.4 7.7A11.5 11.5 0 0 0 3 12c0 1.5 4 6 9 6a9.7 9.7 0 0 0 3.2-.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></span></div>
           <div class="stat-value" id="statHidden">0</div>
           <div class="stat-foot" id="statHiddenFoot">正在读取…</div>
           <div class="stat-bar"><i id="statHiddenBar"></i></div>
         </div>
         <div class="stat-card tone-green">
-          <div class="stat-top"><span class="stat-label">内网地址</span><span class="stat-glyph">⌂</span></div>
+          <div class="stat-top"><span class="stat-label">内网地址</span><span class="stat-glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3c2.5 2.4 3.8 5.4 3.8 9s-1.3 6.6-3.8 9c-2.5-2.4-3.8-5.4-3.8-9S9.5 5.4 12 3z"/></svg></span></div>
           <div class="stat-value" id="statLan">0</div>
           <div class="stat-foot" id="statLanFoot">正在读取…</div>
           <div class="stat-bar"><i id="statLanBar"></i></div>
@@ -158,12 +157,12 @@
         <div class="dash-card">
           <div class="dash-card-head"><div><h3>快捷操作</h3><p>常用入口</p></div></div>
           <div class="quick-grid">
-            <button class="quick-btn" type="button" data-quick="item"><span>＋</span><b>新建卡片</b><i>录入常用链接</i></button>
-            <button class="quick-btn" type="button" data-quick="group"><span>＋</span><b>新建分组</b><i>整理卡片分类</i></button>
-            <button class="quick-btn" type="button" data-quick="clip"><span>⌸</span><b>剪藏与接入</b><i>扩展与令牌</i></button>
-            <button class="quick-btn" type="button" data-quick="settings"><span>⚙</span><b>站点设置</b><i>外观与访问</i></button>
-            <button class="quick-btn" type="button" data-quick="backup"><span>⛁</span><b>系统备份</b><i>导入 / 导出配置</i></button>
-            <button class="quick-btn" type="button" data-quick="account"><span>◍</span><b>账号管理</b><i>用户与权限</i></button>
+            <button class="quick-btn" type="button" data-quick="item"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg></span><b>新建卡片</b><i>录入常用链接</i></button>
+            <button class="quick-btn" type="button" data-quick="group"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.2l2 2.2h7.8A2.5 2.5 0 0 1 21 9.7v7.8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5z"/><line x1="12" y1="12.6" x2="12" y2="16.6"/><line x1="10" y1="14.6" x2="14" y2="14.6"/></svg></span><b>新建分组</b><i>整理卡片分类</i></button>
+            <button class="quick-btn" type="button" data-quick="clip"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><line x1="8.1" y1="7.6" x2="20" y2="17"/><line x1="8.1" y1="16.4" x2="20" y2="7"/></svg></span><b>剪藏管理</b><i>扩展与令牌</i></button>
+            <button class="quick-btn" type="button" data-quick="settings"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="9" cy="7" r="2.2"/><circle cx="15" cy="12" r="2.2"/><circle cx="7" cy="17" r="2.2"/></svg></span><b>站点设置</b><i>外观与访问</i></button>
+            <button class="quick-btn" type="button" data-quick="backup"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="4.5" rx="1.2"/><path d="M5 8.5v9.3A2.2 2.2 0 0 0 7.2 20h9.6a2.2 2.2 0 0 0 2.2-2.2V8.5"/><line x1="10" y1="12.5" x2="14" y2="12.5"/></svg></span><b>系统备份</b><i>导入 / 导出配置</i></button>
+            <button class="quick-btn" type="button" data-quick="account"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.4"/><path d="M5.2 20a6.8 6.8 0 0 1 13.6 0"/></svg></span><b>账号管理</b><i>用户与权限</i></button>
           </div>
         </div>
       </div>
@@ -177,6 +176,10 @@
           <input class="input" id="itemSearch" type="search" placeholder="搜索标题 / 网址" style="width:170px">
           <select class="select" id="itemParentFilter" style="width:auto;min-width:130px"></select>
           <select class="select" id="itemSubFilter" style="width:auto;min-width:150px"></select>
+          <div class="seg" id="itemsViewSeg">
+            <button type="button" class="seg-btn" data-view="grid">网格</button>
+            <button type="button" class="seg-btn on" data-view="split">双栏</button>
+          </div>
           <button class="btn btn-sm" id="itemFilterReset" type="button">重置</button>
           <button class="btn btn-sm" id="iconBatchBtn" type="button" title="为还没有图标的卡片批量抓取站点图标（并发 4，可中断）">批量补图</button>
           <button class="btn btn-primary" id="addItemBtn">＋ 添加卡片</button>
@@ -184,26 +187,19 @@
       </div>
       <div class="form-hint" id="itemsFilterInfo" style="margin:4px 0 10px"></div>
       <div class="bulk-bar" id="itemsBulkBar" hidden>
+        <label class="bulk-all"><input type="checkbox" id="itemsCheckAll">全选本页</label>
         <span id="itemsBulkCount">已选 0 张</span>
         <button class="btn btn-sm" id="bulkMoveBtn" type="button">移动分组</button>
         <button class="btn btn-sm btn-danger" id="bulkDelBtn" type="button">批量删除</button>
         <button class="btn btn-sm" id="bulkClearBtn" type="button">取消选择</button>
       </div>
-      <table class="table">
-        <thead>
-          <tr>
-            <th style="width:36px"><input type="checkbox" id="itemsCheckAll" title="全选当前页"></th>
-            <th style="width:56px">图标</th>
-            <th style="width:140px">标题</th>
-            <th style="width:170px">地址</th>
-            <th>描述</th>
-            <th style="width:110px">分组</th>
-            <th style="width:120px">打开方式</th>
-            <th style="width:230px">操作</th>
-          </tr>
-        </thead>
-        <tbody id="itemsTbody"></tbody>
-      </table>
+      <div class="items-views">
+        <div class="items-view" id="itemsViewGrid"></div>
+        <div class="items-split" id="itemsViewSplit" hidden>
+          <aside class="items-tree" id="itemsTree"></aside>
+          <div class="items-split-main" id="itemsSplitList"></div>
+        </div>
+      </div>
       <div class="form-hint" id="itemsOrderHint" style="margin-top:8px">提示：卡片显示顺序请在前端主页调整：管理员登录后分组右侧显示排序按钮，点击进入排序模式，拖拽卡片后保存排序。</div>
       <div class="pager" id="itemsPager" hidden></div>
     </section>
@@ -267,7 +263,6 @@
       <div class="settings-section">
         <div class="section-head">
           <h3>🏠 站点信息</h3>
-          <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-basic">保存</button>
         </div>
         <form id="sf-basic" data-section="basic" autocomplete="off">
           <h4 class="sub-group-title">🏠 基本信息</h4>
@@ -469,7 +464,7 @@
               <label>整体页面字体（12 款免费设计字体）</label>
               <select class="select" id="s_page_font"></select>
               <div class="form-hint">作用于主页正文、卡片标题与描述、顶栏等；中文字体按需加载字形子集，首次切换稍慢；离线时回退系统字体。时钟 / 天气的专用字体在「时钟与天气」中设置。</div>
-              <div class="font-preview" id="pageFontPreview">SolarPanel 导航 · 12:30 · 晴 24°C · 今天也要加油呀</div>
+              <div class="font-preview" id="pageFontPreview">SolarPanel 导航 · 12:30 · 晴 24°C · 今天也要加油呀<div class="font-lunar" id="pageFontLunar" hidden>农历十月初五 · 乙巳年 · <b class="fp-yi">宜</b> 出行 会友 · <b class="fp-ji">忌</b> 动土</div></div>
             </div>
             <div class="form-item">
               <div class="sub-group-head">
@@ -500,7 +495,7 @@
               <div class="form-item">
                 <label>时钟 / 天气字体（12 款免费设计字体）留空时继承「页面字体」；中文字体按需加载，离线回退系统字体</label>
                 <select class="select" id="s_clock_font"></select>
-                <div class="font-preview" id="clockFontPreview">12:30 <span>晴 24°C · 10月24日 周六</span></div>
+                <div class="font-preview" id="clockFontPreview">12:30 <span>晴 24°C · 10月24日 周六</span><div class="font-lunar" id="clockFontLunar" hidden>农历十月初五 · 乙巳年 · <b class="fp-yi">宜</b> 出行 会友 · <b class="fp-ji">忌</b> 动土</div></div>
               </div>
             </div>
           </div>
@@ -557,7 +552,6 @@
       <div class="settings-section">
         <div class="section-head">
           <h3>🧭 导航与搜索</h3>
-          <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-search">保存</button>
         </div>
         <form id="sf-search" data-section="search" autocomplete="off">
           <h4 class="sub-group-title">🧭 搜索栏</h4>
@@ -592,7 +586,6 @@
       <div class="settings-section">
         <div class="section-head">
           <h3>📰 热点新闻</h3>
-          <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-news">保存</button>
         </div>
         <form id="sf-news" data-section="news" autocomplete="off">
           <h4 class="sub-group-title">📰 新闻视图</h4>
@@ -638,7 +631,7 @@
           </div>
           <h4 class="sub-group-title">📊 数据源</h4>
           <div class="form-item">
-            <label>数据源（勾选主页新闻视图展示的热榜；未勾选任何数据源时主页入口自动隐藏；拖动行首 ⠿ 或用「上移/下移」调整主页显示顺序，保存后生效）</label>
+            <label>数据源（勾选主页新闻视图展示的热榜；未勾选任何数据源时主页入口自动隐藏；按住卡片左上角图标拖动即可调整主页显示顺序，保存后生效）</label>
             <div style="display:flex;gap:8px;margin:4px 0 10px">
               <button class="btn btn-sm" type="button" id="newsSelectAll">全选</button>
               <button class="btn btn-sm" type="button" id="newsSelectInvert">反选</button>
@@ -654,7 +647,6 @@
       <div class="settings-section">
         <div class="section-head">
           <h3>🖥️ NAS 监控</h3>
-          <button class="btn btn-primary btn-sm section-save" type="submit" form="sf-nas">保存</button>
         </div>
         <form id="sf-nas" data-section="nas" autocomplete="off">
           <h4 class="sub-group-title">🖥️ 面板开关与位置</h4>
@@ -1001,7 +993,7 @@
     <!-- ============ 剪藏与接入 ============ -->
     <section class="admin-panel glass" id="tab-clip" hidden>
       <div class="panel-head">
-        <h2>✂️ 剪藏与接入</h2>
+        <h2>✂️ 剪藏管理</h2>
         <div style="display:flex;gap:8px;align-items:center">
           <a class="btn btn-sm" href="/clips" target="_blank" rel="noopener">📚 打开剪藏库</a>
           <button class="btn btn-primary btn-sm" type="button" id="saveClipSettingsBtn">保存设置</button>
@@ -1550,9 +1542,9 @@
   </div>
 
   <script src="assets/js/qrcode.min.js"></script>
-  <script src="assets/js/api.js?v=305da9fe"></script>
+  <script src="assets/js/api.js?v=668a6f1b"></script>
   <script src="assets/js/group-icons.js?v=9802d869"></script>
-  <script src="assets/js/admin.js?v=6a5460b1"></script>
-  <script src="assets/js/admin-console.js?v=90615125"></script>
+  <script src="assets/js/admin.js?v=b82ba314"></script>
+  <script src="assets/js/admin-console.js?v=9ebf6df2"></script>
 </body>
 </html>

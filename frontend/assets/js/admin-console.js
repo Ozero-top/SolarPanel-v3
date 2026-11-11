@@ -16,7 +16,7 @@
     settings: ['站点设置', '站点外观与访问控制'],
     account: ['账号管理', '个人资料与安全'],
     backup: ['系统备份', '配置导入导出'],
-    clip: ['剪藏与接入', '浏览器扩展与令牌'],
+    clip: ['剪藏管理', '浏览器扩展与令牌'],
     audit: ['审计日志', '登录与操作记录']
   };
   var OPEN_LABEL = { 1: '当前页打开', 2: '新窗口打开', 3: '弹层内嵌' };
@@ -121,6 +121,28 @@
   }
 
   /* ================= 侧栏 / 抽屉 ================= */
+  var navTip = null;
+
+  // 侧栏收起后图标没有文字，悬停显示功能名称气泡
+  function showNavTip(tab) {
+    if (!navTip) {
+      navTip = document.createElement('div');
+      navTip.className = 'cs-tip';
+      document.body.appendChild(navTip);
+    }
+    var text = tab.getAttribute('data-tip') || '';
+    if (!text) return;
+    var r = tab.getBoundingClientRect();
+    navTip.textContent = text;
+    navTip.style.top = Math.round(r.top + r.height / 2) + 'px';
+    navTip.style.left = Math.round(r.right + 10) + 'px';
+    navTip.classList.add('on');
+  }
+
+  function hideNavTip() {
+    if (navTip) navTip.classList.remove('on');
+  }
+
   function initShell() {
     var shell = $('consoleShell');
     if (!shell) return;
@@ -132,12 +154,24 @@
       if (localStorage.getItem(COLLAPSE_KEY) === '1') shell.classList.add('collapsed');
     } catch (e) { /* 忽略 */ }
 
+    // 收起后按钮仍在，提示语随状态切换，避免「点开后找不到展开入口」
+    function syncCollapseBtn() {
+      if (!collapseBtn) return;
+      var collapsed = shell.classList.contains('collapsed');
+      collapseBtn.title = collapsed ? '展开侧栏' : '收起侧栏';
+      collapseBtn.setAttribute('aria-label', collapseBtn.title);
+      collapseBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    }
+    syncCollapseBtn();
+
     if (collapseBtn) {
       collapseBtn.addEventListener('click', function () {
         shell.classList.toggle('collapsed');
         try {
           localStorage.setItem(COLLAPSE_KEY, shell.classList.contains('collapsed') ? '1' : '0');
         } catch (e) { /* 忽略 */ }
+        syncCollapseBtn();
+        hideNavTip();
       });
     }
 
@@ -157,6 +191,16 @@
     var tabs = document.querySelectorAll('.cs-nav .tab');
     for (var i = 0; i < tabs.length; i++) {
       tabs[i].addEventListener('click', closeDrawer);
+      (function (tab) {
+        tab.addEventListener('mouseenter', function () {
+          if (shell.classList.contains('collapsed')) showNavTip(tab);
+        });
+        tab.addEventListener('mouseleave', hideNavTip);
+        tab.addEventListener('focus', function () {
+          if (shell.classList.contains('collapsed')) showNavTip(tab);
+        });
+        tab.addEventListener('blur', hideNavTip);
+      })(tabs[i]);
     }
   }
 
@@ -750,7 +794,7 @@
 
     var gotoClips = $('dashGotoClips');
     if (gotoClips) gotoClips.addEventListener('click', function () {
-      window.open('/clips', '_blank', 'noopener');
+      location.href = '/clips';
     });
 
     // 系统备份仅管理员可用，其他角色隐藏入口
