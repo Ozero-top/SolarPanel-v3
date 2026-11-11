@@ -1582,7 +1582,8 @@ function updateIconPreview() {
   document.getElementById('i_textWrap').style.display = type === 'text' ? '' : 'none';
   document.getElementById('i_bgWrap').style.display = (type === 'text' || type === 'image') ? '' : 'none';
   // 站点图标按需获取：favicon / image 类型都显示按钮，点击后走候选选择流程
-  faviconBtn.style.display = type === 'text' ? 'none' : '';
+  // 注意：HTML 上有 hidden 属性，必须改 hidden 属性而不是 style.display，否则按钮永远不显示
+  faviconBtn.hidden = type === 'text';
   // 文字图标：只保留在线图标库入口；图片 / 站点图标保留上传与获取站点图标
   document.getElementById('i_uploadIcon').style.display = type === 'text' ? 'none' : '';
   document.getElementById('i_iconLib').style.display = type === 'text' ? '' : 'none';
