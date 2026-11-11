@@ -42,6 +42,7 @@ const state = {
   selectedItems: new Set(), // 卡片管理里勾选的卡片 id（批量移动/批量删除）
   movingItemIDs: [],        // 「移动分组」弹窗当前要移动的卡片 id
   itemsView: 'split',       // 卡片管理视图：grid 网格 / split 双栏主从（默认双栏）
+  treeExpanded: new Set(),  // 双栏左侧：已展开的一级分组 id（默认为空 = 全部收起）
 };
 
 const ITEM_PAGE_SIZE = 18; // 卡片管理每页条数
@@ -1173,6 +1174,12 @@ function renderItemsTree() {
   const totalAll = (state.items || []).length;
   const allOn = !state.currentParent && !state.currentGroup;
 
+  // 当前选中的二级分组：自动展开其所属一级分组
+  if (state.currentGroup) {
+    const cur = groups.find(x => x.id === state.currentGroup);
+    if (cur && cur.parent_id) state.treeExpanded.add(cur.parent_id);
+  }
+
   let html = '<div class="itree-node' + (allOn ? ' on' : '') + '" data-parent="0" data-group="0">' +
     '<span class="itree-car"></span>全部卡片<span class="itree-cnt">' + totalAll + '</span></div>';
 
@@ -1181,11 +1188,13 @@ function renderItemsTree() {
     let sum = counts.get(g.id) || 0;
     kids.forEach(k => { sum += counts.get(k.id) || 0; });
     const on = state.currentParent === g.id && !state.currentGroup;
+    const open = state.treeExpanded.has(g.id);
     html += '<div class="itree-node' + (on ? ' on' : '') + '" data-parent="' + g.id + '" data-group="0">' +
-      '<span class="itree-car">' + (kids.length ? '▾' : '') + '</span>' +
+      '<span class="itree-car">' + (kids.length ? (open ? '▾' : '▸') : '') + '</span>' +
       '<span class="itree-name">' + esc(g.title) + '</span>' +
+      (kids.length ? '<span class="itree-toggle">' + (open ? '收起' : '展开') + '</span>' : '') +
       '<span class="itree-cnt">' + sum + '</span></div>';
-    kids.forEach(k => {
+    if (open) kids.forEach(k => {
       html += '<div class="itree-node child' + (state.currentGroup === k.id ? ' on' : '') +
         '" data-parent="' + g.id + '" data-group="' + k.id + '">' +
         '<span class="itree-car"></span>' +
@@ -1197,8 +1206,15 @@ function renderItemsTree() {
   box.innerHTML = html;
   box.querySelectorAll('.itree-node').forEach(n => {
     n.onclick = () => {
-      state.currentParent = Number(n.dataset.parent) || 0;
-      state.currentGroup = Number(n.dataset.group) || 0;
+      const pid = Number(n.dataset.parent) || 0;
+      const gid = Number(n.dataset.group) || 0;
+      // 一级分组：点一次展开，再点收起（同时按该分组筛选）
+      if (pid && !gid && n.querySelector('.itree-toggle')) {
+        if (state.treeExpanded.has(pid)) state.treeExpanded.delete(pid);
+        else state.treeExpanded.add(pid);
+      }
+      state.currentParent = pid;
+      state.currentGroup = gid;
       state.itemPage = 1;
       renderGroupFilter();
       renderItemsTable();
