@@ -104,6 +104,7 @@ func (h *WeatherHandler) cacheKey(prefix, key string) string {
 	hash := md5.Sum([]byte(prefix + ":" + key))
 	return filepath.Join(h.cacheDir(), hex.EncodeToString(hash[:])+".json")
 }
+
 // readCache 读取磁盘缓存；ttl<=0 表示不校验过期（用于上游故障时回退陈旧数据）
 func (h *WeatherHandler) readCache(prefix, key string, ttl time.Duration, requireKey string) (map[string]any, bool) {
 	p := h.cacheKey(prefix, key)

@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strings"
 
+	"golang.org/x/crypto/bcrypt"
 	"solarpanel/internal/auth"
 	"solarpanel/internal/db"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type UserHandler struct{}
@@ -16,14 +16,14 @@ var validRoles = map[string]bool{"admin": true, "editor": true, "viewer": true, 
 func isValidRole(role string) bool { return validRoles[role] }
 
 type UserRow struct {
-	ID           int    `json:"id"`
-	Username     string `json:"username"`
-	Name         string `json:"name"`
-	Password     string `json:"-"`
-	Status       int    `json:"status"`
-	Role         string `json:"role"`
-	TOTPSecret   string `json:"-"`
-	CreatedAt    string `json:"created_at"`
+	ID         int    `json:"id"`
+	Username   string `json:"username"`
+	Name       string `json:"name"`
+	Password   string `json:"-"`
+	Status     int    `json:"status"`
+	Role       string `json:"role"`
+	TOTPSecret string `json:"-"`
+	CreatedAt  string `json:"created_at"`
 }
 
 func (h *UserHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
@@ -387,4 +387,3 @@ func (h *UserHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
 	db.DB.Exec("UPDATE users SET password=? WHERE id=?", string(hashed), body.ID)
 	OK(w, nil)
 }
-

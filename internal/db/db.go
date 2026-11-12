@@ -189,7 +189,7 @@ func Init(cfg *config.Config) error {
 func backfillCreatedAt() {
 	now := NowStr()
 	for _, table := range []string{"items", "item_groups"} {
-		res, err := DB.Exec("UPDATE " + table + " SET created_at = ? WHERE created_at IS NULL OR created_at = ''", now)
+		res, err := DB.Exec("UPDATE "+table+" SET created_at = ? WHERE created_at IS NULL OR created_at = ''", now)
 		if err != nil {
 			log.Printf("[db] 回填 %s.created_at 失败: %v", table, err)
 			continue

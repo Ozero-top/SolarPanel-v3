@@ -626,7 +626,7 @@ func (h *AuthHandler) ListTrustedDevices(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var list []struct {
-		ID        int    `json:"id"`
+		ID         int    `json:"id"`
 		DeviceName string `json:"device_name"`
 		IPSnippet  string `json:"ip_snippet"`
 		LastUsedAt string `json:"last_used_at"`
@@ -635,7 +635,7 @@ func (h *AuthHandler) ListTrustedDevices(w http.ResponseWriter, r *http.Request)
 	}
 	for rows.Next() {
 		var d struct {
-			ID        int    `json:"id"`
+			ID         int    `json:"id"`
 			DeviceName string `json:"device_name"`
 			IPSnippet  string `json:"ip_snippet"`
 			LastUsedAt string `json:"last_used_at"`
@@ -655,7 +655,7 @@ func (h *AuthHandler) ListTrustedDevices(w http.ResponseWriter, r *http.Request)
 
 	if list == nil {
 		list = []struct {
-			ID        int    `json:"id"`
+			ID         int    `json:"id"`
 			DeviceName string `json:"device_name"`
 			IPSnippet  string `json:"ip_snippet"`
 			LastUsedAt string `json:"last_used_at"`
@@ -760,4 +760,3 @@ func (h *AuthHandler) Dispatch(w http.ResponseWriter, r *http.Request) {
 		h.Me(w, r)
 	}
 }
-

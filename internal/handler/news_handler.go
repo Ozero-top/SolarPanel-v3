@@ -103,30 +103,30 @@ func parseRSS(body []byte) []newsItem {
 
 // fetchMap 所有内置热榜源的分发表 —— 加新源只需在这里加一行
 var fetchMap = map[string]func() []newsItem{
-	"zhihu":         fetchZhihu,
-	"baidu":         fetchBaidu,
-	"bilibili":      fetchBilibili,
-	"weibo":         fetchWeibo,
-	"hackernews":    fetchHackerNews,
-	"github":        fetchGitHub,
-	"thepaper":      fetchThepaper,
-	"toutiao":       fetchToutiao,
-	"tieba":         fetchTieba,
-	"douban":        fetchDouban,
-	"hupu":          fetchHupu,
-	"juejin":        fetchJuejin,
-	"sspai":         fetchSspai,
-	"nowcoder":      fetchNowcoder,
-	"tencent":       fetchTencent,
-	"producthunt":   fetchProductHunt,
-	"freebuf":       fetchFreeBuf,
-	"ithome":        fetchITHome,
-	"solidot":       fetchSolidot,
-	"wallstreetcn":  fetchWallstreetcn,
-	"v2ex":          fetchV2ex,
-	"douyin":        fetchDouyin,
-	"36kr":          fetch36Kr,
-	"csdn":          fetchCSDN,
+	"zhihu":        fetchZhihu,
+	"baidu":        fetchBaidu,
+	"bilibili":     fetchBilibili,
+	"weibo":        fetchWeibo,
+	"hackernews":   fetchHackerNews,
+	"github":       fetchGitHub,
+	"thepaper":     fetchThepaper,
+	"toutiao":      fetchToutiao,
+	"tieba":        fetchTieba,
+	"douban":       fetchDouban,
+	"hupu":         fetchHupu,
+	"juejin":       fetchJuejin,
+	"sspai":        fetchSspai,
+	"nowcoder":     fetchNowcoder,
+	"tencent":      fetchTencent,
+	"producthunt":  fetchProductHunt,
+	"freebuf":      fetchFreeBuf,
+	"ithome":       fetchITHome,
+	"solidot":      fetchSolidot,
+	"wallstreetcn": fetchWallstreetcn,
+	"v2ex":         fetchV2ex,
+	"douyin":       fetchDouyin,
+	"36kr":         fetch36Kr,
+	"csdn":         fetchCSDN,
 }
 
 // runFetch 统一分发入口 —— 失败/成功都打 log 方便定位
@@ -476,7 +476,7 @@ func (h *NewsHandler) Source(w http.ResponseWriter, r *http.Request) {
 	items := fetchSource(*target, latest)
 	updated := time.Now().Unix()
 	if _, at, ok := cachePeek(id); ok {
-		updated = at.Unix()  // 返回真实抓取时间，前端据此判断是否需要刷新
+		updated = at.Unix() // 返回真实抓取时间，前端据此判断是否需要刷新
 	}
 	OK(w, map[string]any{"id": target.ID, "status": newsStatus(items), "updated": updated, "items": items})
 }

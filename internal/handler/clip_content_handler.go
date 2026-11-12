@@ -311,16 +311,20 @@ func (h *ClipHandler) Search(w http.ResponseWriter, r *http.Request) {
 		terms = terms[:8]
 	}
 
-	useFTS := clipFTSAvailable() && allClipTermsIndexable(terms)
+	// 长词走 trigram 索引、短词用 LIKE 兜底，避免因一个 2 字词让整条查询退化为全表扫描
+	ftsTerms, shortTerms := clipQuerySplit(terms)
 	var (
 		rows *sql.Rows
 		err  error
 	)
-	if useFTS {
-		match := make([]string, 0, len(terms))
-		for _, t := range terms {
-			match = append(match, `"`+strings.ReplaceAll(t, `"`, `""`)+`"`)
+	if len(ftsTerms) > 0 {
+		where := []string{"clip_fts MATCH ?"}
+		args := []any{clipFTSMatch(ftsTerms)}
+		if f, a := clipShortTermFilter(shortTerms); f != "" {
+			where = append(where, f)
+			args = append(args, a...)
 		}
+		args = append(args, limit, offset)
 		rows, err = db.DB.Query(`SELECT c.item_id, COALESCE(i.title,''), COALESCE(i.url,''), COALESCE(g.title,''),
 			c.excerpt, c.content_md, c.word_count, c.fetched_at,
 			COALESCE((SELECT group_concat(t.tag, ',') FROM item_tags t WHERE t.item_id = c.item_id), '')
@@ -328,17 +332,11 @@ func (h *ClipHandler) Search(w http.ResponseWriter, r *http.Request) {
 			JOIN clip_contents c ON c.item_id = f.rowid
 			LEFT JOIN items i ON i.id = c.item_id
 			LEFT JOIN item_groups g ON g.id = i.group_id
-			WHERE clip_fts MATCH ?
+			WHERE `+strings.Join(where, " AND ")+`
 			ORDER BY bm25(clip_fts) ASC, c.fetched_at DESC
-			LIMIT ? OFFSET ?`, strings.Join(match, " AND "), limit, offset)
+			LIMIT ? OFFSET ?`, args...)
 	} else {
-		where := make([]string, 0, len(terms))
-		args := make([]any, 0, len(terms)*4+2)
-		for _, t := range terms {
-			where = append(where, "(i.title LIKE ? OR c.excerpt LIKE ? OR c.content_md LIKE ? OR EXISTS (SELECT 1 FROM item_tags t WHERE t.item_id = c.item_id AND t.tag LIKE ?))")
-			like := "%" + t + "%"
-			args = append(args, like, like, like, like)
-		}
+		filter, args := clipShortTermFilter(terms)
 		args = append(args, limit, offset)
 		rows, err = db.DB.Query(`SELECT c.item_id, COALESCE(i.title,''), COALESCE(i.url,''), COALESCE(g.title,''),
 			c.excerpt, c.content_md, c.word_count, c.fetched_at,
@@ -346,7 +344,7 @@ func (h *ClipHandler) Search(w http.ResponseWriter, r *http.Request) {
 			FROM clip_contents c
 			LEFT JOIN items i ON i.id = c.item_id
 			LEFT JOIN item_groups g ON g.id = i.group_id
-			WHERE `+strings.Join(where, " AND ")+`
+			WHERE `+filter+`
 			ORDER BY c.fetched_at DESC, c.item_id DESC
 			LIMIT ? OFFSET ?`, args...)
 	}
@@ -378,14 +376,46 @@ func clipActor(p *clipPrincipal) string {
 	return p.Name
 }
 
-// allClipTermsIndexable trigram 分词要求每个词至少 3 个字，否则退回 LIKE
-func allClipTermsIndexable(terms []string) bool {
+// clipQuerySplit 按 trigram 的下限（3 个字）拆分检索词：
+// 长词交给 FTS5 索引，短词（含 2 字中文）由 LIKE 兜底，
+// 这样「长词 + 短词」的混合查询仍能走索引，而不是整体退化为全表扫描。
+func clipQuerySplit(terms []string) (ftsTerms, shortTerms []string) {
+	ftsReady := clipFTSAvailable()
 	for _, t := range terms {
-		if utf8.RuneCountInString(t) < 3 {
-			return false
+		if ftsReady && utf8.RuneCountInString(t) >= 3 {
+			ftsTerms = append(ftsTerms, t)
+			continue
 		}
+		shortTerms = append(shortTerms, t)
 	}
-	return true
+	return ftsTerms, shortTerms
+}
+
+// clipFTSMatch 把检索词拼成 FTS5 MATCH 表达式（逐词精确短语匹配）
+func clipFTSMatch(terms []string) string {
+	match := make([]string, 0, len(terms))
+	for _, t := range terms {
+		match = append(match, `"`+strings.ReplaceAll(t, `"`, `""`)+`"`)
+	}
+	return strings.Join(match, " AND ")
+}
+
+// clipShortTermFilter 为短词生成 LIKE 过滤片段，覆盖标题 / URL / 描述 / 摘要 / 正文 / 标签。
+// 列别名固定为 i（items）与 c（clip_contents），三处检索入口共用同一份语义。
+func clipShortTermFilter(terms []string) (string, []any) {
+	if len(terms) == 0 {
+		return "", nil
+	}
+	parts := make([]string, 0, len(terms))
+	args := make([]any, 0, len(terms)*6)
+	for _, t := range terms {
+		like := "%" + t + "%"
+		parts = append(parts, `(i.title LIKE ? OR i.url LIKE ? OR i.description LIKE ?
+			OR COALESCE(c.excerpt,'') LIKE ? OR COALESCE(c.content_md,'') LIKE ?
+			OR EXISTS (SELECT 1 FROM item_tags t WHERE t.item_id = i.id AND t.tag LIKE ?))`)
+		args = append(args, like, like, like, like, like, like)
+	}
+	return strings.Join(parts, " AND "), args
 }
 
 // clipSnippet 取首个命中词附近的纯文本片段，供列表展示

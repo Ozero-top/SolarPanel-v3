@@ -31,7 +31,7 @@ func NewUploadHandler(cfg *config.Config) *UploadHandler {
 }
 
 var allowedExts = map[string]bool{
-	"jpg":  true, "jpeg": true, "png": true, "gif": true,
+	"jpg": true, "jpeg": true, "png": true, "gif": true,
 	"webp": true, "ico": true, "bmp": true, "svg": true,
 }
 

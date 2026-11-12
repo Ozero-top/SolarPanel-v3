@@ -118,21 +118,14 @@ func (h *ClipHandler) List(w http.ResponseWriter, r *http.Request) {
 		if len(terms) > 8 {
 			terms = terms[:8]
 		}
-		if clipFTSAvailable() && allClipTermsIndexable(terms) {
-			match := make([]string, 0, len(terms))
-			for _, t := range terms {
-				match = append(match, `"`+strings.ReplaceAll(t, `"`, `""`)+`"`)
-			}
+		ftsTerms, shortTerms := clipQuerySplit(terms)
+		if len(ftsTerms) > 0 {
 			where = append(where, "i.id IN (SELECT rowid FROM clip_fts WHERE clip_fts MATCH ?)")
-			args = append(args, strings.Join(match, " AND "))
-		} else {
-			for _, t := range terms {
-				like := "%" + t + "%"
-				where = append(where, `(i.title LIKE ? OR i.url LIKE ? OR i.description LIKE ?
-					OR COALESCE(c.excerpt,'') LIKE ? OR COALESCE(c.content_md,'') LIKE ?
-					OR EXISTS (SELECT 1 FROM item_tags t WHERE t.item_id = i.id AND t.tag LIKE ?))`)
-				args = append(args, like, like, like, like, like, like)
-			}
+			args = append(args, clipFTSMatch(ftsTerms))
+		}
+		if f, a := clipShortTermFilter(shortTerms); f != "" {
+			where = append(where, f)
+			args = append(args, a...)
 		}
 	}
 

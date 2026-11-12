@@ -512,6 +512,18 @@ func main() {
 		}
 	}()
 
+	// favicon 缓存回收：启动 5 分钟后跑一次（避开启动高峰），之后每天一次；
+	// 只清理 7 天内未被任何卡片引用、且写入超过宽限期的文件
+	go func() {
+		time.Sleep(5 * time.Minute)
+		handler.CleanupOrphanFavicons(cfg.UploadDir)
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			handler.CleanupOrphanFavicons(cfg.UploadDir)
+		}
+	}()
+
 	// HTTP 始终启动（方便反代）
 	httpAddr := ":" + cfg.ServerPort
 	go func() {

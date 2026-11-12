@@ -97,9 +97,9 @@ func AuthenticateBearer(r *http.Request) (*TokenPrincipal, error) {
 	hash := HashToken(plain)
 
 	var (
-		tokenID, userID, status           int
-		username, name, role, scopes      string
-		expiresAt, revokedAt, storedHash  string
+		tokenID, userID, status          int
+		username, name, role, scopes     string
+		expiresAt, revokedAt, storedHash string
 	)
 	err := db.DB.QueryRow(`SELECT t.id, t.user_id, u.username, u.name, u.status, u.role,
 			t.scopes, t.expires_at, t.revoked_at, t.token_hash

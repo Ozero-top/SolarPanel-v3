@@ -36,25 +36,25 @@ func NewItemsHandler(cfg *config.Config) *ItemsHandler {
 
 // ItemRow 卡片行
 type ItemRow struct {
-	ID          int      `json:"id"`
-	GroupID     int      `json:"group_id"`
-	Title       string   `json:"title"`
-	URL         string   `json:"url"`
-	LanURL      string   `json:"lan_url"`
-	Description string   `json:"description"`
-	IconType    string   `json:"icon_type"`
-	IconValue   string   `json:"icon_value"`
+	ID          int    `json:"id"`
+	GroupID     int    `json:"group_id"`
+	Title       string `json:"title"`
+	URL         string `json:"url"`
+	LanURL      string `json:"lan_url"`
+	Description string `json:"description"`
+	IconType    string `json:"icon_type"`
+	IconValue   string `json:"icon_value"`
 	// IconVer 本地图标文件 mtime（秒），用于前端拼 ?v= 破缓存
 	IconVer int64 `json:"icon_ver,omitempty"`
 	// IconData 首屏前 N 张图标的 data URL（仅 /api/public.php 输出时填充）
-	IconData string `json:"icon_data,omitempty"`
-	IconBG   string `json:"icon_bg"`
-	OpenMethod  int      `json:"open_method"`
-	Sort        int      `json:"sort"`
-	IsHidden    int      `json:"is_hidden"`
-	UserID      int      `json:"user_id"`
-	CreatedAt   string   `json:"created_at"`
-	Tags        []string `json:"tags,omitempty"`
+	IconData   string   `json:"icon_data,omitempty"`
+	IconBG     string   `json:"icon_bg"`
+	OpenMethod int      `json:"open_method"`
+	Sort       int      `json:"sort"`
+	IsHidden   int      `json:"is_hidden"`
+	UserID     int      `json:"user_id"`
+	CreatedAt  string   `json:"created_at"`
+	Tags       []string `json:"tags,omitempty"`
 }
 
 func isValidURL(s string) bool {

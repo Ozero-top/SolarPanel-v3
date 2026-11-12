@@ -133,7 +133,14 @@ try {
     Step "提交并推送代码"
     # 前置已保证工作区干净，此处的改动只可能来自上面的版本同步与资源戳构建
     Run "git" @("add", "-A")
-    Run "git" @("commit", "-m", "chore(release): $tag")
+    # 版本号已是目标值、前端资源也无变化时不会有任何改动，此时跳过提交，避免空提交中断发版
+    $staged = @(git status --porcelain)
+    if ($staged.Count -gt 0) {
+      Run "git" @("commit", "-m", "chore(release): $tag")
+    }
+    else {
+      Write-Host "    无版本相关改动，跳过提交直接推送" -ForegroundColor DarkGray
+    }
     Run "git" @("push", "origin", "main")
 
     Step "打 tag 并推送"

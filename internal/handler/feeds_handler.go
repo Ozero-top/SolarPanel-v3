@@ -30,11 +30,11 @@ var validFeedURLRe = regexp.MustCompile(`^https?://`)
 
 // CustomFeedRow RSS 源
 type CustomFeedRow struct {
-	ID       int    `json:"id"`
-	Title    string `json:"title"`
-	URL      string `json:"url"`
-	Sort     int    `json:"sort"`
-	Enabled  int    `json:"enabled"`
+	ID        int    `json:"id"`
+	Title     string `json:"title"`
+	URL       string `json:"url"`
+	Sort      int    `json:"sort"`
+	Enabled   int    `json:"enabled"`
 	CreatedAt string `json:"created_at"`
 }
 

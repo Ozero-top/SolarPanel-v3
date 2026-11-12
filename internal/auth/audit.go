@@ -98,7 +98,7 @@ func AuditCleanup() {
 		return
 	}
 	days := auditRetentionDays()
-	res, err := db.DB.Exec(`DELETE FROM audit_logs WHERE created_at < datetime('now','localtime','-`+strconv.Itoa(days)+` days')`)
+	res, err := db.DB.Exec(`DELETE FROM audit_logs WHERE created_at < datetime('now','localtime','-` + strconv.Itoa(days) + ` days')`)
 	if err != nil {
 		log.Printf("[audit] cleanup failed: %v", err)
 		return
