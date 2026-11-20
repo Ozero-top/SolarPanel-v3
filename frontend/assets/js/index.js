@@ -1936,8 +1936,8 @@ function wetabPrefs() {
   const p = Object.assign({}, WETAB_PREFS_DEFAULT);
   const apply = (raw) => {
     if (!raw) return;
-    if (Number.isFinite(Number(raw.rowGap))) p.rowGap = Math.min(40, Math.max(1, Number(raw.rowGap)));
-    if (Number.isFinite(Number(raw.colGap))) p.colGap = Math.min(40, Math.max(1, Number(raw.colGap)));
+    if (Number.isFinite(Number(raw.rowGap))) p.rowGap = Math.min(40, Math.max(0, Number(raw.rowGap)));
+    if (Number.isFinite(Number(raw.colGap))) p.colGap = Math.min(40, Math.max(0, Number(raw.colGap)));
     if (Number.isFinite(Number(raw.iconSize))) p.iconSize = Math.min(72, Math.max(32, Number(raw.iconSize)));
     if (typeof raw.dockTitle === 'boolean') p.dockTitle = raw.dockTitle;
     if (WETAB_DOCK_MODES.indexOf(raw.dockMode) >= 0) p.dockMode = raw.dockMode;
@@ -2015,6 +2015,12 @@ function applyWetabPrefs(p) {
   root.style.setProperty('--wetab-row-gap', p.rowGap + 'px');
   root.style.setProperty('--wetab-col-gap', p.colGap + 'px');
   root.style.setProperty('--wetab-icon-size', p.iconSize + 'px');
+  // 左右间距同时收窄卡片列宽：12 及以上保持原外观，调小后列更窄、一行排得更密
+  const mobile = window.matchMedia('(max-width: 640px)').matches;
+  const baseW = mobile ? 96 : 132;
+  const minW = mobile ? 76 : 96;
+  const tight = Math.min(12, Math.max(0, Number(p.colGap) || 0));
+  root.style.setProperty('--wetab-card-width', Math.round(baseW - (12 - tight) / 12 * (baseW - minW)) + 'px');
   root.style.setProperty('--wetab-dock-alpha', String(p.dockBg));
   document.body.classList.toggle('wetab-dock-hide-title', !p.dockTitle);
   document.body.classList.toggle('wetab-dock-hidden', p.dockMode === 'hide');
@@ -2164,6 +2170,15 @@ function initWetabPrefs() {
   if (maskOp) maskOp.addEventListener('input', () => setWetabWallpaperFx({ mask_opacity: String(Number(maskOp.value)) }));
   const wpBlur = document.getElementById('wpWallpaperBlur');
   if (wpBlur) wpBlur.addEventListener('input', () => setWetabWallpaperFx({ wallpaper_blur: String(Number(wpBlur.value)) }));
+
+  // 跨 640px 断点时重算卡片列宽（桌面 / 移动的基准宽度不同）
+  let wetabNarrow = window.matchMedia('(max-width: 640px)').matches;
+  window.addEventListener('resize', () => {
+    const narrow = window.matchMedia('(max-width: 640px)').matches;
+    if (narrow === wetabNarrow) return;
+    wetabNarrow = narrow;
+    applyWetabPrefs(wetabPrefs());
+  });
 
   // Dock 自动隐藏：鼠标移到页面下方时浮出，移开后收起
   document.addEventListener('mousemove', (e) => {

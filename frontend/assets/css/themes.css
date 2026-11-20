@@ -3443,7 +3443,7 @@ body.has-wallpaper .style-fx {
 :root[data-style='wetab'] .group-parent-head .desc { color: var(--text-muted); }
 
 :root[data-style='wetab'] .cards,
-:root[data-style='wetab'] .cards.style-app { grid-template-columns: repeat(auto-fill, minmax(var(--wetab-card-width, 132px), 1fr)); row-gap: var(--wetab-row-gap, 12px); column-gap: var(--wetab-col-gap, 12px); }
+:root[data-style='wetab'] .cards.style-app { grid-template-columns: repeat(auto-fill, var(--wetab-card-width, 132px)); justify-content: start; row-gap: var(--wetab-row-gap, 12px); column-gap: var(--wetab-col-gap, 12px); }
 
 :root[data-style='wetab'] body .card { flex-direction: column; align-items: center; justify-content: flex-start; gap: 9px; padding: 15px 8px 12px; text-align: center; border-radius: 20px; border: 1px solid var(--edge-weak); background: color-mix(in srgb, var(--surface) 80%, transparent); box-shadow: var(--raised-sm), inset 0 1px 0 rgba(255, 255, 255, 0.24); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); transition: transform var(--tr) var(--ease), box-shadow var(--tr) var(--ease), background var(--tr) var(--ease); }
 
@@ -3610,7 +3610,7 @@ body.has-wallpaper .style-fx {
 @media (max-width: 720px) { :root[data-style='wetab'] #heroWrap { position: static; padding: 0; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; -webkit-mask-image: none; mask-image: none; } }
 
 @media (max-width: 640px) { :root[data-style='wetab'] .cards,
-:root[data-style='wetab'] .cards.style-app { grid-template-columns: repeat(auto-fill, minmax(var(--wetab-card-width, 96px), 1fr)); row-gap: var(--wetab-row-gap, 10px); column-gap: var(--wetab-col-gap, 10px); } :root[data-style='wetab'] body .card { padding: 12px 6px 10px; } :root[data-style='wetab'] .card .icon { width: 46px; height: 46px; border-radius: 14px; } :root[data-style='wetab'] body .wetab-dock .dock-card { width: 62px; } :root[data-style='wetab'] .wetab-prefs-btn,
+:root[data-style='wetab'] .cards.style-app { grid-template-columns: repeat(auto-fill, var(--wetab-card-width, 96px)); justify-content: start; row-gap: var(--wetab-row-gap, 10px); column-gap: var(--wetab-col-gap, 10px); } :root[data-style='wetab'] body .card { padding: 12px 6px 10px; } :root[data-style='wetab'] .card .icon { width: 46px; height: 46px; border-radius: 14px; } :root[data-style='wetab'] body .wetab-dock .dock-card { width: 62px; } :root[data-style='wetab'] .wetab-prefs-btn,
 :root[data-style='wetab'] .wetab-prefs { display: none !important; } }
 
 @media (prefers-reduced-motion: reduce) { :root[data-style='wetab'] body .card:hover,
