@@ -2018,7 +2018,7 @@ function applyWetabPrefs(p) {
   // 左右间距同时收窄卡片列宽：12 及以上保持原外观，调小后列更窄、一行排得更密
   const mobile = window.matchMedia('(max-width: 640px)').matches;
   const baseW = mobile ? 96 : 132;
-  const minW = mobile ? 76 : 96;
+  const minW = mobile ? 66 : 82;
   const tight = Math.min(12, Math.max(0, Number(p.colGap) || 0));
   root.style.setProperty('--wetab-card-width', Math.round(baseW - (12 - tight) / 12 * (baseW - minW)) + 'px');
   root.style.setProperty('--wetab-dock-alpha', String(p.dockBg));

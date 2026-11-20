@@ -3442,6 +3442,14 @@ body.has-wallpaper .style-fx {
 :root[data-style='wetab'] .group-head .desc,
 :root[data-style='wetab'] .group-parent-head .desc { color: var(--text-muted); }
 
+:root[data-style='wetab'] .group { padding: 6px 10px 8px; margin-bottom: 12px; }
+
+:root[data-style='wetab'] .group-head { margin-bottom: 10px; }
+
+:root[data-style='wetab'] .group-parent { padding: 10px 12px 8px; margin-bottom: 14px; }
+
+:root[data-style='wetab'] .group-child { padding: 8px 10px 10px; margin-bottom: 10px; }
+
 :root[data-style='wetab'] .cards,
 :root[data-style='wetab'] .cards.style-app { grid-template-columns: repeat(auto-fill, var(--wetab-card-width, 132px)); justify-content: start; row-gap: var(--wetab-row-gap, 12px); column-gap: var(--wetab-col-gap, 12px); }
 
